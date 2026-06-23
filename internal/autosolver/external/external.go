@@ -74,54 +74,17 @@ func (s externalSolver) prepare(page autosolver.Page) (string, *autosolver.Resul
 		return "", result, err
 	}
 
-	if detectCaptchaType(html) == "" {
+	captchaType := detectCaptchaType(html)
+	if captchaType == "" {
 		result.Error = "no supported CAPTCHA detected"
 		return "", result, fmt.Errorf("no supported CAPTCHA detected on page")
 	}
 
-	sitekey := extractSitekey(html)
+	sitekey := extractSitekey(html, captchaType)
 	if sitekey == "" {
 		result.Error = "sitekey not found"
 		return "", result, fmt.Errorf("could not extract sitekey from page")
 	}
 
 	return sitekey, result, nil
-}
-
-func detectCaptchaType(html string) string {
-	lower := strings.ToLower(html)
-	switch {
-	case strings.Contains(lower, "g-recaptcha") || strings.Contains(lower, "recaptcha"):
-		return "recaptcha"
-	case strings.Contains(lower, "h-captcha") || strings.Contains(lower, "hcaptcha"):
-		return "hcaptcha"
-	case strings.Contains(lower, "challenges.cloudflare.com/turnstile"):
-		return "turnstile"
-	default:
-		return ""
-	}
-}
-
-// extractSitekey reads the sitekey attribute out of the page HTML. It used to
-// switch on the detected CAPTCHA type, but all three arms named the same
-// attribute, so the type only separated known from unknown — a question
-// prepare has already answered before it calls this.
-func extractSitekey(html string) string {
-	const attr = "data-sitekey"
-
-	idx := strings.Index(html, attr+`="`)
-	if idx == -1 {
-		idx = strings.Index(html, attr+`='`)
-	}
-	if idx == -1 {
-		return ""
-	}
-
-	start := idx + len(attr) + 2
-	quote := html[start-1]
-	end := strings.IndexByte(html[start:], quote)
-	if end == -1 {
-		return ""
-	}
-	return html[start : start+end]
 }
