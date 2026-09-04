@@ -431,47 +431,135 @@ const funcaptchaInjectJS = `function(token){
   return true;
 }`
 
-// detectCaptchaType classifies the CAPTCHA on a page from its HTML, or "" if
-// none is recognized. FunCaptcha is matched first because Arkose embeds often
-// also pull in a reCAPTCHA-like script; its markers (arkoselabs, data-pkey) are
-// specific enough that the ordering rarely misfires. reCAPTCHA splits into
-// "recaptcha" (v2 checkbox/invisible) and "recaptcha-v3" — see classifyRecaptcha.
-// Enterprise reCAPTCHA (recaptcha/enterprise.js) is not yet distinguished and
-// falls through to the v2 path.
-func detectCaptchaType(html string) string {
-	lower := strings.ToLower(html)
-	switch {
-	case strings.Contains(lower, "funcaptcha") || strings.Contains(lower, "arkoselabs") ||
-		strings.Contains(lower, "arkose-labs") || strings.Contains(lower, "data-pkey"):
-		return "funcaptcha"
-	case strings.Contains(lower, "challenges.cloudflare.com/turnstile") || strings.Contains(lower, "cf-turnstile"):
-		return "turnstile"
-	case strings.Contains(lower, "h-captcha") || strings.Contains(lower, "hcaptcha"):
-		return "hcaptcha"
-	case strings.Contains(lower, "g-recaptcha") || strings.Contains(lower, "recaptcha"):
-		return classifyRecaptcha(html)
-	default:
-		return ""
-	}
+// captchaWidget is the CAPTCHA embedded on a page: its type and the key to
+// submit, read off the same element so the two cannot disagree.
+type captchaWidget struct {
+	typ string
+	key string
 }
 
-// classifyRecaptcha separates reCAPTCHA v3 from v2. v2 (checkbox or invisible)
-// renders a widget carrying data-sitekey; v3 has no widget — it loads
-// api.js?render=<sitekey> and calls grecaptcha.execute(). We report v3 only when
-// a render sitekey is present AND there is no v2 data-sitekey widget, so a v2
-// page is never downgraded. render=explicit is the v2 programmatic-render flag,
-// not a sitekey, so it stays v2.
-func classifyRecaptcha(html string) string {
-	if !siteKeyAttrRe.MatchString(html) {
-		if m := recaptchaRenderRe.FindStringSubmatch(html); len(m) > 1 && !strings.EqualFold(m[1], "explicit") {
-			return "recaptcha-v3"
+// findCaptchaWidget locates the CAPTCHA embedded on the page. Every marker is an
+// attribute, a class, or a resource URL, never a loose word: a page that merely
+// links to another vendor would otherwise be misclassified, and CapSolver
+// rejects a mismatched task type outright with ERROR_INVALID_TASK_DATA.
+func findCaptchaWidget(html string) captchaWidget {
+	// A key whose element names no vendor; the vendor must come from the scripts.
+	unclassifiedKey := ""
+	// A vendor whose element carries no key — enough to name the type, but not to
+	// pair it with some other element's key.
+	keylessVendor := ""
+
+	for _, tag := range htmlTagRe.FindAllString(html, -1) {
+		if pk := attrValue(tag, pkeyAttrRe); pk != "" {
+			return captchaWidget{"funcaptcha", pk}
+		}
+
+		key := attrValue(tag, siteKeyAttrRe)
+		vendor := vendorFromClass(attrValue(tag, classAttrRe))
+
+		switch {
+		case vendor != "" && key != "":
+			return captchaWidget{vendor, key}
+		case vendor != "" && keylessVendor == "":
+			keylessVendor = vendor
+		case key != "" && unclassifiedKey == "":
+			unclassifiedKey = key
 		}
 	}
-	return "recaptcha"
+
+	vendor := vendorFromResources(html)
+	if vendor == "" {
+		vendor = keylessVendor
+	}
+	if vendor == "" {
+		return captchaWidget{}
+	}
+
+	switch vendor {
+	case "funcaptcha":
+		return captchaWidget{vendor, firstSubmatch(html, arkosePkURLRe, publicKeyJSONRe)}
+	case "recaptcha":
+		// No widget anywhere but api.js carries a render sitekey: that is v3,
+		// which has no widget. render=explicit is v2's programmatic-render flag
+		// rather than a key, so it stays v2.
+		if unclassifiedKey == "" {
+			if m := recaptchaRenderRe.FindStringSubmatch(html); len(m) > 1 && !strings.EqualFold(m[1], "explicit") {
+				return captchaWidget{"recaptcha-v3", m[1]}
+			}
+		}
+	}
+	return captchaWidget{vendor, unclassifiedKey}
+}
+
+// vendorFromClass names the vendor from one element's class attribute.
+func vendorFromClass(class string) string {
+	switch lower := strings.ToLower(class); {
+	case strings.Contains(lower, "cf-turnstile"):
+		return "turnstile"
+	case strings.Contains(lower, "h-captcha"):
+		return "hcaptcha"
+	case strings.Contains(lower, "g-recaptcha"):
+		return "recaptcha"
+	}
+	return ""
+}
+
+// vendorFromResources names the vendor from the scripts and frames the page
+// loads, covering widgets rendered programmatically with no vendor class.
+func vendorFromResources(html string) string {
+	switch {
+	case arkoseSrcRe.MatchString(html):
+		return "funcaptcha"
+	case turnstileSrcRe.MatchString(html):
+		return "turnstile"
+	case hcaptchaSrcRe.MatchString(html):
+		return "hcaptcha"
+	case recaptchaSrcRe.MatchString(html):
+		return "recaptcha"
+	}
+	return ""
+}
+
+// attrValue reads one attribute out of a single tag, or "" when absent.
+func attrValue(tag string, re *regexp.Regexp) string {
+	if m := re.FindStringSubmatch(tag); len(m) > 1 {
+		return m[1]
+	}
+	return ""
+}
+
+// firstSubmatch returns the first capture from the first regexp that matches.
+func firstSubmatch(s string, res ...*regexp.Regexp) string {
+	for _, re := range res {
+		if m := re.FindStringSubmatch(s); len(m) > 1 {
+			return m[1]
+		}
+	}
+	return ""
+}
+
+// detectCaptchaType classifies the CAPTCHA on a page, or "" if none is
+// recognized. reCAPTCHA splits into "recaptcha" (v2 checkbox/invisible) and
+// "recaptcha-v3". Enterprise reCAPTCHA is not yet distinguished and takes the
+// v2 path.
+func detectCaptchaType(html string) string {
+	return findCaptchaWidget(html).typ
 }
 
 var (
-	pkeyAttrRe        = regexp.MustCompile(`(?i)data-pkey=["']([^"']+)["']`)
+	// htmlTagRe yields one tag at a time so a marker and the key it belongs to
+	// are read from the same element rather than from anywhere in the document.
+	htmlTagRe   = regexp.MustCompile(`(?s)<[a-zA-Z][^>]*>`)
+	classAttrRe = regexp.MustCompile(`(?i)\bclass\s*=\s*["']([^"']*)["']`)
+
+	// Vendor resource hosts. These identify the scripts and frames a page loads,
+	// which is evidence of an embedded widget in a way a bare word is not.
+	arkoseSrcRe    = regexp.MustCompile(`(?i)\b[a-z0-9-]*\.?arkoselabs\.com`)
+	turnstileSrcRe = regexp.MustCompile(`(?i)\bchallenges\.cloudflare\.com`)
+	hcaptchaSrcRe  = regexp.MustCompile(`(?i)\b(?:js\.|newassets\.)?hcaptcha\.com`)
+	recaptchaSrcRe = regexp.MustCompile(`(?i)\b(?:www\.google\.com|www\.recaptcha\.net|recaptcha\.net)/recaptcha/`)
+
+	pkeyAttrRe        = regexp.MustCompile(`(?i)data-pkey\s*=\s*["']([^"']+)["']`)
 	publicKeyJSONRe   = regexp.MustCompile(`(?i)"?public_?key"?\s*[:=]\s*["']([0-9A-Fa-f-]{20,})["']`)
 	arkosePkURLRe     = regexp.MustCompile(`(?i)[?&]pk=([0-9A-Fa-f-]{20,})`)
 	arkoseSubdomainRe = regexp.MustCompile(`(?i)https?://([a-z0-9-]+\.arkoselabs\.com)`)
@@ -487,27 +575,25 @@ var (
 	dataActionRe = regexp.MustCompile(`(?i)data-action\s*=\s*["']([^"']+)["']`)
 )
 
+// extractSitekey returns the key to submit for captchaType. It prefers the key
+// found on the widget element itself, so a page hosting more than one vendor
+// cannot pair one vendor's type with another's key.
 func extractSitekey(html, captchaType string) string {
+	if w := findCaptchaWidget(html); w.typ == captchaType && w.key != "" {
+		return w.key
+	}
+
+	// The widget scan found nothing usable for this type — fall back to the
+	// document-wide patterns, which is all a caller naming its own type can use.
 	switch captchaType {
 	case "funcaptcha":
-		for _, re := range []*regexp.Regexp{pkeyAttrRe, arkosePkURLRe, publicKeyJSONRe} {
-			if m := re.FindStringSubmatch(html); len(m) > 1 {
-				return m[1]
-			}
-		}
-		return ""
+		return firstSubmatch(html, pkeyAttrRe, arkosePkURLRe, publicKeyJSONRe)
 	case "recaptcha-v3":
 		// v3 has no data-sitekey widget; the key is in the api.js ?render= param.
-		if m := recaptchaRenderRe.FindStringSubmatch(html); len(m) > 1 {
-			return m[1]
-		}
-		return ""
+		return firstSubmatch(html, recaptchaRenderRe)
 	default:
 		// reCAPTCHA v2 / hCaptcha / Turnstile all expose data-sitekey.
-		if m := siteKeyAttrRe.FindStringSubmatch(html); len(m) > 1 {
-			return m[1]
-		}
-		return ""
+		return firstSubmatch(html, siteKeyAttrRe)
 	}
 }
 

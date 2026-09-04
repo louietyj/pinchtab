@@ -383,3 +383,45 @@ func TestSolveFuncaptchaWithBlob(t *testing.T) {
 		t.Errorf("expected data.blob=BDA-BLOB-XYZ, got %+v", dataObj)
 	}
 }
+
+// A page that merely mentions another vendor must not be classified as that
+// vendor. 2captcha's own demo pages link to every vendor they support, so their
+// reCAPTCHA page contains "funcaptcha" seven times in nav links while hosting a
+// plain reCAPTCHA v2 widget. Whole-document substring matching read that as
+// Arkose, extracted no data-pkey, and gave up before calling the API — and had it
+// guessed a type instead, CapSolver would have rejected the task outright.
+func TestDetectIgnoresOtherVendorsMentionedInProse(t *testing.T) {
+	const html = `<html><head>
+		<script src="https://www.google.com/recaptcha/api.js"></script></head><body>
+		<nav><a href="/demo/funcaptcha">FunCaptcha demo</a>
+		     <a href="/demo/hcaptcha">hCaptcha demo</a>
+		     <a href="/demo/cloudflare-turnstile">Turnstile demo</a></nav>
+		<p>Learn how to bypass funcaptcha, hcaptcha and arkose-labs challenges.</p>
+		<form><div class="g-recaptcha" data-sitekey="6LfD3PIbAAAAAJs_eEHvoOl75_83eXSqpPSRFJ_u"></div></form>
+		</body></html>`
+
+	if got := detectCaptchaType(html); got != "recaptcha" {
+		t.Errorf("detectCaptchaType() = %q, want %q", got, "recaptcha")
+	}
+	if got := extractSitekey(html, "recaptcha"); got != "6LfD3PIbAAAAAJs_eEHvoOl75_83eXSqpPSRFJ_u" {
+		t.Errorf("extractSitekey() = %q", got)
+	}
+}
+
+// The type and the key must come off the same element. A page hosting two
+// vendors' widgets must not pair one vendor's type with the other's key, which
+// CapSolver rejects as invalid task data.
+func TestDetectPairsTypeAndKeyFromSameElement(t *testing.T) {
+	const html = `<html><body>
+		<div class="h-captcha" data-sitekey="HCAP-KEY-1"></div>
+		<div class="g-recaptcha" data-sitekey="RECAP-KEY-2"></div>
+		</body></html>`
+
+	w := findCaptchaWidget(html)
+	if w.typ != "hcaptcha" || w.key != "HCAP-KEY-1" {
+		t.Errorf("findCaptchaWidget() = {%q, %q}, want {hcaptcha, HCAP-KEY-1}", w.typ, w.key)
+	}
+	if got := extractSitekey(html, "hcaptcha"); got != "HCAP-KEY-1" {
+		t.Errorf("extractSitekey(hcaptcha) = %q, want HCAP-KEY-1", got)
+	}
+}
