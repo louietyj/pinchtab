@@ -425,3 +425,21 @@ func TestDetectPairsTypeAndKeyFromSameElement(t *testing.T) {
 		t.Errorf("extractSitekey(hcaptcha) = %q, want HCAP-KEY-1", got)
 	}
 }
+
+// Cloudflare's legacy challenge page renders reCAPTCHA explicitly: the mount
+// point is <div id="g-recaptcha"> with no class and no data-sitekey, and the
+// only copy of the key is the k= parameter on the rendered anchor frame.
+func TestDetectExplicitRenderRecaptchaFromFrameURL(t *testing.T) {
+	const html = `<html><body><h1>One more step</h1>
+		<div id="g-recaptcha"><div><iframe title="reCAPTCHA"
+		  src="https://www.google.com/recaptcha/api2/anchor?ar=1&k=6LeQbtsSAAAAAHevV56qhVr_0JhQI7N-zTPoOoWJ&co=aHR0cHM6&hl=en"></iframe></div></div>
+		</body></html>`
+
+	w := findCaptchaWidget(html)
+	if w.typ != "recaptcha" {
+		t.Errorf("type = %q, want recaptcha (not v3: a widget is rendered)", w.typ)
+	}
+	if w.key != "6LeQbtsSAAAAAHevV56qhVr_0JhQI7N-zTPoOoWJ" {
+		t.Errorf("key = %q, want the frame's k= param", w.key)
+	}
+}

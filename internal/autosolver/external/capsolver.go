@@ -455,7 +455,9 @@ func findCaptchaWidget(html string) captchaWidget {
 		}
 
 		key := attrValue(tag, siteKeyAttrRe)
-		vendor := vendorFromClass(attrValue(tag, classAttrRe))
+		// Explicit-render widgets are often marked by id rather than class —
+		// Cloudflare's challenge page uses <div id="g-recaptcha">.
+		vendor := vendorFromMarkers(attrValue(tag, classAttrRe) + " " + attrValue(tag, idAttrRe))
 
 		switch {
 		case vendor != "" && key != "":
@@ -479,21 +481,31 @@ func findCaptchaWidget(html string) captchaWidget {
 	case "funcaptcha":
 		return captchaWidget{vendor, firstSubmatch(html, arkosePkURLRe, publicKeyJSONRe)}
 	case "recaptcha":
-		// No widget anywhere but api.js carries a render sitekey: that is v3,
-		// which has no widget. render=explicit is v2's programmatic-render flag
-		// rather than a key, so it stays v2.
 		if unclassifiedKey == "" {
+			// A rendered challenge frame means a real v2 widget exists even though
+			// no element carries data-sitekey — the explicit-render path.
+			if k := firstSubmatch(html, recaptchaFrameKeyRe); k != "" {
+				return captchaWidget{vendor, k}
+			}
+			// No widget at all but api.js carries a render sitekey: that is v3.
+			// render=explicit is v2's programmatic-render flag rather than a key.
 			if m := recaptchaRenderRe.FindStringSubmatch(html); len(m) > 1 && !strings.EqualFold(m[1], "explicit") {
 				return captchaWidget{"recaptcha-v3", m[1]}
+			}
+		}
+	case "turnstile", "hcaptcha":
+		if unclassifiedKey == "" {
+			if k := firstSubmatch(html, frameSitekeyRe); k != "" {
+				return captchaWidget{vendor, k}
 			}
 		}
 	}
 	return captchaWidget{vendor, unclassifiedKey}
 }
 
-// vendorFromClass names the vendor from one element's class attribute.
-func vendorFromClass(class string) string {
-	switch lower := strings.ToLower(class); {
+// vendorFromMarkers names the vendor from one element's class and id tokens.
+func vendorFromMarkers(markers string) string {
+	switch lower := strings.ToLower(markers); {
 	case strings.Contains(lower, "cf-turnstile"):
 		return "turnstile"
 	case strings.Contains(lower, "h-captcha"):
@@ -551,6 +563,12 @@ var (
 	// are read from the same element rather than from anywhere in the document.
 	htmlTagRe   = regexp.MustCompile(`(?s)<[a-zA-Z][^>]*>`)
 	classAttrRe = regexp.MustCompile(`(?i)\bclass\s*=\s*["']([^"']*)["']`)
+	idAttrRe    = regexp.MustCompile(`(?i)\bid\s*=\s*["']([^"']*)["']`)
+
+	// Explicit-render widgets carry no data-sitekey: the key rides the vendor's
+	// own challenge frame URL, which is present once the widget has rendered.
+	recaptchaFrameKeyRe = regexp.MustCompile(`(?i)/recaptcha/(?:api2|enterprise)/(?:anchor|bframe)\?[^"'>]*\bk=([A-Za-z0-9_-]{20,})`)
+	frameSitekeyRe      = regexp.MustCompile(`(?i)[?&]sitekey=([A-Za-z0-9_-]{8,})`)
 
 	// Vendor resource hosts. These identify the scripts and frames a page loads,
 	// which is evidence of an embedded widget in a way a bare word is not.
