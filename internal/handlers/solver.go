@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -155,6 +156,23 @@ func (h *Handlers) HandleSolve(w http.ResponseWriter, r *http.Request) {
 		"title":         title,
 	}
 
+	// Without this the caller sees only solved:false, and cannot tell an
+	// unconfigured provider from a rejected sitekey from a solver that never ran.
+	if !result.Solved && result.Error != "" {
+		resp["error"] = result.Error
+		// result.Error is the chain's verdict ("all N attempts exhausted"); the
+		// per-attempt reasons are what actually says which solver refused and why.
+		if len(result.History) > 0 {
+			resp["history"] = result.History
+		}
+		slog.Warn("solve did not resolve challenge",
+			"solver", solverName,
+			"challenge_type", challengeType,
+			"attempts", result.Attempts,
+			"error", result.Error,
+			"history", attemptSummaries(result.History))
+	}
+
 	// If a challenge was detected but the solver couldn't resolve it, flip the
 	// tab into paused_handoff so subsequent actions block and the caller can
 	// escalate to a human.
@@ -238,6 +256,19 @@ func (h *Handlers) rejectUnavailableSolver(w http.ResponseWriter, name string) {
 	httpx.ErrorCode(w, 400, "unknown_solver",
 		fmt.Sprintf("unknown solver %q (available: %v)", name, h.availableAutoSolverNames()),
 		false, nil)
+}
+
+// attemptSummaries flattens the per-solver outcomes into one log field.
+func attemptSummaries(history []coreautosolver.AttemptEntry) []string {
+	out := make([]string, 0, len(history))
+	for _, e := range history {
+		summary := fmt.Sprintf("%s:%s", e.Solver, e.Status)
+		if e.Error != "" {
+			summary += ":" + e.Error
+		}
+		out = append(out, summary)
+	}
+	return out
 }
 
 func deriveChallengeType(result *coreautosolver.Result, page coreautosolver.Page) string {
