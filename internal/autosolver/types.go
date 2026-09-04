@@ -160,14 +160,17 @@ type FormCredentials struct {
 
 // Config holds autosolver runtime configuration.
 type Config struct {
-	Enabled        bool          `json:"enabled"`
-	MaxAttempts    int           `json:"maxAttempts"`
-	SolverTimeout  time.Duration `json:"solverTimeout"`
-	Solvers        []string      `json:"solvers"`        // Ordered solver names to try
-	LLMFallback    bool          `json:"llmFallback"`    // Enable LLM as last resort
-	RetryBaseDelay time.Duration `json:"retryBaseDelay"` // Base delay for exponential backoff
-	RetryMaxDelay  time.Duration `json:"retryMaxDelay"`  // Cap for exponential backoff
-	Credentials    Credentials   `json:"-"`              // Never serialised: redacted secrets
+	Enabled       bool          `json:"enabled"`
+	MaxAttempts   int           `json:"maxAttempts"`
+	SolverTimeout time.Duration `json:"solverTimeout"`
+	Solvers       []string      `json:"solvers"`     // Ordered solver names to try
+	LLMFallback   bool          `json:"llmFallback"` // Enable LLM as last resort
+	// HandoffOnFailure parks a tab in paused_handoff when a solve fails.
+	// Unattended there is nobody to hand off to, so the tab is just stuck.
+	HandoffOnFailure bool          `json:"handoffOnFailure"`
+	RetryBaseDelay   time.Duration `json:"retryBaseDelay"` // Base delay for exponential backoff
+	RetryMaxDelay    time.Duration `json:"retryMaxDelay"`  // Cap for exponential backoff
+	Credentials      Credentials   `json:"-"`              // Never serialised: redacted secrets
 
 	// APIKeys carries the key for each key-gated solver, keyed by SOLVER NAME. A map
 	// rather than a field per solver: KeyGatedSolvers owns that set, so a third gated
@@ -190,12 +193,13 @@ func (c Config) APIKey(name string) string {
 // configuration-free path while every configured path leaves it off.
 func DefaultConfig() Config {
 	return Config{
-		Enabled:        false,
-		MaxAttempts:    8,
-		SolverTimeout:  30 * time.Second,
-		Solvers:        []string{CloudflareSolverName, SemanticSolverName},
-		LLMFallback:    false,
-		RetryBaseDelay: 500 * time.Millisecond,
-		RetryMaxDelay:  10 * time.Second,
+		Enabled:          false,
+		MaxAttempts:      8,
+		SolverTimeout:    30 * time.Second,
+		Solvers:          []string{CloudflareSolverName, SemanticSolverName},
+		LLMFallback:      false,
+		HandoffOnFailure: true,
+		RetryBaseDelay:   500 * time.Millisecond,
+		RetryMaxDelay:    10 * time.Second,
 	}
 }

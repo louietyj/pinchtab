@@ -182,6 +182,7 @@ func defaultAutoSolverConfig() AutoSolverConfig {
 		RetryMaxDelayMs:   int(core.RetryMaxDelay / time.Millisecond),
 		Solvers:           core.Solvers,
 		LLMFallback:       core.LLMFallback,
+		HandoffOnFailure:  core.HandoffOnFailure,
 	}
 }
 
@@ -843,6 +844,9 @@ func applyAutoSolverConfig(cfg *RuntimeConfig, a AutoSolverFileConfig) {
 	}
 	if a.LLMFallback != nil {
 		cfg.AutoSolver.LLMFallback = *a.LLMFallback
+	}
+	if a.HandoffOnFailure != nil {
+		cfg.AutoSolver.HandoffOnFailure = *a.HandoffOnFailure
 	}
 	cfg.AutoSolver.CapsolverKey = a.External.CapsolverKey
 	cfg.AutoSolver.TwoCaptchaKey = a.External.TwoCaptchaKey

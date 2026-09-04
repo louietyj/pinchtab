@@ -863,6 +863,12 @@ func setAutoSolverField(a *AutoSolverFileConfig, field, value string) error {
 			return fmt.Errorf("autoSolver.llmFallback: %w", err)
 		}
 		a.LLMFallback = &b
+	case "handoffOnFailure":
+		b, err := parseBool(value)
+		if err != nil {
+			return fmt.Errorf("autoSolver.handoffOnFailure: %w", err)
+		}
+		a.HandoffOnFailure = &b
 	case "maxAttempts":
 		return setIntPtrField(&a.MaxAttempts, "autoSolver.maxAttempts", value)
 	case "solverTimeoutSec":

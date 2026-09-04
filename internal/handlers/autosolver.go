@@ -27,8 +27,8 @@ const (
 	// so a stuck CDP call is cancelled rather than leaking a worker.
 	autoDetectHTMLTimeout = 5 * time.Second
 
-	// autoTriggerRunBudget caps the total time an auto-trigger run can take
-	// end-to-end (detection + retries). Safety valve for slow pages or solvers.
+	// autoTriggerRunBudget floors the total time an auto-trigger run can take
+	// end-to-end (detection + retries). Safety valve for slow pages.
 	autoTriggerRunBudget = 45 * time.Second
 )
 
@@ -43,7 +43,7 @@ func (h *Handlers) maybeAutoSolve(_ context.Context, tabID, trigger string) {
 	}
 
 	go func() {
-		runCtx, cancel := context.WithTimeout(context.Background(), autoTriggerRunBudget)
+		runCtx, cancel := context.WithTimeout(context.Background(), h.autoTriggerBudget())
 		defer cancel()
 
 		if err := h.autoSolverRunner(runCtx, tabID); err != nil &&
@@ -55,6 +55,20 @@ func (h *Handlers) maybeAutoSolve(_ context.Context, tabID, trigger string) {
 				"error", err)
 		}
 	}()
+}
+
+// autoTriggerBudget sizes the run from the same estimate runAutoSolver gives its
+// own context, so the outer deadline can never cancel a solve the inner one
+// still considers live. The fixed floor predates external solvers: a CapSolver
+// reCAPTCHA solve alone takes 20-60s, so a hardcoded 45s cap cut every solve
+// short and then flipped the tab to paused_handoff -- an auto-solve that could
+// not succeed on the challenges it exists to handle.
+func (h *Handlers) autoTriggerBudget() time.Duration {
+	budget := estimateAutoSolverRunTimeout(h.normalizedAutoSolverConfig())
+	if budget < autoTriggerRunBudget {
+		return autoTriggerRunBudget
+	}
+	return budget
 }
 
 func (h *Handlers) shouldAutoSolve(trigger string) bool {
@@ -105,8 +119,22 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) error {
 	}
 	as := h.buildAutoSolver(cfg, true)
 
-	solveCtx, cancel := context.WithTimeout(ctx, estimateAutoSolverRunTimeout(cfg))
+	// Parent the solve on the tab's CDP context, not the caller's. Evaluate runs
+	// chromedp against whatever context it is handed, and the auto-trigger path
+	// arrives here from a background goroutine whose context carries no chromedp
+	// target -- so every injection failed with "invalid context" after the token
+	// had been bought and paid for. HandleSolve parents on the tab for the same
+	// reason, which is why the explicit endpoint never hit this.
+	tabCtx, _, err := h.Bridge.TabContext(tabID)
+	if err != nil {
+		return err
+	}
+
+	// The caller's budget still cancels the run; both are sized from the same
+	// estimate, so neither can cut short a solve the other considers live.
+	solveCtx, cancel := context.WithTimeout(tabCtx, estimateAutoSolverRunTimeout(cfg))
 	defer cancel()
+	defer context.AfterFunc(ctx, cancel)()
 
 	result, err := as.Solve(solveCtx, page, executor)
 	if err != nil {
@@ -135,6 +163,15 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) error {
 // block and the dashboard/agent can escalate to a human. No-op if the tab is
 // already paused or the bridge does not support handoff state.
 func (h *Handlers) autoHandoffAfterFailure(tabID, challengeType string) {
+	// Unattended there is nobody to hand off to, and parking the tab only makes
+	// every later action 409 -- the caller is stuck on a page it could still
+	// read, with no way back except an explicit resume it has no reason to call.
+	if h != nil && h.Config != nil && !h.Config.AutoSolver.HandoffOnFailure {
+		slog.Debug("autosolver: handoff disabled; leaving tab active",
+			"tab_id", tabID,
+			"challenge_type", challengeType)
+		return
+	}
 	if tabID == "" {
 		return
 	}
@@ -164,6 +201,7 @@ func (h *Handlers) normalizedAutoSolverConfig() coreautosolver.Config {
 	}
 
 	cfg.Enabled = h.Config.AutoSolver.Enabled
+	cfg.HandoffOnFailure = h.Config.AutoSolver.HandoffOnFailure
 	if h.Config.AutoSolver.MaxAttempts > 0 {
 		cfg.MaxAttempts = h.Config.AutoSolver.MaxAttempts
 	}

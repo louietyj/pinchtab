@@ -281,6 +281,7 @@ func DefaultFileConfig() FileConfig {
 			RetryMaxDelayMs:   &autoSolver.RetryMaxDelayMs,
 			Solvers:           autoSolver.Solvers,
 			LLMFallback:       &autoSolver.LLMFallback,
+			HandoffOnFailure:  &autoSolver.HandoffOnFailure,
 		},
 	}
 }

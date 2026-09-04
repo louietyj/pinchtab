@@ -950,6 +950,9 @@
         "llmFallback": {
           "$ref": "#/definitions/nullableBoolean"
         },
+        "handoffOnFailure": {
+          "$ref": "#/definitions/nullableBoolean"
+        },
         "external": {
           "$ref": "#/definitions/autoSolverExternal"
         },

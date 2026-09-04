@@ -100,6 +100,15 @@ var autoSolverDefaultRows = []autoSolverDefaultRow{
 		file:    func(c AutoSolverFileConfig) any { return derefBool(c.LLMFallback) },
 		core:    func(c autosolver.Config) any { return c.LLMFallback },
 	},
+	{
+		// Defaults true: an operator at the machine can finish a challenge by
+		// hand, and stopping is better than acting on an unsolved page.
+		field:   "HandoffOnFailure",
+		want:    true,
+		runtime: func(c AutoSolverConfig) any { return c.HandoffOnFailure },
+		file:    func(c AutoSolverFileConfig) any { return derefBool(c.HandoffOnFailure) },
+		core:    func(c autosolver.Config) any { return c.HandoffOnFailure },
+	},
 }
 
 // autoSolverFieldsWithoutDefault are the AutoSolverConfig fields the defaults

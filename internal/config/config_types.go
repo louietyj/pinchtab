@@ -204,9 +204,13 @@ type AutoSolverConfig struct {
 	Solvers           []string `json:"solvers,omitempty"`     // Ordered solver names
 	LLMProvider       string   `json:"llmProvider,omitempty"` // "openai", "anthropic", etc.
 	LLMFallback       bool     `json:"llmFallback,omitempty"` // Enable LLM as last resort
-	CapsolverKey      string   `json:"capsolverKey,omitempty"`
-	TwoCaptchaKey     string   `json:"twoCaptchaKey,omitempty"`
-	Credentials       AutoSolverCredentials
+	// HandoffOnFailure parks a tab in paused_handoff when a solve fails, so
+	// later actions 409 until a human intervenes. Pointless unattended: there
+	// is nobody to hand off to and the tab is simply stuck.
+	HandoffOnFailure bool   `json:"handoffOnFailure"`
+	CapsolverKey     string `json:"capsolverKey,omitempty"`
+	TwoCaptchaKey    string `json:"twoCaptchaKey,omitempty"`
+	Credentials      AutoSolverCredentials
 }
 
 // AutoSolverCredentials carries values the semantic solver injects into
@@ -534,6 +538,7 @@ type AutoSolverFileConfig struct {
 	Solvers           []string                  `json:"solvers,omitempty"`
 	LLMProvider       string                    `json:"llmProvider,omitempty"`
 	LLMFallback       *bool                     `json:"llmFallback,omitempty"`
+	HandoffOnFailure  *bool                     `json:"handoffOnFailure,omitempty"`
 	External          AutoSolverExtConf         `json:"external,omitempty"`
 	Credentials       AutoSolverCredentialsConf `json:"credentials,omitempty"`
 }

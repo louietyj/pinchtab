@@ -328,6 +328,7 @@ func (fc FileConfig) MarshalJSON() ([]byte, error) {
 			Solvers:           copyStringSlice(fc.AutoSolver.Solvers),
 			LLMProvider:       fc.AutoSolver.LLMProvider,
 			LLMFallback:       fc.AutoSolver.LLMFallback,
+			HandoffOnFailure:  fc.AutoSolver.HandoffOnFailure,
 			External: autoSolverExtConfigJSON{
 				CapsolverKey:  fc.AutoSolver.External.CapsolverKey,
 				TwoCaptchaKey: fc.AutoSolver.External.TwoCaptchaKey,
@@ -432,6 +433,7 @@ func FileConfigFromRuntime(cfg *RuntimeConfig) FileConfig {
 	autoSolverRetryBaseDelayMs := cfg.AutoSolver.RetryBaseDelayMs
 	autoSolverRetryMaxDelayMs := cfg.AutoSolver.RetryMaxDelayMs
 	autoSolverLLMFallback := cfg.AutoSolver.LLMFallback
+	autoSolverHandoffOnFailure := cfg.AutoSolver.HandoffOnFailure
 
 	quarantineKeep := cfg.ProfileQuarantineKeep
 	dialogAutoAccept := cfg.DialogAutoAccept
@@ -605,6 +607,7 @@ func FileConfigFromRuntime(cfg *RuntimeConfig) FileConfig {
 			Solvers:           copyStringSlice(cfg.AutoSolver.Solvers),
 			LLMProvider:       cfg.AutoSolver.LLMProvider,
 			LLMFallback:       &autoSolverLLMFallback,
+			HandoffOnFailure:  &autoSolverHandoffOnFailure,
 			External: AutoSolverExtConf{
 				CapsolverKey:  cfg.AutoSolver.CapsolverKey,
 				TwoCaptchaKey: cfg.AutoSolver.TwoCaptchaKey,
