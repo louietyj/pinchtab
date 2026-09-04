@@ -61,20 +61,28 @@ func TestSolveMessagesAreUnchangedOnEveryPath(t *testing.T) {
 		label   string
 		build   func(key string) autosolver.Solver
 		wantPri int
+		// capsolver also extracts a FunCaptcha public key, so it names both.
+		noSitekeyErr string
+		// skeleton marks a provider still stopping at the unimplemented API call.
+		// Capsolver now issues a real request, covered in capsolver_test.go
+		// against a mock server.
+		skeleton bool
 	}{
-		{"capsolver", func(key string) autosolver.Solver { return NewCapsolver(CapsolverConfig{APIKey: key}) }, 200},
-		{"2captcha", func(key string) autosolver.Solver { return NewTwoCaptcha(TwoCaptchaConfig{APIKey: key}) }, 210},
+		{"capsolver", func(key string) autosolver.Solver { return NewCapsolver(CapsolverConfig{APIKey: key}) }, 200, "could not extract sitekey/public key from page", false},
+		{"2captcha", func(key string) autosolver.Solver { return NewTwoCaptcha(TwoCaptchaConfig{APIKey: key}) }, 210, "could not extract sitekey from page", true},
 	} {
 		t.Run(provider.label, func(t *testing.T) {
 			keyed := provider.build("key")
 
-			for _, tc := range []struct {
+			type solveCase struct {
 				name       string
 				solver     autosolver.Solver
 				page       autosolver.Page
 				wantResult string
 				wantErr    string
-			}{
+			}
+
+			cases := []solveCase{
 				{
 					name:       "no api key",
 					solver:     provider.build(""),
@@ -101,16 +109,21 @@ func TestSolveMessagesAreUnchangedOnEveryPath(t *testing.T) {
 					solver:     keyed,
 					page:       stubPage{html: `<div class="g-recaptcha"></div>`},
 					wantResult: "sitekey not found",
-					wantErr:    "could not extract sitekey from page",
+					wantErr:    provider.noSitekeyErr,
 				},
-				{
+			}
+
+			if provider.skeleton {
+				cases = append(cases, solveCase{
 					name:       "reaches the unimplemented api call",
 					solver:     keyed,
 					page:       stubPage{html: recaptchaHTML},
 					wantResult: provider.label + " API client not yet implemented",
 					wantErr:    provider.label + ": API client not yet implemented — skeleton only",
-				},
-			} {
+				})
+			}
+
+			for _, tc := range cases {
 				t.Run(tc.name, func(t *testing.T) {
 					result, err := tc.solver.Solve(context.Background(), tc.page, nil)
 					if err == nil {
@@ -171,7 +184,7 @@ func TestExtractSitekeyReadsBothQuoteStyles(t *testing.T) {
 		{"unterminated", `<div data-sitekey="abc`, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := extractSitekey(tc.html); got != tc.want {
+			if got := extractSitekey(tc.html, "recaptcha"); got != tc.want {
 				t.Errorf("extractSitekey(%q) = %q, want %q", tc.html, got, tc.want)
 			}
 		})
