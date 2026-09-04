@@ -848,6 +848,9 @@ func applyAutoSolverConfig(cfg *RuntimeConfig, a AutoSolverFileConfig) {
 	if a.HandoffOnFailure != nil {
 		cfg.AutoSolver.HandoffOnFailure = *a.HandoffOnFailure
 	}
+	if a.AwaitOnNavigate != nil {
+		cfg.AutoSolver.AwaitOnNavigate = *a.AwaitOnNavigate
+	}
 	cfg.AutoSolver.CapsolverKey = a.External.CapsolverKey
 	cfg.AutoSolver.TwoCaptchaKey = a.External.TwoCaptchaKey
 	cfg.AutoSolver.Credentials = AutoSolverCredentials{

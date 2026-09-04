@@ -221,6 +221,7 @@ type autoSolverFileConfigJSON struct {
 	LLMProvider       string                          `json:"llmProvider,omitempty"`
 	LLMFallback       *bool                           `json:"llmFallback,omitempty"`
 	HandoffOnFailure  *bool                           `json:"handoffOnFailure,omitempty"`
+	AwaitOnNavigate   *bool                           `json:"awaitOnNavigate,omitempty"`
 	External          autoSolverExtConfigJSON         `json:"external,omitempty"`
 	Credentials       autoSolverCredentialsConfigJSON `json:"credentials,omitempty"`
 }

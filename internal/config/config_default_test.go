@@ -119,6 +119,9 @@ var autoSolverFieldsWithoutDefault = map[string]string{
 	"CapsolverKey":  "an external solver API key; a default would be a fabricated credential",
 	"TwoCaptchaKey": "an external solver API key; a default would be a fabricated credential",
 	"Credentials":   "user-supplied login/signup/form values; never defaulted",
+	// Handler-only, so it has no core counterpart for the default rows to read.
+	// Zero is upstream's behaviour: navigate returns without awaiting the solve.
+	"AwaitOnNavigate": "handler-only; zero keeps navigate non-blocking as upstream has it",
 }
 
 func derefBool(p *bool) any {

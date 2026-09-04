@@ -953,6 +953,9 @@
         "handoffOnFailure": {
           "$ref": "#/definitions/nullableBoolean"
         },
+        "awaitOnNavigate": {
+          "$ref": "#/definitions/nullableBoolean"
+        },
         "external": {
           "$ref": "#/definitions/autoSolverExternal"
         },

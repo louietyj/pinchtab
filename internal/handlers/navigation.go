@@ -566,7 +566,7 @@ func (h *Handlers) runNavigate(w http.ResponseWriter, r *http.Request, ex navExe
 		return
 	}
 
-	h.maybeAutoSolve(ex.ctx, ex.tabID, autoSolverTriggerNavigate)
+	autoSolve := h.maybeAutoSolve(ex.ctx, ex.tabID, autoSolverTriggerNavigate)
 	h.dismissBanners(ex.ctx, ex.tabID, ex.dismissBanners)
 
 	navURL, _ := h.Bridge.CurrentURL(ex.ctx)
@@ -578,7 +578,13 @@ func (h *Handlers) runNavigate(w http.ResponseWriter, r *http.Request, ex navExe
 	}
 	h.recordResolvedURL(r, navURL)
 
-	httpx.JSON(w, 200, navResponse(ex.tabID, navURL, title, route, !ex.isNewTab))
+	resp := navResponse(ex.tabID, navURL, title, route, !ex.isNewTab)
+	// Only present when a challenge was actually detected and solved (or not),
+	// so its absence means "nothing to report", not "solving is off".
+	if autoSolve != nil {
+		resp["autoSolve"] = autoSolve
+	}
+	httpx.JSON(w, 200, resp)
 }
 
 // classifyNavigateError maps a Navigate error to an HTTP status: 422 for redirect

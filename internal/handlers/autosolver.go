@@ -32,21 +32,42 @@ const (
 	autoTriggerRunBudget = 45 * time.Second
 )
 
-// maybeAutoSolve kicks off the autosolver pipeline for tabID in the background.
-// It never blocks the caller: the HTTP request that triggered this returns
-// immediately while the solver runs with its own bounded context. If the
-// solver detects a challenge and fails, the tab is flipped to paused_handoff
-// so subsequent action requests see the 409 handoff error.
-func (h *Handlers) maybeAutoSolve(_ context.Context, tabID, trigger string) {
+// autoSolveOutcome is what a caller can report back: enough to say a solve
+// happened and how it went, without exposing solver internals. A map rather
+// than a struct because challenge_detection.go is the only permitted producer
+// of a ChallengeType field, and HandleSolve carries its own copy the same way.
+type autoSolveOutcome map[string]any
+
+// maybeAutoSolve runs the autosolver pipeline for tabID. It returns an outcome
+// only when it awaited one; in background mode it returns nil immediately and
+// the solve completes with no signal to the caller at all.
+func (h *Handlers) maybeAutoSolve(_ context.Context, tabID, trigger string) autoSolveOutcome {
 	if tabID == "" || h.autoSolverRunner == nil || !h.shouldAutoSolve(trigger) {
-		return
+		return nil
+	}
+
+	// Awaiting costs the caller the solve time, but only on a page that carries a
+	// challenge and is unusable until it is solved. Returning early there hands
+	// back a page the caller cannot act on and no way to learn why.
+	if h.Config != nil && h.Config.AutoSolver.AwaitOnNavigate {
+		runCtx, cancel := context.WithTimeout(context.Background(), h.autoTriggerBudget())
+		defer cancel()
+
+		outcome, err := h.autoSolverRunner(runCtx, tabID)
+		if err != nil {
+			slog.Warn("autosolver auto-trigger failed",
+				"trigger", trigger,
+				"tab_id", tabID,
+				"error", err)
+		}
+		return outcome
 	}
 
 	go func() {
 		runCtx, cancel := context.WithTimeout(context.Background(), h.autoTriggerBudget())
 		defer cancel()
 
-		if err := h.autoSolverRunner(runCtx, tabID); err != nil &&
+		if _, err := h.autoSolverRunner(runCtx, tabID); err != nil &&
 			!errors.Is(err, context.Canceled) &&
 			!errors.Is(err, context.DeadlineExceeded) {
 			slog.Warn("autosolver auto-trigger failed",
@@ -55,6 +76,7 @@ func (h *Handlers) maybeAutoSolve(_ context.Context, tabID, trigger string) {
 				"error", err)
 		}
 	}()
+	return nil
 }
 
 // autoTriggerBudget sizes the run from the same estimate runAutoSolver gives its
@@ -91,14 +113,14 @@ func (h *Handlers) shouldAutoSolve(trigger string) bool {
 	}
 }
 
-func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) error {
+func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) (autoSolveOutcome, error) {
 	if h == nil || h.Config == nil || h.Bridge == nil {
-		return nil
+		return nil, nil
 	}
 
 	page, executor, err := adapters.NewFromBridge(h.Bridge, tabID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Detection is the cheap path that runs on every nav/action — bound the HTML
@@ -106,11 +128,11 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) error {
 	// pages fast.
 	html, err := page.HTMLWithin(autoDetectHTMLTimeout)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if coreautosolver.DetectChallengeIntent(page.Title(), page.URL(), html) == nil {
-		return nil
+		return nil, nil
 	}
 
 	cfg := h.normalizedAutoSolverConfig()
@@ -127,7 +149,7 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) error {
 	// reason, which is why the explicit endpoint never hit this.
 	tabCtx, _, err := h.Bridge.TabContext(tabID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// The caller's budget still cancels the run; both are sized from the same
@@ -138,25 +160,45 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) error {
 
 	result, err := as.Solve(solveCtx, page, executor)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if result != nil {
-		if result.Solved && result.Attempts > 0 {
-			slog.Info("autosolver auto-trigger solved challenge",
-				"tab_id", tabID,
-				"solver", result.SolverUsed,
-				"attempts", result.Attempts)
-		} else if !result.Solved && result.Attempts > 0 {
-			slog.Warn("autosolver auto-trigger did not solve challenge",
-				"tab_id", tabID,
-				"attempts", result.Attempts,
-				"error", result.Error)
-			h.autoHandoffAfterFailure(tabID, deriveChallengeType(result, page))
-		}
+	if result == nil {
+		return nil, nil
 	}
 
-	return nil
+	challengeType := deriveChallengeType(result, page)
+	outcome := autoSolveOutcome{
+		"solved":        result.Solved,
+		"challengeType": challengeType,
+		"attempts":      result.Attempts,
+	}
+	if result.SolverUsed != "" {
+		outcome["solver"] = result.SolverUsed
+	}
+	if result.Error != "" {
+		outcome["error"] = result.Error
+	}
+
+	if result.Solved && result.Attempts > 0 {
+		slog.Info("autosolver auto-trigger solved challenge",
+			"tab_id", tabID,
+			"solver", result.SolverUsed,
+			"attempts", result.Attempts)
+	} else if !result.Solved && result.Attempts > 0 {
+		slog.Warn("autosolver auto-trigger did not solve challenge",
+			"tab_id", tabID,
+			"attempts", result.Attempts,
+			"error", result.Error)
+		h.autoHandoffAfterFailure(tabID, challengeType)
+	}
+
+	// Attempts==0 means detection fired but no solver ran, which is not something
+	// the caller needs told about — report only runs that actually did work.
+	if result.Attempts == 0 {
+		return nil, nil
+	}
+	return outcome, nil
 }
 
 // autoHandoffAfterFailure flips the tab into paused_handoff so action routes

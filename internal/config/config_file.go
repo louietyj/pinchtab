@@ -282,6 +282,7 @@ func DefaultFileConfig() FileConfig {
 			Solvers:           autoSolver.Solvers,
 			LLMFallback:       &autoSolver.LLMFallback,
 			HandoffOnFailure:  &autoSolver.HandoffOnFailure,
+			AwaitOnNavigate:   &autoSolver.AwaitOnNavigate,
 		},
 	}
 }

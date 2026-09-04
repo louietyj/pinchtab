@@ -47,7 +47,7 @@ type Handlers struct {
 
 	// Optional dependency injection (for unit testing)
 	evalJS           func(ctx context.Context, expression string, out *string) error
-	autoSolverRunner func(ctx context.Context, tabID string) error
+	autoSolverRunner func(ctx context.Context, tabID string) (autoSolveOutcome, error)
 	evalRuntime      func(ctx context.Context, expression string, out any, opts bridge.EvalOpts) error
 }
 

@@ -207,10 +207,14 @@ type AutoSolverConfig struct {
 	// HandoffOnFailure parks a tab in paused_handoff when a solve fails, so
 	// later actions 409 until a human intervenes. Pointless unattended: there
 	// is nobody to hand off to and the tab is simply stuck.
-	HandoffOnFailure bool   `json:"handoffOnFailure"`
-	CapsolverKey     string `json:"capsolverKey,omitempty"`
-	TwoCaptchaKey    string `json:"twoCaptchaKey,omitempty"`
-	Credentials      AutoSolverCredentials
+	HandoffOnFailure bool `json:"handoffOnFailure"`
+	// AwaitOnNavigate makes navigate wait for a detected challenge to be solved
+	// before responding, and report the outcome. Off, the solve runs in the
+	// background and the caller cannot tell it happened at all.
+	AwaitOnNavigate bool   `json:"awaitOnNavigate"`
+	CapsolverKey    string `json:"capsolverKey,omitempty"`
+	TwoCaptchaKey   string `json:"twoCaptchaKey,omitempty"`
+	Credentials     AutoSolverCredentials
 }
 
 // AutoSolverCredentials carries values the semantic solver injects into
@@ -539,6 +543,7 @@ type AutoSolverFileConfig struct {
 	LLMProvider       string                    `json:"llmProvider,omitempty"`
 	LLMFallback       *bool                     `json:"llmFallback,omitempty"`
 	HandoffOnFailure  *bool                     `json:"handoffOnFailure,omitempty"`
+	AwaitOnNavigate   *bool                     `json:"awaitOnNavigate,omitempty"`
 	External          AutoSolverExtConf         `json:"external,omitempty"`
 	Credentials       AutoSolverCredentialsConf `json:"credentials,omitempty"`
 }

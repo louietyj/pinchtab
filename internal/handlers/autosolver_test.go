@@ -114,13 +114,13 @@ func TestMaybeAutoSolve_InvokesRunnerWhenEnabled(t *testing.T) {
 
 	var calls atomic.Int64
 	done := make(chan struct{}, 8)
-	h.autoSolverRunner = func(_ context.Context, tabID string) error {
+	h.autoSolverRunner = func(_ context.Context, tabID string) (autoSolveOutcome, error) {
 		calls.Add(1)
 		if tabID != "tab1" {
 			t.Errorf("runner tabID = %q, want tab1", tabID)
 		}
 		done <- struct{}{}
-		return nil
+		return nil, nil
 	}
 
 	waitFor := func(expected int64) bool {

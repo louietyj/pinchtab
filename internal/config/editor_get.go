@@ -561,6 +561,8 @@ func getAutoSolverField(a *AutoSolverFileConfig, field string) (string, error) {
 		return formatBoolPtr(a.LLMFallback), nil
 	case "handoffOnFailure":
 		return formatBoolPtr(a.HandoffOnFailure), nil
+	case "awaitOnNavigate":
+		return formatBoolPtr(a.AwaitOnNavigate), nil
 	case "maxAttempts":
 		return formatIntPtr(a.MaxAttempts), nil
 	case "solverTimeoutSec":
