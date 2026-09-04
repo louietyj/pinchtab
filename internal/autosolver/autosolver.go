@@ -176,9 +176,23 @@ func (as *AutoSolver) finalizeSuccess(result *Result, page Page, solver string, 
 	return result
 }
 
+// intentHTMLTimeout degrades a stalled page to the title-only signal rather
+// than hanging the solve.
+const intentHTMLTimeout = 5 * time.Second
+
 func (as *AutoSolver) detectIntent(ctx context.Context, page Page) (*Intent, error) {
 	if as.semantic != nil {
 		return as.semantic.DetectIntent(ctx, page)
+	}
+
+	// DetectChallengeIntent classifies on title, URL and HTML, but the fallback
+	// below passes only the title. A challenge page titled after the site rather
+	// than the challenge then reads as normal, and Solve reports solved with zero
+	// attempts on an unsolved page.
+	if html, err := page.HTMLWithin(intentHTMLTimeout); err == nil {
+		if challenge := DetectChallengeIntent(page.Title(), page.URL(), html); challenge != nil {
+			return challenge, nil
+		}
 	}
 	return detectIntentByTitle(page.Title()), nil
 }
