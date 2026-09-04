@@ -80,6 +80,38 @@ func landedURL(result map[string]any) string {
 	return landed
 }
 
+// autoSolveHint reports a challenge the server solved during this navigate. It
+// goes to stderr, because stdout carries only the tab ID for
+// `TAB=$(pinchtab nav URL)`.
+//
+// The "do not click" half is load-bearing: a solve injects a token and never
+// ticks the widget, so the page still shows an unchecked "I'm not a robot" box
+// and a snapshot still lists it. A caller told to submit the form reads that as
+// work left to do, and clicking it discards a solve already paid for.
+func autoSolveHint(result map[string]any) string {
+	raw, ok := result["autoSolve"].(map[string]any)
+	if !ok {
+		return ""
+	}
+
+	challenge, _ := raw["challengeType"].(string)
+	if challenge == "" {
+		challenge = "captcha"
+	}
+
+	if solved, _ := raw["solved"].(bool); solved {
+		return fmt.Sprintf(
+			"a %s challenge on this page was already solved for you -- do NOT click the "+
+				"captcha widget. It stays visually unticked even when solved; the page is ready to use.",
+			challenge)
+	}
+
+	if msg, _ := raw["error"].(string); msg != "" {
+		return fmt.Sprintf("a %s challenge on this page was NOT solved: %s", challenge, msg)
+	}
+	return fmt.Sprintf("a %s challenge on this page was NOT solved.", challenge)
+}
+
 func Navigate(client *http.Client, base, token string, url string, cmd *cobra.Command) string {
 	req := buildNavigateRequest(url, cmd)
 
@@ -111,6 +143,10 @@ func Navigate(client *http.Client, base, token string, url string, cmd *cobra.Co
 		if landed := landedURL(result); landed != "" {
 			output.Value(landed)
 		}
+	}
+
+	if hint := autoSolveHint(result); hint != "" {
+		output.Hint(hint)
 	}
 
 	if !isIdentifiedCaller(cmd) {
