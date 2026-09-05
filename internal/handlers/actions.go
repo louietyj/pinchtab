@@ -724,8 +724,9 @@ func (h *Handlers) HandleAction(w http.ResponseWriter, r *http.Request) {
 	if actionBackend == "" {
 		actionBackend = "chrome"
 	}
+	var autoSolve autoSolveOutcome
 	if actionBackend != "static" {
-		h.maybeAutoSolve(tCtx, resolvedTabID, autoSolverTriggerAction)
+		autoSolve = h.maybeAutoSolve(tCtx, resolvedTabID, autoSolverTriggerAction)
 		if req.WaitNav && req.DismissBanners {
 			h.dismissBanners(tCtx, resolvedTabID, true)
 		}
@@ -738,6 +739,12 @@ func (h *Handlers) HandleAction(w http.ResponseWriter, r *http.Request) {
 	actionRoute := routeMetadataFor(routing)
 	h.recordActivity(r, activity.Update{Route: actionRoute})
 	resp := map[string]any{"success": true, "result": result, "route": actionRoute}
+	// An action that lands on a challenge is the common shape -- submitting a
+	// form and being handed a captcha. Reporting it only on navigate left that
+	// path as silent as everything was before.
+	if autoSolve != nil {
+		resp["autoSolve"] = autoSolve
+	}
 	if recoveryResult != nil {
 		resp["recovery"] = recoveryResult
 	}
@@ -932,8 +939,9 @@ func (h *Handlers) writeMultiStepActionResult(
 	route *browserops.RouteMetadata, extra map[string]any,
 ) {
 	successful := countSuccessful(results)
+	var autoSolve autoSolveOutcome
 	if successful > 0 {
-		h.maybeAutoSolve(ctx, resolvedTabID, autoSolverTriggerAction)
+		autoSolve = h.maybeAutoSolve(ctx, resolvedTabID, autoSolverTriggerAction)
 	}
 	h.recordActivity(r, activity.Update{Route: route})
 	resp := map[string]any{
@@ -942,6 +950,9 @@ func (h *Handlers) writeMultiStepActionResult(
 		"successful": successful,
 		"failed":     total - successful,
 		"route":      route,
+	}
+	if autoSolve != nil {
+		resp["autoSolve"] = autoSolve
 	}
 	for k, v := range extra {
 		resp[k] = v

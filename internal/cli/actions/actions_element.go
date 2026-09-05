@@ -137,6 +137,12 @@ func postActionWithHeaders(client *http.Client, base, token string, cmd *cobra.C
 	kind, _ := body["kind"].(string)
 	printActionResult(kind, result)
 
+	// Printed before any snapshot below, so the "do not click" warning arrives
+	// ahead of the unticked checkbox that prompts the click.
+	if hint := autoSolveHint(result); hint != "" {
+		output.Hint(hint)
+	}
+
 	snap, _ := cmd.Flags().GetBool("snap")
 	snapDiff, _ := cmd.Flags().GetBool("snap-diff")
 	if snap || snapDiff {
