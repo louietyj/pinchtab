@@ -77,8 +77,9 @@ func (s *Cloudflare) Solve(ctx context.Context, page autosolver.Page, executor a
 		// Click the checkbox area (left portion of the widget), jittered: an
 		// exact-centre click on every attempt is a fingerprint, and this solver
 		// exists to get past fingerprinting.
-		checkboxX := box.x + box.width*0.09 + cfClickJitter()
-		checkboxY := box.y + box.height*0.40 + cfClickJitter()
+		checkboxX, checkboxY := turnstileCheckboxPoint(box)
+		checkboxX += cfClickJitter()
+		checkboxY += cfClickJitter()
 
 		if err := executor.Click(ctx, checkboxX, checkboxY); err != nil {
 			return result, fmt.Errorf("click turnstile: %w", err)
@@ -99,6 +100,16 @@ func (s *Cloudflare) Solve(ctx context.Context, page autosolver.Page, executor a
 
 type boundingBox struct {
 	x, y, width, height float64
+}
+
+// turnstileWidgetWidth is the width of Turnstile's normal-size widget.
+const turnstileWidgetWidth = 300
+
+// turnstileCheckboxPoint offsets from the widget's own width: an iframe in a closed
+// shadow root can't be measured, and its left-aligned container can span the whole
+// content column, where a fraction of the full width lands on the label.
+func turnstileCheckboxPoint(box *boundingBox) (x, y float64) {
+	return box.x + min(box.width, turnstileWidgetWidth)*0.09, box.y + box.height*0.40
 }
 
 const (

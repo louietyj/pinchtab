@@ -18,6 +18,19 @@ func TestClickJitterStaysInsideItsWindow(t *testing.T) {
 	}
 }
 
+// Measured on egov.uscis.gov's managed challenge: the container spans the 896px
+// content column and the checkbox is at x 233-257, y 325-349.
+func TestCheckboxPointLandsOnTheCheckboxInAWideContainer(t *testing.T) {
+	x, y := turnstileCheckboxPoint(&boundingBox{x: 224, y: 304, width: 896, height: 68.39})
+	margin := cfClickJitterPx / 2.0
+	if x-margin < 233 || x+margin > 257 {
+		t.Errorf("checkbox x = %v ± %v, outside the checkbox at 233-257", x, margin)
+	}
+	if y-margin < 325 || y+margin > 349 {
+		t.Errorf("checkbox y = %v ± %v, outside the checkbox at 325-349", y, margin)
+	}
+}
+
 // A constant offset is not jitter: it clicks the same relative point every attempt,
 // which is the fingerprint the jitter was ported to remove.
 func TestClickJitterVaries(t *testing.T) {
