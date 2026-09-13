@@ -91,6 +91,10 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 		"confidence", intent.Confidence,
 		"url", page.URL())
 
+	// Not detectIntent: the semantic engine reads an ordinary page as a login or
+	// navigation flow, so it would never see the challenge as gone.
+	startedOnChallenge, _ := onChallenge(page)
+
 	for attempt := 0; attempt < as.config.MaxAttempts; attempt++ {
 		result.Attempts = attempt + 1
 
@@ -133,6 +137,12 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 				return as.finalizeSuccess(result, page, llmFallbackSolverLabel, start), nil
 			}
 		}
+
+		// A managed Cloudflare challenge can pass by itself and navigate on, leaving
+		// no solver that handles the page and a failure reported over a ready one.
+		if startedOnChallenge && as.challengeCleared(ctx, page) {
+			return as.finalizeSuccess(result, page, challengeClearedSolverLabel, start), nil
+		}
 	}
 
 	result.TotalDuration = time.Since(start)
@@ -148,6 +158,33 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 		"attempts", result.Attempts,
 		"duration_ms", result.TotalDuration.Milliseconds())
 	return result, nil
+}
+
+// challengeClearedSolverLabel credits a challenge that went away with no solver
+// succeeding. Like llmFallbackSolverLabel, it must never become config-selectable.
+const challengeClearedSolverLabel = "cleared"
+
+func onChallenge(page Page) (bool, error) {
+	html, err := page.HTMLWithin(intentHTMLTimeout)
+	if err != nil {
+		return false, err
+	}
+	return DetectChallengeIntent(page.Title(), page.URL(), html) != nil, nil
+}
+
+// challengeCleared requires the challenge gone twice, a retry delay apart: a
+// document mid-redirect is blank, and carries no challenge markers either.
+func (as *AutoSolver) challengeCleared(ctx context.Context, page Page) bool {
+	if present, err := onChallenge(page); err != nil || present {
+		return false
+	}
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(as.backoffDelay(1)):
+	}
+	present, err := onChallenge(page)
+	return err == nil && !present
 }
 
 func appendAttempt(result *Result, entry *AttemptEntry) {

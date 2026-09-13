@@ -518,6 +518,71 @@ func TestSolve_AllSolversFail(t *testing.T) {
 	}
 }
 
+// clearingSolver fails, but by the time it returns the challenge has cleared itself.
+type clearingSolver struct{ page *mockPage }
+
+func (s *clearingSolver) Name() string                                      { return "clearing" }
+func (s *clearingSolver) Priority() int                                     { return 10 }
+func (s *clearingSolver) CanHandle(_ context.Context, _ Page) (bool, error) { return true, nil }
+func (s *clearingSolver) Solve(_ context.Context, _ Page, _ ActionExecutor) (*Result, error) {
+	s.page.title = "Case Status Online"
+	s.page.url = "https://example.com/#main-content"
+	s.page.html = "<html><body><h1>Case Status Online</h1></body></html>"
+	return &Result{}, nil
+}
+
+func TestSolve_ChallengeThatClearsItselfIsSolved(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.MaxAttempts = 2
+	cfg.RetryBaseDelay = time.Millisecond
+
+	page := &mockPage{title: "Just a moment...", url: "https://example.com"}
+	as := New(cfg, nil, nil)
+	as.Registry().MustRegister(&clearingSolver{page: page})
+
+	result, err := as.Solve(context.Background(), page, &mockExecutor{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.Solved {
+		t.Fatalf("expected Solved=true once the challenge cleared, got error %q", result.Error)
+	}
+	if result.Attempts != 1 {
+		t.Errorf("expected the run to stop after 1 attempt, got %d", result.Attempts)
+	}
+	if result.SolverUsed != challengeClearedSolverLabel {
+		t.Errorf("expected solver %q, got %q", challengeClearedSolverLabel, result.SolverUsed)
+	}
+}
+
+func TestSolve_SemanticOnlyChallengeIsNotReportedCleared(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.MaxAttempts = 2
+	cfg.RetryBaseDelay = time.Millisecond
+
+	// The engine calls it a captcha, but no canonical challenge marker is present.
+	semantic := &mockSemantic{
+		intent:    &Intent{Type: IntentCaptcha, Confidence: 0.8},
+		actionErr: fmt.Errorf("no action"),
+	}
+	failing := &mockSolver{name: "failing", priority: 10, canHandle: true, err: fmt.Errorf("solver error")}
+
+	as := New(cfg, semantic, nil)
+	as.Registry().MustRegister(failing)
+
+	page := &mockPage{title: "Sign in", url: "https://example.com/login", html: "<html><body>form</body></html>"}
+	result, err := as.Solve(context.Background(), page, &mockExecutor{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Solved {
+		t.Error("expected Solved=false when no canonical challenge was ever present")
+	}
+	if result.Attempts != 2 {
+		t.Errorf("expected 2 attempts, got %d", result.Attempts)
+	}
+}
+
 func solverHistory(history []AttemptEntry) []AttemptEntry {
 	entries := make([]AttemptEntry, 0, len(history))
 	for _, entry := range history {
