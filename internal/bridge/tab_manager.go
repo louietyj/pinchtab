@@ -205,6 +205,17 @@ func (tm *TabManager) createTab(url, browserContextID string) (string, context.C
 	rawCDPID := string(targetID)
 	tabID := tm.idMgr.TabIDFromCDPTarget(rawCDPID)
 
+	// Headless Chromium reports an unfocused tab as hidden with a 0x0 window, which
+	// page-visibility checks read as a background tab. There is no operator window
+	// to take focus from, so bring it forward.
+	if tm.config != nil && tm.config.Headless {
+		if err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
+			return page.BringToFront().Do(ctx)
+		})); err != nil {
+			slog.Debug("bring new headless tab to front", "tab", tabID, "err", err)
+		}
+	}
+
 	if tm.onTabSetup != nil {
 		if err := chromedp.Run(ctx, chromedp.ActionFunc(func(execCtx context.Context) error {
 			return tm.onTabSetup(execCtx, tabID)
