@@ -2,6 +2,7 @@ package cloak_test
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -248,6 +249,39 @@ func TestBuildLaunchArgsStorageQuotaOnlyWhenPositive(t *testing.T) {
 	for _, a := range args {
 		if strings.HasPrefix(a, "--fingerprint-storage-quota=") {
 			t.Errorf("StorageQuotaMB=0 should not produce flag, got %q", a)
+		}
+	}
+}
+
+// Cloak reports a fixed screen, so a larger --window-size gives a viewport wider
+// than the screen.
+func TestBuildLaunchArgsKeepsTheWindowWithinTheReportedScreen(t *testing.T) {
+	b, ok := browsers.Get("cloak")
+	if !ok {
+		t.Fatal("cloak not registered")
+	}
+	for _, tc := range []struct {
+		platform   string
+		maxW, maxH int
+	}{{"", 1920, 1080}, {"windows", 1920, 1080}, {"macos", 1440, 900}} {
+		for i := 0; i < 100; i++ {
+			args, _, err := b.BuildLaunchArgs(browsers.LaunchConfig{Cloak: browsers.CloakFingerprint{Platform: tc.platform}})
+			if err != nil {
+				t.Fatalf("platform %q: BuildLaunchArgs() error = %v", tc.platform, err)
+			}
+			var sizes []string
+			for _, a := range args {
+				if strings.HasPrefix(a, "--window-size=") {
+					sizes = append(sizes, a)
+				}
+			}
+			if len(sizes) != 1 {
+				t.Fatalf("platform %q: want exactly one --window-size, got %v", tc.platform, sizes)
+			}
+			var w, h int
+			if _, err := fmt.Sscanf(sizes[0], "--window-size=%d,%d", &w, &h); err != nil || w > tc.maxW || h > tc.maxH {
+				t.Fatalf("platform %q: %s exceeds the reported %dx%d screen", tc.platform, sizes[0], tc.maxW, tc.maxH)
+			}
 		}
 	}
 }

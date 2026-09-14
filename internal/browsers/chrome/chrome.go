@@ -135,18 +135,29 @@ func existingExtensionPaths(paths []string) []string {
 	return valid
 }
 
-func randomWindowSize() (int, int) {
-	sizes := [][2]int{
-		{1920, 1080}, {1366, 768}, {1536, 864}, {1440, 900},
-		{1280, 720}, {1600, 900}, {2560, 1440}, {1280, 800},
+var windowSizes = [][2]int{
+	{1920, 1080}, {1366, 768}, {1536, 864}, {1440, 900},
+	{1280, 720}, {1600, 900}, {2560, 1440}, {1280, 800},
+}
+
+// RandomWindowSize picks a common desktop window size no larger than maxW x maxH;
+// a zero bound is no limit.
+func RandomWindowSize(maxW, maxH int) (int, int) {
+	fits := make([][2]int, 0, len(windowSizes))
+	for _, s := range windowSizes {
+		if (maxW == 0 || s[0] <= maxW) && (maxH == 0 || s[1] <= maxH) {
+			fits = append(fits, s)
+		}
 	}
-	n, err := rand.Int(rand.Reader, big.NewInt(int64(len(sizes))))
+	if len(fits) == 0 {
+		return maxW, maxH
+	}
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(len(fits))))
 	idx := 0
 	if err == nil {
 		idx = int(n.Int64())
 	}
-	s := sizes[idx]
-	return s[0], s[1]
+	return fits[idx][0], fits[idx][1]
 }
 
 type Browser struct{}
@@ -249,7 +260,7 @@ func (Browser) BuildLaunchArgs(cfg browsers.LaunchConfig) ([]string, []string, e
 		args = append(args, "--user-data-dir="+cfg.ProfileDir)
 	}
 
-	w, h := randomWindowSize()
+	w, h := RandomWindowSize(0, 0)
 	args = append(args, fmt.Sprintf("--window-size=%d,%d", w, h))
 
 	if cfg.Timezone != "" {

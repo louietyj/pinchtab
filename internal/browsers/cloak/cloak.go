@@ -79,6 +79,20 @@ func (b Browser) BuildLaunchArgs(cfg browsers.LaunchConfig) ([]string, []string,
 	}
 
 	c := cfg.Cloak
+
+	// Cloak reports a fixed screen, so a window larger than it gives a viewport
+	// wider than the screen, which no real browser has.
+	screenW, screenH := 1920, 1080
+	if strings.EqualFold(strings.TrimSpace(c.Platform), "macos") {
+		screenW, screenH = 1440, 900
+	}
+	for i, arg := range args {
+		if strings.HasPrefix(arg, "--window-size=") {
+			w, h := chrome.RandomWindowSize(screenW, screenH)
+			args[i] = fmt.Sprintf("--window-size=%d,%d", w, h)
+		}
+	}
+
 	addFlag := func(name, value string) {
 		value = strings.TrimSpace(value)
 		if value != "" {

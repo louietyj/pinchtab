@@ -217,6 +217,14 @@ func TestBuildLaunchArgsReturnsBaseFlags(t *testing.T) {
 	}
 }
 
+func TestRandomWindowSizeStaysWithinItsBounds(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		if w, h := chrome.RandomWindowSize(1440, 900); w > 1440 || h > 900 {
+			t.Fatalf("RandomWindowSize(1440, 900) = %dx%d, larger than its bounds", w, h)
+		}
+	}
+}
+
 func TestBuildLaunchArgsReturnsNoEnv(t *testing.T) {
 	_, env, _ := chrome.Browser{}.BuildLaunchArgs(browsers.LaunchConfig{})
 	if env != nil {

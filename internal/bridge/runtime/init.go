@@ -222,9 +222,6 @@ func setupAllocator(cfg *config.RuntimeConfig, binary string, bundle *stealth.Bu
 		opts = append(opts, chromedp.UserDataDir(cfg.ProfileDir))
 	}
 
-	w, h := randomWindowSize()
-	opts = append(opts, chromedp.WindowSize(w, h))
-
 	if cfg.Timezone != "" {
 		opts = append(opts, chromedp.Flag("tz", cfg.Timezone))
 	}
