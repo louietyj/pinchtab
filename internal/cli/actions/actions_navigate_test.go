@@ -32,7 +32,7 @@ func TestAutoSolveHint(t *testing.T) {
 		want    string
 	}{
 		{"no challenge", nil, ""},
-		{"pending", map[string]any{"solved": false, "pending": true, "challengeType": "turnstile"}, "a turnstile challenge on this page is still being solved in the background"},
+		{"pending", map[string]any{"solved": false, "pending": true, "challengeType": "turnstile"}, "still being solved in the background; this call could not wait for it. Do NOT click the captcha widget or navigate away. Run `sleep 60; pinchtab snap`"},
 		{"solved", map[string]any{"solved": true}, "a captcha challenge on this page was already solved for you"},
 		{"not solved", map[string]any{"solved": false, "error": "all 2 attempts exhausted"}, "NOT solved: all 2 attempts exhausted"},
 	} {
