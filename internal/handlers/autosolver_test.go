@@ -102,6 +102,61 @@ func TestShouldAutoSolve(t *testing.T) {
 	}
 }
 
+func awaitingAutoSolveHandlers() *Handlers {
+	return &Handlers{Config: &config.RuntimeConfig{AutoSolver: config.AutoSolverConfig{
+		Enabled:           true,
+		AutoTrigger:       true,
+		TriggerOnNavigate: true,
+		TriggerOnAction:   true,
+		AwaitOnNavigate:   true,
+	}}}
+}
+
+func TestMaybeAutoSolve_AwaitReturnsAFinishedOutcome(t *testing.T) {
+	h := awaitingAutoSolveHandlers()
+	h.autoSolverRunner = func(context.Context, string) (autoSolveOutcome, error) {
+		return autoSolveOutcome{"solved": true}, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	got := h.maybeAutoSolve(ctx, "tab1", autoSolverTriggerNavigate)
+	if got["solved"] != true || got["pending"] != nil {
+		t.Fatalf("outcome = %v, want solved and not pending", got)
+	}
+}
+
+func TestMaybeAutoSolve_AwaitRepliesPendingBeforeTheDeadline(t *testing.T) {
+	margin, floor := autoSolveReplyMargin, autoSolvePendingFloor
+	t.Cleanup(func() { autoSolveReplyMargin, autoSolvePendingFloor = margin, floor })
+	autoSolveReplyMargin, autoSolvePendingFloor = 100*time.Millisecond, 10*time.Millisecond
+
+	h := awaitingAutoSolveHandlers()
+	release, finished := make(chan struct{}), make(chan struct{})
+	h.autoSolverRunner = func(context.Context, string) (autoSolveOutcome, error) {
+		<-release
+		close(finished)
+		return autoSolveOutcome{"solved": true}, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	got := h.maybeAutoSolve(ctx, "tab1", autoSolverTriggerNavigate)
+	if got["pending"] != true || got["solved"] != false {
+		t.Fatalf("outcome = %v, want pending and not solved", got)
+	}
+	if deadline, _ := ctx.Deadline(); !time.Now().Before(deadline) {
+		t.Fatal("replied at or after the request deadline")
+	}
+
+	close(release)
+	select {
+	case <-finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the solve did not keep running after the pending reply")
+	}
+}
+
 func TestMaybeAutoSolve_InvokesRunnerWhenEnabled(t *testing.T) {
 	h := &Handlers{
 		Config: &config.RuntimeConfig{AutoSolver: config.AutoSolverConfig{

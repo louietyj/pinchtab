@@ -32,6 +32,15 @@ const (
 	autoTriggerRunBudget = 45 * time.Second
 )
 
+var (
+	// autoSolveReplyMargin leaves an awaiting request time to read the page and
+	// answer after it stops waiting on a solve.
+	autoSolveReplyMargin = 10 * time.Second
+	// autoSolvePendingFloor outlasts detection's HTML timeout, so a runner still
+	// going at the cutoff has found a challenge.
+	autoSolvePendingFloor = autoDetectHTMLTimeout + time.Second
+)
+
 // autoSolveOutcome is what a caller can report back: enough to say a solve
 // happened and how it went, without exposing solver internals. A map rather
 // than a struct because challenge_detection.go is the only permitted producer
@@ -41,7 +50,7 @@ type autoSolveOutcome map[string]any
 // maybeAutoSolve runs the autosolver pipeline for tabID. It returns an outcome
 // only when it awaited one; in background mode it returns nil immediately and
 // the solve completes with no signal to the caller at all.
-func (h *Handlers) maybeAutoSolve(_ context.Context, tabID, trigger string) autoSolveOutcome {
+func (h *Handlers) maybeAutoSolve(ctx context.Context, tabID, trigger string) autoSolveOutcome {
 	if tabID == "" || h.autoSolverRunner == nil || !h.shouldAutoSolve(trigger) {
 		return nil
 	}
@@ -50,17 +59,32 @@ func (h *Handlers) maybeAutoSolve(_ context.Context, tabID, trigger string) auto
 	// challenge and is unusable until it is solved. Returning early there hands
 	// back a page the caller cannot act on and no way to learn why.
 	if h.Config != nil && h.Config.AutoSolver.AwaitOnNavigate {
-		runCtx, cancel := context.WithTimeout(context.Background(), h.autoTriggerBudget())
-		defer cancel()
+		done := make(chan autoSolveOutcome, 1)
+		go func() {
+			runCtx, cancel := context.WithTimeout(context.Background(), h.autoTriggerBudget())
+			defer cancel()
 
-		outcome, err := h.autoSolverRunner(runCtx, tabID)
-		if err != nil {
-			slog.Warn("autosolver auto-trigger failed",
-				"trigger", trigger,
-				"tab_id", tabID,
-				"error", err)
+			outcome, err := h.autoSolverRunner(runCtx, tabID)
+			if err != nil {
+				slog.Warn("autosolver auto-trigger failed",
+					"trigger", trigger,
+					"tab_id", tabID,
+					"error", err)
+			}
+			done <- outcome
+		}()
+
+		select {
+		case outcome := <-done:
+			return outcome
+		case <-autoSolveReplyCutoff(ctx):
 		}
-		return outcome
+		// A solve can outlast the request. It keeps running; the caller learns one is
+		// under way instead of timing out with nothing.
+		slog.Info("autosolver auto-trigger still running at reply cutoff",
+			"trigger", trigger,
+			"tab_id", tabID)
+		return autoSolveOutcome{"solved": false, "pending": true}
 	}
 
 	go func() {
@@ -77,6 +101,16 @@ func (h *Handlers) maybeAutoSolve(_ context.Context, tabID, trigger string) auto
 		}
 	}()
 	return nil
+}
+
+// autoSolveReplyCutoff fires autoSolveReplyMargin before ctx's deadline, but never
+// before autoSolvePendingFloor; with no deadline it never fires.
+func autoSolveReplyCutoff(ctx context.Context) <-chan time.Time {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return nil
+	}
+	return time.After(max(time.Until(deadline)-autoSolveReplyMargin, autoSolvePendingFloor))
 }
 
 // autoTriggerBudget sizes the run from the same estimate runAutoSolver gives its

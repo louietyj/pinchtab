@@ -99,6 +99,14 @@ func autoSolveHint(result map[string]any) string {
 		challenge = "captcha"
 	}
 
+	if pending, _ := raw["pending"].(bool); pending {
+		return fmt.Sprintf(
+			"a %s challenge on this page is still being solved in the background; this call "+
+				"could not wait for it. Do NOT click the captcha widget -- wait a minute, then "+
+				"re-read the page to see whether it cleared.",
+			challenge)
+	}
+
 	if solved, _ := raw["solved"].(bool); solved {
 		return fmt.Sprintf(
 			"a %s challenge on this page was already solved for you -- do NOT click the "+

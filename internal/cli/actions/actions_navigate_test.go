@@ -25,6 +25,36 @@ func newNavigateCmd() *cobra.Command {
 	return cmd
 }
 
+func TestAutoSolveHint(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		outcome map[string]any
+		want    string
+	}{
+		{"no challenge", nil, ""},
+		{"pending", map[string]any{"solved": false, "pending": true, "challengeType": "turnstile"}, "a turnstile challenge on this page is still being solved in the background"},
+		{"solved", map[string]any{"solved": true}, "a captcha challenge on this page was already solved for you"},
+		{"not solved", map[string]any{"solved": false, "error": "all 2 attempts exhausted"}, "NOT solved: all 2 attempts exhausted"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := map[string]any{}
+			if tc.outcome != nil {
+				result["autoSolve"] = tc.outcome
+			}
+			got := autoSolveHint(result)
+			if tc.want == "" {
+				if got != "" {
+					t.Fatalf("hint = %q, want none", got)
+				}
+				return
+			}
+			if !strings.Contains(got, tc.want) {
+				t.Fatalf("hint = %q, want it to contain %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestNavigateTimeoutIsSentAndClampedToTheAPICeiling(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
