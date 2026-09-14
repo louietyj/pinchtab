@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -103,8 +104,8 @@ func autoSolveHint(result map[string]any) string {
 		return fmt.Sprintf(
 			"a %s challenge on this page is still being solved in the background; this call "+
 				"could not wait for it. Do NOT click the captcha widget or navigate away. Run "+
-				"`sleep 60; pinchtab snap` to see whether it cleared, and again if it has not.",
-			challenge)
+				"`%s` to see whether it cleared, and again if it has not.",
+			challenge, pendingSolveCheck(result))
 	}
 
 	if solved, _ := raw["solved"].(bool); solved {
@@ -118,6 +119,18 @@ func autoSolveHint(result map[string]any) string {
 		return fmt.Sprintf("a %s challenge on this page was NOT solved: %s", challenge, msg)
 	}
 	return fmt.Sprintf("a %s challenge on this page was NOT solved.", challenge)
+}
+
+// pendingSolveCheck is the command the pending hint hands the caller. Waiting for the
+// challenge page's title to change returns as soon as the solve lands, capped at the
+// server's 30s wait; without a title that quotes safely it falls back to a short sleep.
+func pendingSolveCheck(result map[string]any) string {
+	title, _ := result["title"].(string)
+	if title == "" || strings.Contains(title, "'") {
+		return "sleep 15; pinchtab snap"
+	}
+	literal, _ := json.Marshal(title)
+	return fmt.Sprintf("pinchtab wait --fn 'document.title !== %s' --timeout 30000; pinchtab snap", literal)
 }
 
 func Navigate(client *http.Client, base, token string, url string, cmd *cobra.Command) string {

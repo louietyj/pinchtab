@@ -26,18 +26,25 @@ func newNavigateCmd() *cobra.Command {
 }
 
 func TestAutoSolveHint(t *testing.T) {
+	pending := map[string]any{"solved": false, "pending": true, "challengeType": "turnstile"}
 	for _, tc := range []struct {
 		name    string
+		title   string
 		outcome map[string]any
 		want    string
 	}{
-		{"no challenge", nil, ""},
-		{"pending", map[string]any{"solved": false, "pending": true, "challengeType": "turnstile"}, "still being solved in the background; this call could not wait for it. Do NOT click the captcha widget or navigate away. Run `sleep 60; pinchtab snap`"},
-		{"solved", map[string]any{"solved": true}, "a captcha challenge on this page was already solved for you"},
-		{"not solved", map[string]any{"solved": false, "error": "all 2 attempts exhausted"}, "NOT solved: all 2 attempts exhausted"},
+		{"no challenge", "", nil, ""},
+		{"pending with a title", "Just a moment...", pending, "Do NOT click the captcha widget or navigate away. Run `pinchtab wait --fn 'document.title !== \"Just a moment...\"' --timeout 30000; pinchtab snap`"},
+		{"pending without a title", "", pending, "Run `sleep 15; pinchtab snap`"},
+		{"pending with a quote in the title", "Don't panic", pending, "Run `sleep 15; pinchtab snap`"},
+		{"solved", "", map[string]any{"solved": true}, "a captcha challenge on this page was already solved for you"},
+		{"not solved", "", map[string]any{"solved": false, "error": "all 2 attempts exhausted"}, "NOT solved: all 2 attempts exhausted"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			result := map[string]any{}
+			if tc.title != "" {
+				result["title"] = tc.title
+			}
 			if tc.outcome != nil {
 				result["autoSolve"] = tc.outcome
 			}
