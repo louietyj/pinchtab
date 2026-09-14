@@ -102,21 +102,25 @@ type boundingBox struct {
 	x, y, width, height float64
 }
 
-// turnstileWidgetWidth is the width of Turnstile's normal-size widget.
-const turnstileWidgetWidth = 300
+// The checkbox centre sits at a fixed offset in Turnstile's normal-size 300x65
+// widget, and must be hit near dead centre: some renders draw it only 8px wide.
+const (
+	turnstileCheckboxOffsetX = 21
+	turnstileWidgetHeight    = 65
+)
 
-// turnstileCheckboxPoint offsets from the widget's own width: an iframe in a closed
-// shadow root can't be measured, and its left-aligned container can span the whole
-// content column, where a fraction of the full width lands on the label.
+// turnstileCheckboxPoint measures from the widget's top-left, never as a fraction of
+// the box: an iframe in a closed shadow root can't be measured, and the left-aligned
+// container measured instead can span the whole content column.
 func turnstileCheckboxPoint(box *boundingBox) (x, y float64) {
-	return box.x + min(box.width, turnstileWidgetWidth)*0.09, box.y + box.height*0.40
+	return box.x + turnstileCheckboxOffsetX, box.y + min(box.height, turnstileWidgetHeight)/2
 }
 
 const (
 	// cfRedetectDelay is how long to wait before re-reading the challenge type.
 	cfRedetectDelay = 2 * time.Second
 	// cfClickJitterPx is the full width of the click-position jitter window.
-	cfClickJitterPx = 8
+	cfClickJitterPx = 4
 )
 
 // cfClickJitter returns a signed offset within half the jitter window either way.
