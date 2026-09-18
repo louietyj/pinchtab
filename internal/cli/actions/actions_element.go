@@ -155,8 +155,6 @@ func postActionWithHeaders(client *http.Client, base, token string, cmd *cobra.C
 	}
 }
 
-// fetchAndPrintSnapshot stores the snapshot's vocabulary token under tabID and
-// any extraVocabKeys: the key a later action looks it up by is its --tab flag.
 func fetchAndPrintSnapshot(client *http.Client, base, token, tabID string, diff bool, extraVocabKeys ...string) {
 	params := "filter=interactive&format=compact"
 	if diff {

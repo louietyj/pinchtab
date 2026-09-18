@@ -97,9 +97,8 @@ func DoGetRaw(client *http.Client, base, token, path string, params url.Values) 
 }
 
 // DoGetRawAndPrint fetches and prints the raw response body (for --snap flag),
-// storing the vocabulary token under each of vocabKeys as DoGetCapturingVocab
-// does, so the refs it prints stay usable. Best-effort: it reports errors to
-// stderr but does not exit.
+// storing its vocabulary token under each of vocabKeys. Best-effort: it reports
+// errors to stderr but does not exit.
 func DoGetRawAndPrint(client *http.Client, base, token, pathWithQuery string, vocabKeys ...string) {
 	var headers http.Header
 	status, body, err := doRequest(client, token, request{method: "GET", url: base + pathWithQuery, respHeaders: &headers})
