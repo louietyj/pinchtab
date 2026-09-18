@@ -32,6 +32,7 @@ func TestGetConfigValue_RoundTrip(t *testing.T) {
 		{"browser.cloak.timezone", "Europe/London", "Europe/London"},
 		{"browser.cloak.webrtcIP", "auto", "auto"},
 		{"browser.cloak.fontsDir", "/opt/fonts", "/opt/fonts"},
+		{"browser.cloak.windowSize", "1440x900", "1440x900"},
 		{"browser.cloak.storageQuotaMB", "2048", "2048"},
 		{"browser.cloak.disableDefaultStealthArgs", "false", "false"},
 		{"instanceDefaults.mode", "headed", "headed"},

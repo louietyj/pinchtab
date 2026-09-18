@@ -904,6 +904,9 @@ func applyCloakBrowserConfigToRuntime(cfg *RuntimeConfig, cloak CloakBrowserConf
 	if cloak.FontsDir != "" {
 		cfg.Cloak.FontsDir = filepath.Clean(cloak.FontsDir)
 	}
+	if cloak.WindowSize != "" {
+		cfg.Cloak.WindowSize = cloak.WindowSize
+	}
 	if cloak.StorageQuotaMB != nil {
 		cfg.Cloak.StorageQuotaMB = *cloak.StorageQuotaMB
 	}

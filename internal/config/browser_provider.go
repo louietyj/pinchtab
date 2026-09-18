@@ -106,6 +106,7 @@ func hasCloakBrowserConfig(c CloakBrowserConfig) bool {
 		c.Timezone != "" ||
 		c.WebRTCIP != "" ||
 		c.FontsDir != "" ||
+		c.WindowSize != "" ||
 		c.StorageQuotaMB != nil ||
 		c.DisableDefaultStealthArgs != nil
 }

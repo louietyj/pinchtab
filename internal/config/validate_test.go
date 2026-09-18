@@ -579,6 +579,14 @@ func TestValidateFileConfig_CloakBrowser(t *testing.T) {
 			}},
 			want: "browser.cloak.fontsDir",
 		},
+		{
+			name: "window size must be WIDTHxHEIGHT",
+			fc: &FileConfig{Browser: BrowserConfig{
+				BrowserBinary: "/opt/cloakbrowser/chrome",
+				Cloak:         CloakBrowserConfig{WindowSize: "1440,900"},
+			}},
+			want: "browser.cloak.windowSize",
+		},
 	}
 
 	for _, tt := range tests {

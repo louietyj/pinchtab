@@ -286,6 +286,30 @@ func TestBuildLaunchArgsKeepsTheWindowWithinTheReportedScreen(t *testing.T) {
 	}
 }
 
+func TestBuildLaunchArgsUsesTheConfiguredWindowSize(t *testing.T) {
+	b, ok := browsers.Get("cloak")
+	if !ok {
+		t.Fatal("cloak not registered")
+	}
+	args, _, err := b.BuildLaunchArgs(browsers.LaunchConfig{Cloak: browsers.CloakFingerprint{WindowSize: "1440x900"}})
+	if err != nil {
+		t.Fatalf("BuildLaunchArgs() error = %v", err)
+	}
+	if !slices.Contains(args, "--window-size=1440,900") {
+		t.Fatalf("want --window-size=1440,900, got %v", args)
+	}
+
+	for _, tc := range []browsers.CloakFingerprint{
+		{WindowSize: "2560x1440"},
+		{WindowSize: "1920x1080", Platform: "macos"},
+		{WindowSize: "1440,900"},
+	} {
+		if _, _, err := b.BuildLaunchArgs(browsers.LaunchConfig{Cloak: tc}); err == nil {
+			t.Errorf("%+v: want an error, got none", tc)
+		}
+	}
+}
+
 func TestDiscoverBinaryOverridesChrome(t *testing.T) {
 	b, ok := browsers.Get("cloak")
 	if !ok {

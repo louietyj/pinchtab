@@ -52,6 +52,7 @@ type cloakBrowserConfigJSON struct {
 	Timezone                  string `json:"timezone,omitempty"`
 	WebRTCIP                  string `json:"webrtcIP,omitempty"`
 	FontsDir                  string `json:"fontsDir,omitempty"`
+	WindowSize                string `json:"windowSize,omitempty"`
 	StorageQuotaMB            *int   `json:"storageQuotaMB,omitempty"`
 	DisableDefaultStealthArgs *bool  `json:"disableDefaultStealthArgs,omitempty"`
 }

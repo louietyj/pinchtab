@@ -488,6 +488,9 @@ func mergeCloakConfig(global CloakBrowserRuntimeConfig, target CloakBrowserConfi
 	if target.FontsDir != "" {
 		out.FontsDir = target.FontsDir
 	}
+	if target.WindowSize != "" {
+		out.WindowSize = target.WindowSize
+	}
 	if target.StorageQuotaMB != nil {
 		out.StorageQuotaMB = *target.StorageQuotaMB
 	}

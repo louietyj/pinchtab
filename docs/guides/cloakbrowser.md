@@ -158,6 +158,7 @@ PinchTab maps these `browser.cloak` fields to CloakBrowser launch flags:
 | `webrtcIP` | `--fingerprint-webrtc-ip=<ip|auto>` |
 | `fontsDir` | `--fingerprint-fonts-dir=<path>` |
 | `storageQuotaMB` | `--fingerprint-storage-quota=<mb>` |
+| `windowSize` | `--window-size=<w>,<h>`, from `WIDTHxHEIGHT`; random per launch when unset |
 
 Use `browser.extraFlags` only for advanced CloakBrowser flags that do not have a
 structured PinchTab field.

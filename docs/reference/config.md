@@ -429,6 +429,9 @@ flags:
 - `webrtcIP` -> `--fingerprint-webrtc-ip`
 - `fontsDir` -> `--fingerprint-fonts-dir`
 - `storageQuotaMB` -> `--fingerprint-storage-quota`
+- `windowSize` -> `--window-size`, as `WIDTHxHEIGHT` (e.g. `1440x900`). Unset,
+  each launch draws a common desktop size that fits the reported screen; set, it
+  must fit that screen (1920x1080, or 1440x900 for `macos`).
 
 `disableDefaultStealthArgs` defaults to true for CloakBrowser targets. When set,
 PinchTab keeps its process, profile, tab, extension, and action-control behavior,

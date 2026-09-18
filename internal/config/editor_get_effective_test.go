@@ -86,6 +86,7 @@ var blankIsTheAnswer = map[string]string{
 	"browser.cloak.timezone":                  "cloak override, unset",
 	"browser.cloak.webrtcIP":                  "cloak override, unset",
 	"browser.cloak.fontsDir":                  "cloak override, unset",
+	"browser.cloak.windowSize":                "unset means a random window size per launch",
 	"browser.cloak.storageQuotaMB":            "cloak override, unset",
 	"browser.cloak.disableDefaultStealthArgs": "cloak override, unset",
 	"browser.remoteDebuggingPort":             "unset means a debugging port is chosen when the browser launches, so there is no configured value to report",

@@ -163,6 +163,8 @@ func getCloakBrowserField(c *CloakBrowserConfig, field string) (string, error) {
 		return c.WebRTCIP, nil
 	case "fontsDir":
 		return c.FontsDir, nil
+	case "windowSize":
+		return c.WindowSize, nil
 	case "storageQuotaMB":
 		return formatIntPtr(c.StorageQuotaMB), nil
 	case "disableDefaultStealthArgs":

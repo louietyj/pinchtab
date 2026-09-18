@@ -420,6 +420,14 @@ func validateCloakBrowserConfigAt(fieldPrefix string, cloak CloakBrowserConfig) 
 			Message: fmt.Sprintf("webrtcIP %q must be \"auto\" or a valid IP address", cloak.WebRTCIP),
 		})
 	}
+	if cloak.WindowSize != "" {
+		if _, _, err := browsers.ParseWindowSize(cloak.WindowSize); err != nil {
+			errs = append(errs, ValidationError{
+				Field:   fieldPrefix + ".windowSize",
+				Message: err.Error(),
+			})
+		}
+	}
 	if dir := strings.TrimSpace(cloak.FontsDir); dir != "" {
 		clean := filepath.Clean(dir)
 		if clean != dir {

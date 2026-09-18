@@ -1,6 +1,9 @@
 package browsers
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 type LaunchMode string
 
@@ -88,6 +91,7 @@ type CloakFingerprint struct {
 	Timezone        string
 	WebRTCIP        string
 	FontsDir        string
+	WindowSize      string
 	StorageQuotaMB  int
 }
 
@@ -117,4 +121,13 @@ type DoctorEnv struct {
 	Binary    string
 	Cloak     CloakFingerprint
 	NoSandbox bool
+}
+
+// ParseWindowSize parses a "WIDTHxHEIGHT" window size such as "1440x900".
+func ParseWindowSize(s string) (w, h int, err error) {
+	var rest string
+	if n, _ := fmt.Sscanf(s, "%dx%d%s", &w, &h, &rest); n != 2 || w <= 0 || h <= 0 {
+		return 0, 0, fmt.Errorf("window size %q must be WIDTHxHEIGHT, e.g. 1440x900", s)
+	}
+	return w, h, nil
 }

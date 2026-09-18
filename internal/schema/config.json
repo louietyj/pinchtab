@@ -308,6 +308,11 @@
         "fontsDir": {
           "type": "string"
         },
+        "windowSize": {
+          "type": "string",
+          "pattern": "^([1-9][0-9]*x[1-9][0-9]*)?$",
+          "description": "Fixed window size as WIDTHxHEIGHT, e.g. 1440x900. Unset draws a common desktop size at random per launch."
+        },
         "storageQuotaMB": {
           "$ref": "#/definitions/nullableNonNegativeInteger"
         },

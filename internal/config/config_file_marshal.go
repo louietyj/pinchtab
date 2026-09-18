@@ -50,6 +50,7 @@ func cloakBrowserConfigJSONFromFile(c CloakBrowserConfig) *cloakBrowserConfigJSO
 		Timezone:                  c.Timezone,
 		WebRTCIP:                  c.WebRTCIP,
 		FontsDir:                  c.FontsDir,
+		WindowSize:                c.WindowSize,
 		StorageQuotaMB:            c.StorageQuotaMB,
 		DisableDefaultStealthArgs: c.DisableDefaultStealthArgs,
 	}
@@ -93,6 +94,7 @@ func cloakBrowserConfigFromRuntime(cfg *RuntimeConfig) CloakBrowserConfig {
 		c.Timezone != "" ||
 		c.WebRTCIP != "" ||
 		c.FontsDir != "" ||
+		c.WindowSize != "" ||
 		c.StorageQuotaMB > 0 ||
 		!c.DisableDefaultStealthArgs
 	out := CloakBrowserConfig{
@@ -102,6 +104,7 @@ func cloakBrowserConfigFromRuntime(cfg *RuntimeConfig) CloakBrowserConfig {
 		Timezone:        c.Timezone,
 		WebRTCIP:        c.WebRTCIP,
 		FontsDir:        c.FontsDir,
+		WindowSize:      c.WindowSize,
 	}
 	if c.StorageQuotaMB > 0 || providerHasNativeStealth {
 		out.StorageQuotaMB = intPtrIfNonNegative(c.StorageQuotaMB)

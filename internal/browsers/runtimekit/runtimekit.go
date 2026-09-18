@@ -67,6 +67,7 @@ func LaunchConfigFromRuntime(cfg *config.RuntimeConfig, binary string, debugPort
 			Timezone:        cfg.Cloak.Timezone,
 			WebRTCIP:        cfg.Cloak.WebRTCIP,
 			FontsDir:        cfg.Cloak.FontsDir,
+			WindowSize:      cfg.Cloak.WindowSize,
 			StorageQuotaMB:  cfg.Cloak.StorageQuotaMB,
 		},
 	}

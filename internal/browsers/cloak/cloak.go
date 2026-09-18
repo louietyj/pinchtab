@@ -86,9 +86,17 @@ func (b Browser) BuildLaunchArgs(cfg browsers.LaunchConfig) ([]string, []string,
 	if strings.EqualFold(strings.TrimSpace(c.Platform), "macos") {
 		screenW, screenH = 1440, 900
 	}
+	w, h := chrome.RandomWindowSize(screenW, screenH)
+	if c.WindowSize != "" {
+		if w, h, err = browsers.ParseWindowSize(c.WindowSize); err != nil {
+			return nil, nil, err
+		}
+		if w > screenW || h > screenH {
+			return nil, nil, fmt.Errorf("cloak window size %s exceeds the reported %dx%d screen", c.WindowSize, screenW, screenH)
+		}
+	}
 	for i, arg := range args {
 		if strings.HasPrefix(arg, "--window-size=") {
-			w, h := chrome.RandomWindowSize(screenW, screenH)
 			args[i] = fmt.Sprintf("--window-size=%d,%d", w, h)
 		}
 	}

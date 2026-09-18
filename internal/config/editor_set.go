@@ -216,6 +216,8 @@ func setCloakBrowserField(c *CloakBrowserConfig, field, value string) error {
 		c.WebRTCIP = value
 	case "fontsDir":
 		c.FontsDir = value
+	case "windowSize":
+		c.WindowSize = value
 	case "storageQuotaMB":
 		n, err := strconv.Atoi(value)
 		if err != nil {

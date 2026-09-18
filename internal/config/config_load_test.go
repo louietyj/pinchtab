@@ -779,6 +779,7 @@ func TestApplyFileConfigToRuntime_CloakBrowserSettings(t *testing.T) {
 				Timezone:                  "Europe/London",
 				WebRTCIP:                  "auto",
 				FontsDir:                  "/opt/fonts",
+				WindowSize:                "1440x900",
 				StorageQuotaMB:            &quota,
 				DisableDefaultStealthArgs: &disableDefaultStealthArgs,
 			},
@@ -799,6 +800,7 @@ func TestApplyFileConfigToRuntime_CloakBrowserSettings(t *testing.T) {
 		cfg.Cloak.Timezone != "Europe/London" ||
 		cfg.Cloak.WebRTCIP != "auto" ||
 		cfg.Cloak.FontsDir != "/opt/fonts" ||
+		cfg.Cloak.WindowSize != "1440x900" ||
 		cfg.Cloak.StorageQuotaMB != quota ||
 		cfg.Cloak.DisableDefaultStealthArgs {
 		t.Fatalf("Cloak settings not applied: %+v", cfg.Cloak)
