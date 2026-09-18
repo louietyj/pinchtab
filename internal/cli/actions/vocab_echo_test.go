@@ -2,6 +2,7 @@ package actions
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -102,5 +103,71 @@ func TestCLIEchoedTokenIsScopedToItsTab(t *testing.T) {
 
 	if got, ok := actionBodyVocab(t, lastActionBody); ok {
 		t.Errorf("an action on t2 echoed t1's vocabulary token %q", got)
+	}
+}
+
+// countingVocabServer mints a fresh token per /snapshot, like a DOM that changes
+// between snapshots, and answers /navigate with a tab id.
+func countingVocabServer(t *testing.T, lastActionBody *string) *httptest.Server {
+	t.Helper()
+	n := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/snapshot":
+			n++
+			w.Header().Set("X-PinchTab-Vocab", fmt.Sprintf("tok-%d", n))
+			_, _ = w.Write([]byte("e0:button \"Go\""))
+		case "/navigate":
+			_, _ = w.Write([]byte(`{"tabId":"TAB1","url":"https://example.com/"}`))
+		default:
+			body, _ := io.ReadAll(r.Body)
+			*lastActionBody = string(body)
+			_, _ = w.Write([]byte(`{"status":"ok","success":true}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// The refs a --snap prints are the ones the caller acts on next, so its token must
+// replace the one from any earlier snapshot; echoing the older token got every
+// follow-up click refused as vocab_superseded.
+func TestCLIActionSnapTokenIsEchoedOnTheNextAction(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	var lastActionBody string
+	srv := countingVocabServer(t, &lastActionBody)
+	client := srv.Client()
+
+	Snapshot(client, srv.URL, "", newSnapshotCmd(), "")
+
+	act := newActionCmd()
+	act.Flags().Bool("snap", false, "")
+	_ = act.Flags().Set("snap", "true")
+	Action(client, srv.URL, "", "click", "e0", act)
+
+	Action(client, srv.URL, "", "click", "e0", newActionCmd())
+	if got, _ := actionBodyVocab(t, lastActionBody); got != "tok-2" {
+		t.Errorf("action echoed vocab %q, want tok-2 from the --snap", got)
+	}
+}
+
+// nav --snap snapshots the tab id the navigation reports, but a follow-up action
+// without --tab looks its token up under the default key.
+func TestCLINavigateSnapTokenIsEchoedOnAnUntabbedAction(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	var lastActionBody string
+	srv := countingVocabServer(t, &lastActionBody)
+	client := srv.Client()
+
+	Snapshot(client, srv.URL, "", newSnapshotCmd(), "")
+
+	nav := newNavigateCmd()
+	nav.Flags().Bool("snap", false, "")
+	_ = nav.Flags().Set("snap", "true")
+	Navigate(client, srv.URL, "", "https://example.com", nav)
+
+	Action(client, srv.URL, "", "click", "e0", newActionCmd())
+	if got, _ := actionBodyVocab(t, lastActionBody); got != "tok-2" {
+		t.Errorf("action echoed vocab %q, want tok-2 from nav --snap", got)
 	}
 }

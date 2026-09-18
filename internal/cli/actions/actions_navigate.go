@@ -61,11 +61,11 @@ func historyNav(client *http.Client, base, token, action string, cmd *cobra.Comm
 }
 
 // printPostActionOutput runs the shared --snap / --snap-diff / --text tail.
-func printPostActionOutput(client *http.Client, base, token, tabID string, cmd *cobra.Command) {
+func printPostActionOutput(client *http.Client, base, token, tabID string, cmd *cobra.Command, extraVocabKeys ...string) {
 	snap, _ := cmd.Flags().GetBool("snap")
 	snapDiff, _ := cmd.Flags().GetBool("snap-diff")
 	if snap || snapDiff {
-		fetchAndPrintSnapshot(client, base, token, tabID, snapDiff)
+		fetchAndPrintSnapshot(client, base, token, tabID, snapDiff, extraVocabKeys...)
 	}
 	if text, _ := cmd.Flags().GetBool("text"); text {
 		fetchAndPrintText(client, base, token, tabID)
@@ -174,7 +174,9 @@ func Navigate(client *http.Client, base, token string, url string, cmd *cobra.Co
 		output.Hint(cli.NoSessionHint)
 	}
 
-	printPostActionOutput(client, base, token, resultTabID, cmd)
+	// A follow-up action without --tab looks its token up under req.tabID, not
+	// the tab id the navigation reports.
+	printPostActionOutput(client, base, token, resultTabID, cmd, req.tabID)
 
 	return resultTabID
 }
