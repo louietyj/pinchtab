@@ -45,6 +45,8 @@ type Handlers struct {
 
 	recorder *recorder
 
+	autoSolve autoSolveTabs
+
 	// Optional dependency injection (for unit testing)
 	evalJS           func(ctx context.Context, expression string, out *string) error
 	autoSolverRunner func(ctx context.Context, tabID string) (autoSolveOutcome, error)

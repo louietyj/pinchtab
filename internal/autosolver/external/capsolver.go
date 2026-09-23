@@ -146,7 +146,7 @@ func (c *Capsolver) Solve(ctx context.Context, page autosolver.Page, executor au
 
 	if err := injectToken(ctx, executor, captchaType, token); err != nil {
 		result.Error = fmt.Sprintf("inject token: %v", err)
-		return result, err
+		return result, autosolver.Spent(err)
 	}
 
 	result.Solved = true

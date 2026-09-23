@@ -54,6 +54,9 @@ func (h *Handlers) maybeAutoSolve(ctx context.Context, tabID, trigger string) au
 	if tabID == "" || h.autoSolverRunner == nil || !h.shouldAutoSolve(trigger) {
 		return nil
 	}
+	if trigger == autoSolverTriggerNavigate {
+		h.autoSolve.forget(tabID)
+	}
 
 	// Awaiting costs the caller the solve time, but only on a page that carries a
 	// challenge and is unusable until it is solved. Returning early there hands
@@ -165,9 +168,18 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) (autoSolveOu
 		return nil, err
 	}
 
-	if coreautosolver.DetectChallengeIntent(page.Title(), page.URL(), html) == nil {
+	challenge := coreautosolver.DetectChallengeIntent(page.Title(), page.URL(), html)
+	if challenge == nil {
 		return nil, nil
 	}
+	challengeURL := page.URL()
+	if h.autoSolve.recentlySolved(tabID, challengeURL, challenge.ChallengeType) {
+		return nil, nil
+	}
+	if !h.autoSolve.begin(tabID) {
+		return autoSolveOutcome{"solved": false, "pending": true}, nil
+	}
+	defer h.autoSolve.end(tabID)
 
 	cfg := h.normalizedAutoSolverConfig()
 	if cfg.MaxAttempts > autoTriggerMaxAttempts {
@@ -215,6 +227,7 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) (autoSolveOu
 	}
 
 	if result.Solved && result.Attempts > 0 {
+		h.autoSolve.markSolved(tabID, challengeURL, challenge.ChallengeType)
 		slog.Info("autosolver auto-trigger solved challenge",
 			"tab_id", tabID,
 			"solver", result.SolverUsed,

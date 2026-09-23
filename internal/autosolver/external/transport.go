@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/pinchtab/pinchtab/internal/autosolver"
 )
 
 // taskAPI speaks the createTask/getTaskResult protocol that CapSolver and
@@ -38,7 +40,12 @@ func (a *taskAPI) solve(ctx context.Context, task any) (json.RawMessage, error) 
 		return nil, fmt.Errorf("%s createTask: %w", a.label, err)
 	}
 	if created.ErrorID != 0 {
-		return nil, fmt.Errorf("%s createTask error %s: %s", a.label, created.ErrorCode, created.ErrorDescription)
+		err := fmt.Errorf("%s createTask error %s: %s", a.label, created.ErrorCode, created.ErrorDescription)
+		if transientTaskErrors[created.ErrorCode] {
+			return nil, err
+		}
+		// A refused task is refused again on retry: same key, same balance, same data.
+		return nil, autosolver.Permanent(err)
 	}
 	// Recognition tasks (VisionEngine, ImageToText) answer in the createTask reply.
 	if created.Status == "ready" && hasSolution(created.Solution) {
@@ -77,6 +84,14 @@ func (a *taskAPI) solve(ctx context.Context, task any) (json.RawMessage, error) 
 			// status "processing" / "idle" → keep polling
 		}
 	}
+}
+
+// transientTaskErrors are the createTask refusals worth retrying.
+var transientTaskErrors = map[string]bool{
+	"ERROR_SERVICE_UNAVALIABLE": true, // sic: CapSolver's spelling
+	"ERROR_SERVICE_UNAVAILABLE": true,
+	"ERROR_RATE_LIMIT":          true,
+	"ERROR_NO_SLOT_AVAILABLE":   true,
 }
 
 func isBlankJSON(raw json.RawMessage) bool {

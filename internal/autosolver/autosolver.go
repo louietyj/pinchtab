@@ -2,6 +2,7 @@ package autosolver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -95,6 +96,10 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 	// navigation flow, so it would never see the challenge as gone.
 	startedOnChallenge, _ := onChallenge(page)
 
+	// Solvers that refused permanently this run; asking again only repeats it.
+	refused := map[string]bool{}
+	var spentErr string
+
 	for attempt := 0; attempt < as.config.MaxAttempts; attempt++ {
 		result.Attempts = attempt + 1
 
@@ -124,10 +129,14 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 			return as.finalizeSuccess(result, page, entry.Solver, start), nil
 		}
 
-		solved, entries := as.trySolvers(ctx, page, executor)
+		solved, spent, entries := as.trySolvers(ctx, page, executor, refused)
 		result.History = append(result.History, entries...)
 		if solved {
 			return as.finalizeSuccess(result, page, entries[len(entries)-1].Solver, start), nil
+		}
+		if spent {
+			spentErr = entries[len(entries)-1].Error
+			break
 		}
 
 		if as.config.LLMFallback && as.llm != nil {
@@ -147,6 +156,9 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 
 	result.TotalDuration = time.Since(start)
 	result.Error = fmt.Sprintf("all %d attempts exhausted", as.config.MaxAttempts)
+	if spentErr != "" {
+		result.Error = "stopped after a paid solve failed: " + spentErr
+	}
 	slog.Warn("autosolver_failure",
 		"attempts", result.Attempts,
 		"duration_ms", result.TotalDuration.Milliseconds(),
@@ -325,10 +337,13 @@ func solverNamesOf(solvers []Solver) []string {
 	return names
 }
 
-func (as *AutoSolver) trySolvers(ctx context.Context, page Page, executor ActionExecutor) (bool, []AttemptEntry) {
+// trySolvers runs the matching solvers in order until one solves. spent reports a
+// solver failing after it paid for a solve, which ends the run; a permanent
+// refusal is recorded in refused so later attempts skip that solver.
+func (as *AutoSolver) trySolvers(ctx context.Context, page Page, executor ActionExecutor, refused map[string]bool) (solved, spent bool, entries []AttemptEntry) {
 	solvers := as.registry.MatchingSolvers(ctx, page)
 	if len(solvers) == 0 {
-		return false, []AttemptEntry{{
+		return false, false, []AttemptEntry{{
 			Solver: "none",
 			Status: StatusSkipped,
 		}}
@@ -336,8 +351,11 @@ func (as *AutoSolver) trySolvers(ctx context.Context, page Page, executor Action
 
 	orderedSolvers := as.orderSolvers(solvers)
 
-	entries := make([]AttemptEntry, 0, len(orderedSolvers))
+	entries = make([]AttemptEntry, 0, len(orderedSolvers))
 	for _, s := range orderedSolvers {
+		if refused[s.Name()] {
+			continue
+		}
 		solverCtx, cancel := context.WithTimeout(ctx, as.config.SolverTimeout)
 		solverStart := time.Now()
 
@@ -361,12 +379,18 @@ func (as *AutoSolver) trySolvers(ctx context.Context, page Page, executor Action
 				"error", err,
 				"duration_ms", entry.Duration.Milliseconds())
 			entries = append(entries, entry)
+			if errors.Is(err, ErrSpent) {
+				return false, true, entries
+			}
+			if errors.Is(err, ErrPermanent) {
+				refused[s.Name()] = true
+			}
 			continue
 		}
 
 		if solveResult != nil && solveResult.Solved {
 			entry.Status = StatusSolved
-			return true, append(entries, entry)
+			return true, false, append(entries, entry)
 		}
 
 		entry.Status = StatusFailed
@@ -379,7 +403,7 @@ func (as *AutoSolver) trySolvers(ctx context.Context, page Page, executor Action
 		entries = append(entries, entry)
 	}
 
-	return false, entries
+	return false, false, entries
 }
 
 func (as *AutoSolver) trySemantic(ctx context.Context, page Page, executor ActionExecutor, intent *Intent) (bool, *AttemptEntry) {

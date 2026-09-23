@@ -3,11 +3,14 @@ package external
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pinchtab/pinchtab/internal/autosolver"
 )
 
 func newTestTaskAPI(url string) *taskAPI {
@@ -33,6 +36,29 @@ func TestTaskAPIReturnsASynchronousSolutionWithoutPolling(t *testing.T) {
 	}
 	if string(raw) != `{"distance":142}` {
 		t.Errorf("solution = %s", raw)
+	}
+}
+
+func TestTaskAPIClassifiesCreateTaskRefusals(t *testing.T) {
+	for code, permanent := range map[string]bool{
+		"ERROR_INVALID_TASK_DATA":   true,
+		"ERROR_ZERO_BALANCE":        true,
+		"ERROR_KEY_DENIED_ACCESS":   true,
+		"ERROR_RATE_LIMIT":          false,
+		"ERROR_SERVICE_UNAVALIABLE": false,
+		"ERROR_NO_SLOT_AVAILABLE":   false,
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"errorId":1,"errorCode":"` + code + `"}`))
+		}))
+		_, err := newTestTaskAPI(srv.URL).solve(context.Background(), map[string]string{})
+		srv.Close()
+		if err == nil || !strings.Contains(err.Error(), code) {
+			t.Fatalf("%s: err = %v", code, err)
+		}
+		if got := errors.Is(err, autosolver.ErrPermanent); got != permanent {
+			t.Errorf("%s: permanent = %v, want %v", code, got, permanent)
+		}
 	}
 }
 
