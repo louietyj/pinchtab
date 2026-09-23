@@ -45,6 +45,8 @@ type captcha struct {
 	userAgent string
 	aws       awsWAFPage
 	geetest   geetestParams
+	// leminDivID is the element Lemin renders into; its task needs it.
+	leminDivID string
 }
 
 type tokenSolution struct {
@@ -128,8 +130,8 @@ func (p *provider) Solve(ctx context.Context, page autosolver.Page, executor aut
 	if err != nil {
 		return fail(err.Error(), err)
 	}
-	if typ == "geetest" {
-		if err := injectGeetest(ctx, executor, c.geetest.version, raw); err != nil {
+	if inject, ok := structuredInjectors[typ]; ok {
+		if err := inject(ctx, executor, c, raw); err != nil {
 			return fail(fmt.Sprintf("inject token: %v", err), autosolver.Spent(err))
 		}
 		result.Solved = true
@@ -202,10 +204,19 @@ func readCaptcha(ctx context.Context, executor autosolver.ActionExecutor, html, 
 			c.arkoseBlob = ac.Blob
 		}
 		c.userAgent = readUserAgent(ctx, executor)
-	case "hcaptcha":
+	case "hcaptcha", "yandex":
 		c.userAgent = readUserAgent(ctx, executor)
 	case "awswaf":
 		c.aws = readAWSWAFPage(html)
+	case "tencent":
+		c.key = readTencentAppID(ctx, executor)
+	case "yidun":
+		if id := readHookedYidunID(ctx, executor); id != "" {
+			c.key = id
+		}
+		c.userAgent = readUserAgent(ctx, executor)
+	case "lemin":
+		c.leminDivID = readLeminDivID(ctx, executor)
 	}
 	return c
 }

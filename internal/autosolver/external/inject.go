@@ -28,6 +28,12 @@ func injectToken(ctx context.Context, executor autosolver.ActionExecutor, captch
 		js = funcaptchaInjectJS
 	case "mtcaptcha":
 		js = mtcaptchaInjectJS
+	case "yandex":
+		js = yandexInjectJS
+	case "prosopo":
+		js = prosopoInjectJS
+	case "yidun":
+		js = yidunInjectJS
 	default:
 		return fmt.Errorf("no injector for captcha type %q", captchaType)
 	}
@@ -75,6 +81,88 @@ const recaptchaInjectJS = `function(token){
       }
     }
   }catch(e){}
+  return true;
+}`
+
+// structuredInjectors deliver solutions that are more than one token.
+var structuredInjectors = map[string]func(ctx context.Context, executor autosolver.ActionExecutor, c *captcha, solution json.RawMessage) error{
+	"geetest": func(ctx context.Context, executor autosolver.ActionExecutor, c *captcha, solution json.RawMessage) error {
+		return injectGeetest(ctx, executor, c.geetest.version, solution)
+	},
+	"lemin":   injectStructured(leminInjectJS, "answer"),
+	"tencent": injectStructured(tencentInjectJS, "ticket"),
+}
+
+// injectStructured passes the whole solution object to js, once it is checked
+// to carry the field that makes it an answer.
+func injectStructured(js, required string) func(context.Context, autosolver.ActionExecutor, *captcha, json.RawMessage) error {
+	return func(ctx context.Context, executor autosolver.ActionExecutor, _ *captcha, solution json.RawMessage) error {
+		var sol map[string]any
+		if err := json.Unmarshal(solution, &sol); err != nil {
+			return fmt.Errorf("decode solution: %w", err)
+		}
+		if v, _ := sol[required].(string); v == "" {
+			return fmt.Errorf("solution carries no %s", required)
+		}
+		var ok bool
+		return executor.Evaluate(ctx, fmt.Sprintf("(%s)(%s)", js, solution), &ok)
+	}
+}
+
+// Yandex SmartCaptcha posts its token as the smart-token field; sites that
+// render it declaratively also name a data-callback.
+const yandexInjectJS = `function(token){
+  ` + fireDataCallbacksJS + `
+  document.querySelectorAll('input[name="smart-token"]').forEach(function(el){el.value=token;});
+  try{ if(window.smartCaptcha){ smartCaptcha.getResponse=function(){return token;}; } }catch(e){}
+  fire('.smart-captcha',token);
+  return true;
+}`
+
+// Prosopo's widget adds procaptcha-response to the form only once solved, so the
+// field is created where it is missing.
+const prosopoInjectJS = `function(token){
+  ` + fireDataCallbacksJS + `
+  document.querySelectorAll('.procaptcha, [data-sitekey]').forEach(function(w){
+    var host = w.closest('form') || w;
+    var el = host.querySelector('input[name="procaptcha-response"]');
+    if(!el){ el=document.createElement('input'); el.type='hidden'; el.name='procaptcha-response'; host.appendChild(el); }
+    el.value = token;
+  });
+  fire('.procaptcha',token);
+  return true;
+}`
+
+// Yidun hands its token to the onVerify the site passed initNECaptcha, which the
+// bridge's hook recorded; form posts read NECaptchaValidate.
+const yidunInjectJS = `function(token){
+  document.querySelectorAll('input[name="NECaptchaValidate"]').forEach(function(el){el.value=token;});
+  try{ var y=window.__ptYidun; if(y&&typeof y.onVerify==='function'){ y.onVerify(null,{validate:token}); } }catch(e){}
+  return true;
+}`
+
+// Lemin reads its answer from two hidden fields, and from getCaptchaValue.
+const leminInjectJS = `function(sol){
+  document.querySelectorAll('input[name="lemin_answer"]').forEach(function(el){el.value=sol.answer;});
+  document.querySelectorAll('input[name="lemin_challenge_id"]').forEach(function(el){el.value=sol.challenge_id;});
+  try{
+    var l=window.leminCroppedCaptcha;
+    if(l&&typeof l.getCaptcha==='function'){
+      var get=l.getCaptcha;
+      l.getCaptcha=function(){ var c=get.apply(this,arguments); if(c){ c.getCaptchaValue=function(){return {answer:sol.answer,challenge_id:sol.challenge_id};}; } return c; };
+    }
+  }catch(e){}
+  return true;
+}`
+
+// Tencent hands its result (ret, ticket, randstr, appid) to the callback the site
+// passed new TencentCaptcha, which the bridge's hook recorded. The popup is the
+// widget's own and stays up over a solved page unless it is destroyed.
+const tencentInjectJS = `function(sol){
+  var res={ret:0, ticket:sol.ticket, randstr:sol.randstr, appid:sol.appid};
+  var t=window.__ptTencent;
+  try{ if(t&&t.instance&&typeof t.instance.destroy==='function'){ t.instance.destroy(); } }catch(e){}
+  try{ if(t&&typeof t.callback==='function'){ t.callback(res); } }catch(e){}
   return true;
 }`
 

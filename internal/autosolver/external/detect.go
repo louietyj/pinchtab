@@ -102,6 +102,42 @@ func readMTCaptchaSitekey(ctx context.Context, executor autosolver.ActionExecuto
 	return key
 }
 
+// readTencentAppID prefers the app ID the bridge's hook caught being passed to
+// new TencentCaptcha, then the aid on Tencent's prehandle request.
+func readTencentAppID(ctx context.Context, executor autosolver.ActionExecutor) string {
+	var id string
+	hooked := `(function(){try{return (window.__ptTencent&&window.__ptTencent.appId)||"";}catch(e){return "";}})()`
+	if executor.Evaluate(ctx, hooked, &id) == nil && id != "" {
+		return id
+	}
+	var urls []string
+	expr := `performance.getEntriesByType("resource").map(function(e){return e.name}).filter(function(n){return n.indexOf("cap_union_prehandle")>=0})`
+	if executor.Evaluate(ctx, expr, &urls) != nil {
+		return ""
+	}
+	return firstSubmatch(strings.Join(urls, "\n"), tencentAidRe)
+}
+
+// readHookedYidunID reads the captcha ID the hook caught passed to initNECaptcha.
+func readHookedYidunID(ctx context.Context, executor autosolver.ActionExecutor) string {
+	var id string
+	expr := `(function(){try{return (window.__ptYidun&&window.__ptYidun.captchaId)||"";}catch(e){return "";}})()`
+	if executor.Evaluate(ctx, expr, &id) != nil {
+		return ""
+	}
+	return id
+}
+
+// readLeminDivID finds the element Lemin renders into, else its conventional id.
+func readLeminDivID(ctx context.Context, executor autosolver.ActionExecutor) string {
+	var id string
+	expr := `(function(){try{var d=document.querySelector('[id^="lemin-cropped-captcha"]');return (d&&d.id)||"";}catch(e){return "";}})()`
+	if executor.Evaluate(ctx, expr, &id) != nil || id == "" {
+		return "lemin-cropped-captcha"
+	}
+	return id
+}
+
 // readUserAgent reads navigator.userAgent from the live page; "" if unavailable.
 func readUserAgent(ctx context.Context, executor autosolver.ActionExecutor) string {
 	var ua string
@@ -174,7 +210,13 @@ func findCaptchaWidget(html string) captchaWidget {
 				return captchaWidget{vendor, k}
 			}
 		}
-	case "turnstile", "hcaptcha", "mtcaptcha":
+	case "lemin":
+		return captchaWidget{vendor, firstSubmatch(html, leminIDRe)}
+	case "yidun":
+		if unclassifiedKey == "" {
+			return captchaWidget{vendor, firstSubmatch(html, yidunIDRe)}
+		}
+	case "turnstile", "hcaptcha", "mtcaptcha", "yandex", "prosopo":
 		if unclassifiedKey == "" {
 			if k := firstSubmatch(html, frameSitekeyRe); k != "" {
 				return captchaWidget{vendor, k}
@@ -221,6 +263,18 @@ func vendorFromMarkers(markers string) string {
 		return "recaptcha"
 	case strings.Contains(lower, "mtcaptcha"):
 		return "mtcaptcha"
+	case strings.Contains(lower, "smart-captcha"):
+		return "yandex"
+	case strings.Contains(lower, "procaptcha"):
+		return "prosopo"
+	case strings.Contains(lower, "lemin-captcha"), strings.Contains(lower, "lemin-cropped"):
+		return "lemin"
+	case strings.Contains(lower, "tcaptcha_"):
+		// tcaptcha_transform / tcaptcha_iframe exist only while the captcha is
+		// shown; TCaptcha.js alone is loaded on pages that never show it.
+		return "tencent"
+	case strings.Contains(lower, "yidun"):
+		return "yidun"
 	}
 	return ""
 }
@@ -243,6 +297,12 @@ func vendorFromResources(html string) string {
 		return "awswaf"
 	case geetestSrcRe.MatchString(html):
 		return "geetest"
+	case yandexSrcRe.MatchString(html):
+		return "yandex"
+	case prosopoSrcRe.MatchString(html):
+		return "prosopo"
+	case leminIDRe.MatchString(html):
+		return "lemin"
 	}
 	return ""
 }
@@ -329,6 +389,14 @@ var (
 	gokuPropsRe           = regexp.MustCompile(`(?s)window\.gokuProps\s*=\s*(\{[^}]*\})`)
 	awswafCookieDomainsRe = regexp.MustCompile(`awsWafCookieDomainList\s*=\s*\[([^\]]*)\]`)
 	quotedRe              = regexp.MustCompile(`["']([^"']+)["']`)
+
+	yandexSrcRe  = regexp.MustCompile(`(?i)\bsmartcaptcha\.yandexcloud\.net/`)
+	prosopoSrcRe = regexp.MustCompile(`(?i)\bjs\.prosopo\.io/`)
+	// Lemin's captcha script path names its captcha ID.
+	leminIDRe = regexp.MustCompile(`(?i)leminnow\.com/captcha/v1/cropped/(CROPPED_[0-9a-z_]+)/js`)
+	yidunIDRe = regexp.MustCompile(`(?i)captchaId["']?\s*[:=]\s*["']?([0-9a-f]{32})`)
+	// Tencent's prehandle request names its app ID as aid.
+	tencentAidRe = regexp.MustCompile(`cap_union_prehandle\?[^"'\s]*?\baid=(\d{6,})`)
 
 	geetestSrcRe = regexp.MustCompile(`(?i)\b(?:api|static|gcaptcha4)\.geetest\.com/`)
 	// v3's JSONP get.php carries gt and the live challenge; DOM copies escape & as &amp;.

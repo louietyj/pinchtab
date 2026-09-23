@@ -66,6 +66,23 @@ func DetectChallengeIntent(title, url, html string) *Intent {
 		}
 	}
 
+	// Tencent and Yidun load their scripts on pages that never show a captcha, so
+	// only the rendered widget counts.
+	for _, v := range []struct {
+		typ, details string
+		markers      []string
+	}{
+		{"tencent", "Tencent captcha detected", []string{"tcaptcha_transform", "tcaptcha_iframe"}},
+		{"yidun", "NetEase Yidun captcha detected", []string{`class="yidun`}},
+		{"lemin", "Lemin captcha detected", []string{"leminnow.com/captcha/"}},
+		{"yandex", "Yandex SmartCaptcha detected", []string{"smartcaptcha.yandexcloud.net/"}},
+		{"prosopo", "Prosopo Procaptcha detected", []string{"js.prosopo.io/", `class="procaptcha`}},
+	} {
+		if containsAny(lowerHTML, v.markers...) {
+			return &Intent{Type: IntentCaptcha, Confidence: 0.9, ChallengeType: v.typ, Details: v.details}
+		}
+	}
+
 	if containsAny(lowerHTML, "mtcaptcha.com/mtcv1/", `class="mtcaptcha"`) {
 		return &Intent{
 			Type:          IntentCaptcha,

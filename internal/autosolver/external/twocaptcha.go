@@ -47,6 +47,7 @@ func NewTwoCaptcha(cfg TwoCaptchaConfig) *TwoCaptcha {
 		supports: map[string]bool{
 			"recaptcha": true, "recaptcha-v3": true, "turnstile": true,
 			"hcaptcha": true, "funcaptcha": true, "mtcaptcha": true, "geetest": true,
+			"yandex": true, "prosopo": true, "lemin": true, "tencent": true, "yidun": true,
 		},
 		task:    twoCaptchaTaskFor,
 		timeout: twoCaptchaSolveTimeout,
@@ -99,6 +100,24 @@ func twoCaptchaTaskFor(c *captcha) any {
 	case "mtcaptcha":
 		task["type"] = "MtCaptchaTaskProxyless"
 		task["websiteKey"] = c.key
+	case "yandex":
+		task["type"] = "YandexSmartCaptchaTaskProxyless"
+		task["websiteKey"] = c.key
+		setIf("userAgent", c.userAgent)
+	case "prosopo":
+		task["type"] = "ProsopoTaskProxyless"
+		task["websiteKey"] = c.key
+	case "lemin":
+		task["type"] = "LeminTaskProxyless"
+		task["captchaId"] = c.key
+		task["divId"] = c.leminDivID
+	case "tencent":
+		task["type"] = "TencentTaskProxyless"
+		task["appId"] = c.key
+	case "yidun":
+		task["type"] = "YidunTaskProxyless"
+		task["websiteKey"] = c.key
+		setIf("userAgent", c.userAgent)
 	case "geetest":
 		task["type"] = "GeeTestTaskProxyless"
 		if c.geetest.version == 4 {
