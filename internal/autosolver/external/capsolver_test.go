@@ -52,6 +52,21 @@ func (e *fakeExecutor) Evaluate(_ context.Context, expr string, result interface
 	return nil
 }
 
+// Typed views of the CapSolver wire format, for the mock servers.
+type capsolverCreateRequest struct {
+	ClientKey string        `json:"clientKey"`
+	Task      capsolverTask `json:"task"`
+}
+
+type capsolverResponse struct {
+	ErrorID          int               `json:"errorId"`
+	ErrorCode        string            `json:"errorCode"`
+	ErrorDescription string            `json:"errorDescription"`
+	TaskID           string            `json:"taskId"`
+	Status           string            `json:"status"`
+	Solution         capsolverSolution `json:"solution"`
+}
+
 // --- helper tests ---
 
 func TestDetectCaptchaType(t *testing.T) {

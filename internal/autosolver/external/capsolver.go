@@ -4,13 +4,10 @@
 package external
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/pinchtab/pinchtab/internal/autosolver"
@@ -29,7 +26,7 @@ type CapsolverConfig struct {
 // and Arkose Labs FunCaptcha.
 type Capsolver struct {
 	config CapsolverConfig
-	client *http.Client
+	api    *taskAPI
 }
 
 // NewCapsolver creates a Capsolver solver with the given configuration.
@@ -42,7 +39,13 @@ func NewCapsolver(cfg CapsolverConfig) *Capsolver {
 	}
 	return &Capsolver{
 		config: cfg,
-		client: &http.Client{Timeout: 30 * time.Second},
+		api: &taskAPI{
+			label:        "capsolver",
+			baseURL:      cfg.BaseURL,
+			apiKey:       cfg.APIKey,
+			pollInterval: cfg.PollInterval,
+			client:       &http.Client{Timeout: 30 * time.Second},
+		},
 	}
 }
 
@@ -195,83 +198,25 @@ type capsolverTask struct {
 	UserAgent string `json:"userAgent,omitempty"`
 }
 
-type capsolverCreateRequest struct {
-	ClientKey string        `json:"clientKey"`
-	Task      capsolverTask `json:"task"`
-}
-
-type capsolverResultRequest struct {
-	ClientKey string `json:"clientKey"`
-	TaskID    string `json:"taskId"`
-}
-
 type capsolverSolution struct {
 	GRecaptchaResponse string `json:"gRecaptchaResponse"`
 	Token              string `json:"token"`
 }
 
-type capsolverResponse struct {
-	ErrorID          int               `json:"errorId"`
-	ErrorCode        string            `json:"errorCode"`
-	ErrorDescription string            `json:"errorDescription"`
-	TaskID           string            `json:"taskId"`
-	Status           string            `json:"status"`
-	Solution         capsolverSolution `json:"solution"`
-}
-
-// solveRemote runs the full create → poll cycle for a prebuilt task and
-// returns the token. The caller (Solve) populates the type-specific fields.
+// solveRemote runs a prebuilt task and returns its token.
 func (c *Capsolver) solveRemote(ctx context.Context, task capsolverTask) (string, error) {
-	var created capsolverResponse
-	if err := c.postJSON(ctx, "/createTask", capsolverCreateRequest{ClientKey: c.config.APIKey, Task: task}, &created); err != nil {
-		return "", fmt.Errorf("capsolver createTask: %w", err)
+	raw, err := c.api.solve(ctx, task)
+	if err != nil {
+		return "", err
 	}
-	if created.ErrorID != 0 {
-		return "", fmt.Errorf("capsolver createTask error %s: %s", created.ErrorCode, created.ErrorDescription)
+	var sol capsolverSolution
+	if err := json.Unmarshal(raw, &sol); err != nil {
+		return "", fmt.Errorf("capsolver decode solution: %w", err)
 	}
-	// Defensive fast-path: the ProxyLess task types we submit always return a
-	// taskId and require polling, so created.Solution is empty here in practice.
-	// This handles the documented case where a future/synchronous task type
-	// returns the solution inline — guarded so we never poll a task we've solved.
-	if tok := pickToken(created.Solution); tok != "" {
+	if tok := pickToken(sol); tok != "" {
 		return tok, nil
 	}
-	if created.TaskID == "" {
-		return "", fmt.Errorf("capsolver createTask returned no taskId")
-	}
-
-	ticker := time.NewTicker(c.config.PollInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return "", fmt.Errorf("capsolver: context cancelled while polling: %w", ctx.Err())
-		case <-ticker.C:
-			var res capsolverResponse
-			err := c.postJSON(ctx, "/getTaskResult", capsolverResultRequest{
-				ClientKey: c.config.APIKey,
-				TaskID:    created.TaskID,
-			}, &res)
-			if err != nil {
-				return "", fmt.Errorf("capsolver getTaskResult: %w", err)
-			}
-			if res.ErrorID != 0 {
-				return "", fmt.Errorf("capsolver getTaskResult error %s: %s", res.ErrorCode, res.ErrorDescription)
-			}
-			switch res.Status {
-			case "ready":
-				if tok := pickToken(res.Solution); tok != "" {
-					return tok, nil
-				}
-				return "", fmt.Errorf("capsolver returned ready with empty token")
-			case "failed", "error":
-				// Terminal failure that didn't set errorId — stop polling
-				// instead of burning the whole solver deadline.
-				return "", fmt.Errorf("capsolver task failed (status %q): %s %s", res.Status, res.ErrorCode, res.ErrorDescription)
-			}
-			// status "processing" / "idle" → keep polling
-		}
-	}
+	return "", fmt.Errorf("capsolver returned ready with empty token")
 }
 
 // pickToken returns the solve token regardless of which field CapSolver used.
@@ -284,29 +229,4 @@ func pickToken(s capsolverSolution) string {
 		return s.GRecaptchaResponse
 	}
 	return s.Token
-}
-
-func (c *Capsolver) postJSON(ctx context.Context, path string, body, out interface{}) error {
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.config.BaseURL+path, bytes.NewReader(buf))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("http %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
-	}
-	return json.Unmarshal(data, out)
 }
