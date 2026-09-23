@@ -494,3 +494,26 @@ func TestSolveTurnstileReadsTheSitekeyFromItsFrameURL(t *testing.T) {
 		t.Errorf("websiteKey = %q, want the live key from the frame URL", task.WebsiteKey)
 	}
 }
+
+// 2Captcha's MTCaptcha demo documents an example key in prose next to the widget;
+// the key must come from the widget's own frame.
+func TestSolveMTCaptchaUsesTheWidgetFrameKey(t *testing.T) {
+	var task capsolverTask
+	srv := mockCapsolver(t, "MT-TOKEN", &task)
+	defer srv.Close()
+
+	page := &fakePage{url: "https://2captcha.com/demo/mtcaptcha", html: `<p>For example <code>MTPublic-DemoKey9M</code></p>
+		<div class="mtcaptcha"><iframe src="https://service.mtcaptcha.com/mtcv1/client/iframe.html?v=1&sitekey=MTPublic-KzqLY1cKH&x=1"></iframe>
+		<input type="hidden" name="mtcaptcha-verifiedtoken" class="mtcaptcha-verifiedtoken"></div>`}
+	exec := &fakeExecutor{}
+	res, err := NewCapsolver(CapsolverConfig{APIKey: "k", BaseURL: srv.URL}).Solve(context.Background(), page, exec)
+	if err != nil || !res.Solved {
+		t.Fatalf("Solve: err=%v error=%q", err, res.Error)
+	}
+	if task.Type != "MtCaptchaTaskProxyLess" || task.WebsiteKey != "MTPublic-KzqLY1cKH" {
+		t.Errorf("task = %+v", task)
+	}
+	if !strings.Contains(exec.lastInject, "mtcaptcha-verifiedtoken") || !strings.Contains(exec.lastInject, "MT-TOKEN") {
+		t.Errorf("token not injected into the verified-token field: %q", exec.lastInject)
+	}
+}

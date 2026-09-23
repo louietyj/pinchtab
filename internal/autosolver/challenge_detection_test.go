@@ -341,3 +341,10 @@ func TestDetectChallengeIntent_None(t *testing.T) {
 		t.Fatalf("expected nil intent, got %+v", intent)
 	}
 }
+
+func TestDetectChallengeIntent_MTCaptcha(t *testing.T) {
+	intent := DetectChallengeIntent("Checkout", "https://example.com", `<a href="/demo/hcaptcha">hCaptcha</a><div class="mtcaptcha"></div><script src="https://service.mtcaptcha.com/mtcv1/client/mtcaptcha.min.js"></script>`)
+	if intent == nil || intent.ChallengeType != "mtcaptcha" {
+		t.Errorf("DetectChallengeIntent = %+v, want mtcaptcha", intent)
+	}
+}

@@ -46,7 +46,7 @@ func NewTwoCaptcha(cfg TwoCaptchaConfig) *TwoCaptcha {
 		},
 		supports: map[string]bool{
 			"recaptcha": true, "recaptcha-v3": true, "turnstile": true,
-			"hcaptcha": true, "funcaptcha": true,
+			"hcaptcha": true, "funcaptcha": true, "mtcaptcha": true,
 		},
 		task:    twoCaptchaTaskFor,
 		timeout: twoCaptchaSolveTimeout,
@@ -96,6 +96,9 @@ func twoCaptchaTaskFor(c *captcha) any {
 		task["websiteKey"] = c.key
 		setIf("action", c.turnstileAction)
 		setIf("data", c.turnstileCData)
+	case "mtcaptcha":
+		task["type"] = "MtCaptchaTaskProxyless"
+		task["websiteKey"] = c.key
 	case "hcaptcha":
 		task["type"] = "HCaptchaTaskProxyless"
 		task["websiteKey"] = c.key

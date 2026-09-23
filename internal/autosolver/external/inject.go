@@ -24,6 +24,8 @@ func injectToken(ctx context.Context, executor autosolver.ActionExecutor, captch
 		js = turnstileInjectJS
 	case "funcaptcha":
 		js = funcaptchaInjectJS
+	case "mtcaptcha":
+		js = mtcaptchaInjectJS
 	default:
 		return fmt.Errorf("no injector for captcha type %q", captchaType)
 	}
@@ -109,6 +111,19 @@ const turnstileInjectJS = `function(token){
   document.querySelectorAll('input[name="cf-turnstile-response"], textarea[name="cf-turnstile-response"]').forEach(function(el){el.value=token;});
   try{ if(window.turnstile){ turnstile.getResponse=function(){return token;}; } }catch(e){}
   fire('.cf-turnstile',token);
+  return true;
+}`
+
+// mtcaptchaInjectJS fills the widget's hidden field, answers
+// mtcaptcha.getVerifiedToken, and fires the configured verified-callback.
+const mtcaptchaInjectJS = `function(token){
+  document.querySelectorAll('input[name="mtcaptcha-verifiedtoken"]').forEach(function(el){el.value=token;});
+  try{ if(window.mtcaptcha){ mtcaptcha.getVerifiedToken=function(){return token;}; } }catch(e){}
+  try{
+    var cb=window.mtcaptchaConfig&&window.mtcaptchaConfig['verified-callback'];
+    if(typeof cb==='string'){ cb=window[cb]; }
+    if(typeof cb==='function'){ cb({verifiedToken:token,isVerified:true}); }
+  }catch(e){}
   return true;
 }`
 

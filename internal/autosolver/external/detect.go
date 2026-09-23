@@ -49,6 +49,17 @@ func readTurnstileSitekey(ctx context.Context, executor autosolver.ActionExecuto
 	return ""
 }
 
+// readMTCaptchaSitekey reads the key from window.mtcaptchaConfig, which holds it
+// before the widget frame (and the key in its URL) has rendered.
+func readMTCaptchaSitekey(ctx context.Context, executor autosolver.ActionExecutor) string {
+	var key string
+	expr := `(function(){try{return (window.mtcaptchaConfig&&window.mtcaptchaConfig.sitekey)||"";}catch(e){return "";}})()`
+	if err := executor.Evaluate(ctx, expr, &key); err != nil {
+		return ""
+	}
+	return key
+}
+
 // readUserAgent reads navigator.userAgent from the live page; "" if unavailable.
 func readUserAgent(ctx context.Context, executor autosolver.ActionExecutor) string {
 	var ua string
@@ -121,7 +132,7 @@ func findCaptchaWidget(html string) captchaWidget {
 				return captchaWidget{vendor, k}
 			}
 		}
-	case "turnstile", "hcaptcha":
+	case "turnstile", "hcaptcha", "mtcaptcha":
 		if unclassifiedKey == "" {
 			if k := firstSubmatch(html, frameSitekeyRe); k != "" {
 				return captchaWidget{vendor, k}
@@ -166,6 +177,8 @@ func vendorFromMarkers(markers string) string {
 		return "hcaptcha"
 	case strings.Contains(lower, "g-recaptcha"):
 		return "recaptcha"
+	case strings.Contains(lower, "mtcaptcha"):
+		return "mtcaptcha"
 	}
 	return ""
 }
@@ -182,6 +195,8 @@ func vendorFromResources(html string) string {
 		return "hcaptcha"
 	case recaptchaSrcRe.MatchString(html):
 		return "recaptcha"
+	case mtcaptchaSrcRe.MatchString(html):
+		return "mtcaptcha"
 	}
 	return ""
 }
@@ -232,6 +247,7 @@ var (
 	turnstileSrcRe = regexp.MustCompile(`(?i)\bchallenges\.cloudflare\.com`)
 	hcaptchaSrcRe  = regexp.MustCompile(`(?i)\b(?:js\.|newassets\.)?hcaptcha\.com`)
 	recaptchaSrcRe = regexp.MustCompile(`(?i)\b(?:www\.google\.com|www\.recaptcha\.net|recaptcha\.net)/recaptcha/`)
+	mtcaptchaSrcRe = regexp.MustCompile(`(?i)\bservice\d*\.mtcaptcha\.com/`)
 
 	pkeyAttrRe      = regexp.MustCompile(`(?i)data-pkey\s*=\s*["']([^"']+)["']`)
 	publicKeyJSONRe = regexp.MustCompile(`(?i)"?public_?key"?\s*[:=]\s*["']([0-9A-Fa-f-]{20,})["']`)

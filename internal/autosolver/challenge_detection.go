@@ -37,21 +37,30 @@ func DetectChallengeIntent(title, url, html string) *Intent {
 		}
 	}
 
-	if isHCaptchaChallenge(lowerURL, lowerHTML) {
-		return &Intent{
-			Type:          IntentCaptcha,
-			Confidence:    0.9,
-			ChallengeType: "hcaptcha",
-			Details:       "hCaptcha challenge detected",
-		}
-	}
-
 	if isFunCaptchaChallenge(lowerHTML) {
 		return &Intent{
 			Type:          IntentCaptcha,
 			Confidence:    0.9,
 			ChallengeType: "funcaptcha",
 			Details:       "Arkose Labs FunCaptcha challenge detected",
+		}
+	}
+
+	if containsAny(lowerHTML, "mtcaptcha.com/mtcv1/", `class="mtcaptcha"`) {
+		return &Intent{
+			Type:          IntentCaptcha,
+			Confidence:    0.9,
+			ChallengeType: "mtcaptcha",
+			Details:       "MTCaptcha challenge detected",
+		}
+	}
+
+	if isHCaptchaChallenge(lowerURL, lowerHTML) {
+		return &Intent{
+			Type:          IntentCaptcha,
+			Confidence:    0.9,
+			ChallengeType: "hcaptcha",
+			Details:       "hCaptcha challenge detected",
 		}
 	}
 

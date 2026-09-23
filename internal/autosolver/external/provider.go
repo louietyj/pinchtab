@@ -105,8 +105,13 @@ func (p *provider) Solve(ctx context.Context, page autosolver.Page, executor aut
 	}
 
 	key := extractSitekey(html, typ)
-	if key == "" && typ == "turnstile" {
-		key = readTurnstileSitekey(ctx, executor)
+	if key == "" {
+		switch typ {
+		case "turnstile":
+			key = readTurnstileSitekey(ctx, executor)
+		case "mtcaptcha":
+			key = readMTCaptchaSitekey(ctx, executor)
+		}
 	}
 	if key == "" {
 		return fail("sitekey not found", fmt.Errorf("could not extract sitekey/public key from page"))

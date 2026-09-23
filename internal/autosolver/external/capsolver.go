@@ -43,7 +43,7 @@ func NewCapsolver(cfg CapsolverConfig) *Capsolver {
 			pollInterval: cfg.PollInterval,
 			client:       &http.Client{Timeout: 30 * time.Second},
 		},
-		supports: map[string]bool{"recaptcha": true, "recaptcha-v3": true, "turnstile": true},
+		supports: map[string]bool{"recaptcha": true, "recaptcha-v3": true, "turnstile": true, "mtcaptcha": true},
 		task:     capsolverTaskFor,
 	}}
 }
@@ -90,6 +90,8 @@ func capsolverTaskType(captchaType string) (string, bool) {
 		return "ReCaptchaV3TaskProxyLess", true
 	case "turnstile":
 		return "AntiTurnstileTaskProxyLess", true
+	case "mtcaptcha":
+		return "MtCaptchaTaskProxyLess", true
 	default:
 		return "", false
 	}
