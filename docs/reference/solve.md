@@ -151,6 +151,8 @@ Each provider takes only the captcha types it can solve, so list both in `autoSo
 | AWS WAF captcha | yes | no |
 | hCaptcha | no (dropped) | yes |
 | Arkose Labs FunCaptcha | no (dropped) | yes |
+| Tencent, NetEase Yidun | no | yes (the captcha must be showing) |
+| Yandex SmartCaptcha, Prosopo, Lemin | no | yes |
 
 GeeTest v3 is detected but not solved. Its challenge is single-use, and the widget has already spent it by the time the page shows the puzzle.
 
