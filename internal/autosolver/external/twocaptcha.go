@@ -72,14 +72,30 @@ func twoCaptchaTaskFor(c *captcha) any {
 	case "recaptcha":
 		task["type"] = "RecaptchaV2TaskProxyless"
 		task["websiteKey"] = c.key
+		if c.invisible {
+			task["isInvisible"] = true
+		}
+		if c.enterprise {
+			task["type"] = "RecaptchaV2EnterpriseTaskProxyless"
+			if c.dataS != "" {
+				task["enterprisePayload"] = map[string]string{"s": c.dataS}
+			}
+		} else {
+			setIf("recaptchaDataSValue", c.dataS)
+		}
 	case "recaptcha-v3":
 		task["type"] = "RecaptchaV3TaskProxyless"
 		task["websiteKey"] = c.key
 		task["minScore"] = twoCaptchaV3MinScore
 		setIf("pageAction", c.pageAction)
+		if c.enterprise {
+			task["isEnterprise"] = true
+		}
 	case "turnstile":
 		task["type"] = "TurnstileTaskProxyless"
 		task["websiteKey"] = c.key
+		setIf("action", c.turnstileAction)
+		setIf("data", c.turnstileCData)
 	case "hcaptcha":
 		task["type"] = "HCaptchaTaskProxyless"
 		task["websiteKey"] = c.key

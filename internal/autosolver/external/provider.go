@@ -32,6 +32,12 @@ type captcha struct {
 	typ, key, url string
 	// pageAction is the reCAPTCHA v3 action passed to grecaptcha.execute.
 	pageAction string
+	// enterprise marks reCAPTCHA Enterprise; invisible a v2 widget with no
+	// checkbox; dataS the v2 widget's data-s.
+	enterprise, invisible bool
+	dataS                 string
+	// turnstileAction and turnstileCData are the widget's data-action/data-cdata.
+	turnstileAction, turnstileCData string
 	// arkoseHost and arkoseBlob come from the page, preferring what the
 	// bridge's document-start hook captured over static HTML.
 	arkoseHost, arkoseBlob string
@@ -99,6 +105,9 @@ func (p *provider) Solve(ctx context.Context, page autosolver.Page, executor aut
 	}
 
 	key := extractSitekey(html, typ)
+	if key == "" && typ == "turnstile" {
+		key = readTurnstileSitekey(ctx, executor)
+	}
 	if key == "" {
 		return fail("sitekey not found", fmt.Errorf("could not extract sitekey/public key from page"))
 	}
@@ -133,8 +142,16 @@ func (p *provider) Solve(ctx context.Context, page autosolver.Page, executor aut
 func readCaptcha(ctx context.Context, executor autosolver.ActionExecutor, html, typ, key, url string) *captcha {
 	c := &captcha{typ: typ, key: key, url: url}
 	switch typ {
+	case "recaptcha":
+		c.enterprise = isRecaptchaEnterprise(html)
+		c.invisible = isRecaptchaInvisible(html)
+		c.dataS = widgetAttr(html, "g-recaptcha", dataSAttrRe)
 	case "recaptcha-v3":
+		c.enterprise = isRecaptchaEnterprise(html)
 		c.pageAction = extractRecaptchaAction(html)
+	case "turnstile":
+		c.turnstileAction = widgetAttr(html, "cf-turnstile", dataActionRe)
+		c.turnstileCData = widgetAttr(html, "cf-turnstile", dataCDataAttrRe)
 	case "funcaptcha":
 		c.arkoseHost = extractArkoseSubdomain(html)
 		if ac := readArkoseCapture(ctx, executor); ac != nil {

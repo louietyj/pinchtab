@@ -5,6 +5,7 @@ package external
 
 import (
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -49,7 +50,33 @@ func NewCapsolver(cfg CapsolverConfig) *Capsolver {
 
 func capsolverTaskFor(c *captcha) any {
 	taskType, _ := capsolverTaskType(c.typ)
-	return capsolverTask{Type: taskType, WebsiteURL: c.url, WebsiteKey: c.key, PageAction: c.pageAction}
+	task := capsolverTask{Type: taskType, WebsiteURL: c.url, WebsiteKey: c.key, PageAction: c.pageAction}
+	switch c.typ {
+	case "recaptcha", "recaptcha-v3":
+		if c.enterprise {
+			// ReCaptchaV2TaskProxyLess -> ReCaptchaV2EnterpriseTaskProxyLess, and v3 alike.
+			task.Type = strings.Replace(task.Type, "TaskProxyLess", "EnterpriseTaskProxyLess", 1)
+		}
+		task.IsInvisible = c.invisible
+		if c.dataS != "" {
+			if c.enterprise {
+				task.EnterprisePayload = map[string]string{"s": c.dataS}
+			} else {
+				task.RecaptchaDataSValue = c.dataS
+			}
+		}
+	case "turnstile":
+		if c.turnstileAction != "" || c.turnstileCData != "" {
+			task.Metadata = map[string]string{}
+			if c.turnstileAction != "" {
+				task.Metadata["action"] = c.turnstileAction
+			}
+			if c.turnstileCData != "" {
+				task.Metadata["cdata"] = c.turnstileCData
+			}
+		}
+	}
+	return task
 }
 
 // capsolverTaskType maps an internal captcha type to a Capsolver
@@ -75,5 +102,10 @@ type capsolverTask struct {
 	WebsiteKey string `json:"websiteKey,omitempty"`
 	// PageAction is the reCAPTCHA v3 action (the value passed to
 	// grecaptcha.execute). Optional — CapSolver applies a default when absent.
-	PageAction string `json:"pageAction,omitempty"`
+	PageAction          string            `json:"pageAction,omitempty"`
+	IsInvisible         bool              `json:"isInvisible,omitempty"`
+	RecaptchaDataSValue string            `json:"recaptchaDataSValue,omitempty"`
+	EnterprisePayload   map[string]string `json:"enterprisePayload,omitempty"`
+	// Metadata carries Turnstile's action and cdata.
+	Metadata map[string]string `json:"metadata,omitempty"`
 }

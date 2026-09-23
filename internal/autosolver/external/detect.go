@@ -32,6 +32,23 @@ func readArkoseCapture(ctx context.Context, executor autosolver.ActionExecutor) 
 	return &ac
 }
 
+// readTurnstileSitekey finds the sitekey of an explicitly rendered Turnstile.
+// No DOM carries it (the widget lives in a closed shadow root); its frame URL
+// does, and Resource Timing still lists that URL.
+func readTurnstileSitekey(ctx context.Context, executor autosolver.ActionExecutor) string {
+	var urls []string
+	expr := `performance.getEntriesByType("resource").map(function(e){return e.name}).filter(function(n){return n.indexOf("/turnstile/")>=0})`
+	if err := executor.Evaluate(ctx, expr, &urls); err != nil {
+		return ""
+	}
+	for _, u := range urls {
+		if m := turnstileFrameKeyRe.FindStringSubmatch(u); len(m) > 1 {
+			return m[1]
+		}
+	}
+	return ""
+}
+
 // readUserAgent reads navigator.userAgent from the live page; "" if unavailable.
 func readUserAgent(ctx context.Context, executor autosolver.ActionExecutor) string {
 	var ua string
@@ -92,15 +109,16 @@ func findCaptchaWidget(html string) captchaWidget {
 		return captchaWidget{vendor, firstSubmatch(html, arkosePkURLRe, arkoseAPIPathRe, publicKeyJSONRe)}
 	case "recaptcha":
 		if unclassifiedKey == "" {
+			// No widget but api.js carries a render sitekey: that is v3. It goes
+			// first because a rendered v3 leaves an invisible anchor frame too.
+			// render=explicit is v2's programmatic-render flag rather than a key.
+			if m := recaptchaRenderRe.FindStringSubmatch(html); len(m) > 1 && !strings.EqualFold(m[1], "explicit") {
+				return captchaWidget{"recaptcha-v3", m[1]}
+			}
 			// A rendered challenge frame means a real v2 widget exists even though
 			// no element carries data-sitekey — the explicit-render path.
 			if k := firstSubmatch(html, recaptchaFrameKeyRe); k != "" {
 				return captchaWidget{vendor, k}
-			}
-			// No widget at all but api.js carries a render sitekey: that is v3.
-			// render=explicit is v2's programmatic-render flag rather than a key.
-			if m := recaptchaRenderRe.FindStringSubmatch(html); len(m) > 1 && !strings.EqualFold(m[1], "explicit") {
-				return captchaWidget{"recaptcha-v3", m[1]}
 			}
 		}
 	case "turnstile", "hcaptcha":
@@ -111,6 +129,32 @@ func findCaptchaWidget(html string) captchaWidget {
 		}
 	}
 	return captchaWidget{vendor, unclassifiedKey}
+}
+
+// widgetAttr reads re off the first element whose class or id carries marker.
+func widgetAttr(html, marker string, re *regexp.Regexp) string {
+	for _, tag := range htmlTagRe.FindAllString(html, -1) {
+		markers := strings.ToLower(attrValue(tag, classAttrRe) + " " + attrValue(tag, idAttrRe))
+		if !strings.Contains(markers, marker) {
+			continue
+		}
+		if v := attrValue(tag, re); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// isRecaptchaEnterprise reports a page on the Enterprise API: its tokens are
+// only valid from Enterprise solves.
+func isRecaptchaEnterprise(html string) bool {
+	return recaptchaEnterpriseRe.MatchString(html)
+}
+
+// isRecaptchaInvisible reports a v2 widget with no checkbox.
+func isRecaptchaInvisible(html string) bool {
+	return strings.EqualFold(widgetAttr(html, "g-recaptcha", dataSizeAttrRe), "invisible") ||
+		invisibleAnchorRe.MatchString(html)
 }
 
 // vendorFromMarkers names the vendor from one element's class and id tokens.
@@ -162,8 +206,7 @@ func firstSubmatch(s string, res ...*regexp.Regexp) string {
 
 // detectCaptchaType classifies the CAPTCHA on a page, or "" if none is
 // recognized. reCAPTCHA splits into "recaptcha" (v2 checkbox/invisible) and
-// "recaptcha-v3". Enterprise reCAPTCHA is not yet distinguished and takes the
-// v2 path.
+// "recaptcha-v3"; Enterprise is a property of either (isRecaptchaEnterprise).
 func detectCaptchaType(html string) string {
 	return findCaptchaWidget(html).typ
 }
@@ -179,6 +222,9 @@ var (
 	// own challenge frame URL, which is present once the widget has rendered.
 	recaptchaFrameKeyRe = regexp.MustCompile(`(?i)/recaptcha/(?:api2|enterprise)/(?:anchor|bframe)\?[^"'>]*\bk=([A-Za-z0-9_-]{20,})`)
 	frameSitekeyRe      = regexp.MustCompile(`(?i)[?&]sitekey=([A-Za-z0-9_-]{8,})`)
+	// A Turnstile frame path carries its sitekey as a segment. Live keys start
+	// 0x; Cloudflare's 1x/2x/3x test keys are refused by every solver.
+	turnstileFrameKeyRe = regexp.MustCompile(`/turnstile/[^?]*/(0x[0-9A-Za-z_-]{10,})/`)
 
 	// Vendor resource hosts. These identify the scripts and frames a page loads,
 	// which is evidence of an embedded widget in a way a bare word is not.
@@ -200,7 +246,13 @@ var (
 	// Tolerates other query params before render= (e.g. ?onload=cb&render=key).
 	recaptchaRenderRe = regexp.MustCompile(`(?i)recaptcha/(?:enterprise|api)\.js\?[^"'>]*\brender=([0-9A-Za-z_-]+)`)
 	// reCAPTCHA v3 action: the value passed to grecaptcha.execute(key, {action:…}).
-	recaptchaActionRe = regexp.MustCompile(`(?i)grecaptcha(?:\.enterprise)?\s*\.\s*execute\s*\(\s*["'][^"']*["']\s*,\s*\{[^}]*?action\s*:\s*["']([^"']+)["']`)
+	recaptchaActionRe     = regexp.MustCompile(`(?i)grecaptcha(?:\.enterprise)?\s*\.\s*execute\s*\(\s*["'][^"']*["']\s*,\s*\{[^}]*?action\s*:\s*["']([^"']+)["']`)
+	recaptchaEnterpriseRe = regexp.MustCompile(`(?i)/recaptcha/enterprise(?:\.js|/)`)
+	invisibleAnchorRe     = regexp.MustCompile(`(?i)/recaptcha/(?:api2|enterprise)/anchor\?[^"'>]*\bsize=invisible`)
+	dataSizeAttrRe        = regexp.MustCompile(`(?i)\bdata-size\s*=\s*["']([^"']*)["']`)
+	// data-s is Google's per-load value on some v2 widgets (notably Google's own).
+	dataSAttrRe     = regexp.MustCompile(`(?i)\bdata-s\s*=\s*["']([^"']*)["']`)
+	dataCDataAttrRe = regexp.MustCompile(`(?i)\bdata-cdata\s*=\s*["']([^"']*)["']`)
 	// Fallback for the v3 action when it's declared as an HTML attribute.
 	dataActionRe = regexp.MustCompile(`(?i)data-action\s*=\s*["']([^"']+)["']`)
 )

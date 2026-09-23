@@ -14,8 +14,10 @@ import (
 func injectToken(ctx context.Context, executor autosolver.ActionExecutor, captchaType string, sol tokenSolution) error {
 	var js string
 	switch captchaType {
-	case "recaptcha", "recaptcha-v3":
+	case "recaptcha":
 		js = recaptchaInjectJS
+	case "recaptcha-v3":
+		js = recaptchaV3InjectJS
 	case "hcaptcha":
 		js = hcaptchaInjectJS
 	case "turnstile":
@@ -70,6 +72,17 @@ const recaptchaInjectJS = `function(token){
     }
   }catch(e){}
   return true;
+}`
+
+// recaptchaV3InjectJS also answers grecaptcha.execute with the token: a v3 site
+// reads it from the promise execute returns when the user acts, not from a field.
+const recaptchaV3InjectJS = `function(token){
+  try{
+    var g=window.grecaptcha, solved=function(){return Promise.resolve(token);};
+    if(g&&typeof g.execute==='function'){ g.execute=solved; }
+    if(g&&g.enterprise&&typeof g.enterprise.execute==='function'){ g.enterprise.execute=solved; }
+  }catch(e){}
+  return (` + recaptchaInjectJS + `)(token);
 }`
 
 // fireDataCallbacksJS calls the global named by data-callback on each widget

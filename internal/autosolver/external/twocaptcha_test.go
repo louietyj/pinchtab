@@ -145,3 +145,33 @@ func TestSolveFuncaptchaWithBlob(t *testing.T) {
 		t.Errorf("expected data.blob=BDA-BLOB-XYZ, got %+v", dataObj)
 	}
 }
+
+func TestTwoCaptchaTaskCarriesEnterpriseAndTurnstileData(t *testing.T) {
+	for _, tc := range []struct {
+		name, html string
+		want       map[string]any
+	}{
+		{"v2 enterprise", `<script src="https://www.google.com/recaptcha/enterprise.js"></script><div class="g-recaptcha" data-sitekey="6LfE" data-s="S"></div>`,
+			map[string]any{"type": "RecaptchaV2EnterpriseTaskProxyless", "enterprisePayload": map[string]any{"s": "S"}}},
+		{"v3 enterprise", `<script src="https://www.google.com/recaptcha/enterprise.js?render=6Lel"></script>`,
+			map[string]any{"type": "RecaptchaV3TaskProxyless", "isEnterprise": true}},
+		{"turnstile", `<div class="cf-turnstile" data-sitekey="0x4AAA" data-action="login" data-cdata="CD"></div>`,
+			map[string]any{"type": "TurnstileTaskProxyless", "action": "login", "data": "CD"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var task map[string]any
+			srv := mockTwoCaptcha(t, `{"token":"T"}`, &task)
+			defer srv.Close()
+			if _, err := newTestTwoCaptcha(srv.URL).Solve(context.Background(), &fakePage{url: "https://ex.com", html: tc.html}, &fakeExecutor{}); err != nil {
+				t.Fatalf("Solve: %v", err)
+			}
+			for k, v := range tc.want {
+				got, _ := json.Marshal(task[k])
+				want, _ := json.Marshal(v)
+				if string(got) != string(want) {
+					t.Errorf("task[%q] = %s, want %s (task %v)", k, got, want, task)
+				}
+			}
+		})
+	}
+}

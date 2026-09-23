@@ -32,6 +32,8 @@ type fakeExecutor struct {
 	lastInject string // last non-read Evaluate expr (the token injection)
 	arkoseJSON string // value returned for the window.__ptArkose read
 	userAgent  string // value returned for the navigator.userAgent read
+	// resources are returned for the Resource Timing read.
+	resources []string
 }
 
 func (e *fakeExecutor) Click(context.Context, float64, float64) error        { return nil }
@@ -42,6 +44,12 @@ func (e *fakeExecutor) Evaluate(_ context.Context, expr string, result interface
 	if strings.Contains(expr, "window.__ptArkose?") { // the capture read, not the token injection
 		if sp, ok := result.(*string); ok {
 			*sp = e.arkoseJSON
+		}
+		return nil
+	}
+	if strings.Contains(expr, "getEntriesByType") {
+		if sp, ok := result.(*[]string); ok {
+			*sp = e.resources
 		}
 		return nil
 	}
@@ -398,5 +406,91 @@ func TestDetectExplicitRenderRecaptchaFromFrameURL(t *testing.T) {
 	}
 	if w.key != "6LeQbtsSAAAAAHevV56qhVr_0JhQI7N-zTPoOoWJ" {
 		t.Errorf("key = %q, want the frame's k= param", w.key)
+	}
+}
+
+// A rendered v3 leaves an invisible anchor frame carrying its key; the page is
+// still v3, and a v2 task for it is refused or yields a useless token.
+func TestDetectRenderedRecaptchaV3StaysV3(t *testing.T) {
+	html := `<script src="https://www.google.com/recaptcha/api.js?render=6Lcyqq8o"></script>
+		<iframe src="https://www.google.com/recaptcha/api2/anchor?ar=1&k=6Lcyqq8o&co=x&size=invisible"></iframe>`
+	if w := findCaptchaWidget(html); w.typ != "recaptcha-v3" || w.key != "6Lcyqq8o" {
+		t.Errorf("findCaptchaWidget = %+v, want recaptcha-v3 6Lcyqq8o", w)
+	}
+}
+
+func TestCapsolverTaskCarriesRecaptchaVariants(t *testing.T) {
+	for _, tc := range []struct {
+		name, html string
+		want       capsolverTask
+	}{
+		{
+			name: "v2 enterprise with data-s",
+			html: `<script src="https://www.google.com/recaptcha/enterprise.js"></script><div class="g-recaptcha" data-sitekey="6LfE" data-s="S-VALUE"></div>`,
+			want: capsolverTask{Type: "ReCaptchaV2EnterpriseTaskProxyLess", WebsiteKey: "6LfE", EnterprisePayload: map[string]string{"s": "S-VALUE"}},
+		},
+		{
+			name: "v2 invisible with data-s",
+			html: `<div class="g-recaptcha" data-sitekey="6LdO" data-size="invisible" data-s="S2"></div>`,
+			want: capsolverTask{Type: "ReCaptchaV2TaskProxyLess", WebsiteKey: "6LdO", IsInvisible: true, RecaptchaDataSValue: "S2"},
+		},
+		{
+			name: "v3 enterprise",
+			html: `<script src="https://www.google.com/recaptcha/enterprise.js?render=6Lel"></script><script>grecaptcha.enterprise.execute('6Lel', {action: 'demo_action'})</script>`,
+			want: capsolverTask{Type: "ReCaptchaV3EnterpriseTaskProxyLess", WebsiteKey: "6Lel", PageAction: "demo_action"},
+		},
+		{
+			name: "turnstile metadata",
+			html: `<div class="cf-turnstile" data-sitekey="0x4AAA" data-action="login" data-cdata="CD"></div>`,
+			want: capsolverTask{Type: "AntiTurnstileTaskProxyLess", WebsiteKey: "0x4AAA", Metadata: map[string]string{"action": "login", "cdata": "CD"}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var task capsolverTask
+			srv := mockCapsolver(t, "TOKEN", &task)
+			defer srv.Close()
+			c := NewCapsolver(CapsolverConfig{APIKey: "k", BaseURL: srv.URL})
+			if _, err := c.Solve(context.Background(), &fakePage{url: "https://ex.com", html: tc.html}, &fakeExecutor{}); err != nil {
+				t.Fatalf("Solve: %v", err)
+			}
+			tc.want.WebsiteURL = "https://ex.com"
+			got, _ := json.Marshal(task)
+			want, _ := json.Marshal(tc.want)
+			if string(got) != string(want) {
+				t.Errorf("task = %s\nwant   %s", got, want)
+			}
+		})
+	}
+}
+
+func TestRecaptchaV3InjectionAnswersExecute(t *testing.T) {
+	exec := &fakeExecutor{}
+	if err := injectToken(context.Background(), exec, "recaptcha-v3", tokenSolution{Token: "V3TOK"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(exec.lastInject, "g.execute=solved") || !strings.Contains(exec.lastInject, `"V3TOK"`) {
+		t.Errorf("v3 injection does not override grecaptcha.execute: %q", exec.lastInject)
+	}
+}
+
+// An explicitly rendered Turnstile keeps its sitekey out of the DOM; the frame
+// URL carries it, and a test key beside it must not be picked.
+func TestSolveTurnstileReadsTheSitekeyFromItsFrameURL(t *testing.T) {
+	var task capsolverTask
+	srv := mockCapsolver(t, "TS-TOKEN", &task)
+	defer srv.Close()
+
+	page := &fakePage{url: "https://nopecha.com/captcha/turnstile", html: `<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=cb"></script><div id="c"><input type="hidden" name="cf-turnstile-response"></div>`}
+	exec := &fakeExecutor{resources: []string{
+		"https://challenges.cloudflare.com/turnstile/v0/api.js?onload=cb",
+		"https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/av0/rch/og3bz/3x00000000000000000000FF/auto/fbE/new/normal?lang=auto",
+		"https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/av0/rch/gi51v/0x4AAAAAAAA-1LUipBaoBpsG/auto/fbE/new/normal?lang=auto",
+	}}
+	res, err := NewCapsolver(CapsolverConfig{APIKey: "k", BaseURL: srv.URL}).Solve(context.Background(), page, exec)
+	if err != nil || !res.Solved {
+		t.Fatalf("Solve: err=%v error=%q", err, res.Error)
+	}
+	if task.WebsiteKey != "0x4AAAAAAAA-1LUipBaoBpsG" {
+		t.Errorf("websiteKey = %q, want the live key from the frame URL", task.WebsiteKey)
 	}
 }
