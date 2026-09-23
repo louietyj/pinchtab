@@ -89,7 +89,7 @@ func findCaptchaWidget(html string) captchaWidget {
 
 	switch vendor {
 	case "funcaptcha":
-		return captchaWidget{vendor, firstSubmatch(html, arkosePkURLRe, publicKeyJSONRe)}
+		return captchaWidget{vendor, firstSubmatch(html, arkosePkURLRe, arkoseAPIPathRe, publicKeyJSONRe)}
 	case "recaptcha":
 		if unclassifiedKey == "" {
 			// A rendered challenge frame means a real v2 widget exists even though
@@ -187,9 +187,11 @@ var (
 	hcaptchaSrcRe  = regexp.MustCompile(`(?i)\b(?:js\.|newassets\.)?hcaptcha\.com`)
 	recaptchaSrcRe = regexp.MustCompile(`(?i)\b(?:www\.google\.com|www\.recaptcha\.net|recaptcha\.net)/recaptcha/`)
 
-	pkeyAttrRe        = regexp.MustCompile(`(?i)data-pkey\s*=\s*["']([^"']+)["']`)
-	publicKeyJSONRe   = regexp.MustCompile(`(?i)"?public_?key"?\s*[:=]\s*["']([0-9A-Fa-f-]{20,})["']`)
-	arkosePkURLRe     = regexp.MustCompile(`(?i)[?&]pk=([0-9A-Fa-f-]{20,})`)
+	pkeyAttrRe      = regexp.MustCompile(`(?i)data-pkey\s*=\s*["']([^"']+)["']`)
+	publicKeyJSONRe = regexp.MustCompile(`(?i)"?public_?key"?\s*[:=]\s*["']([0-9A-Fa-f-]{20,})["']`)
+	arkosePkURLRe   = regexp.MustCompile(`(?i)[?&]pk=([0-9A-Fa-f-]{20,})`)
+	// The current embed carries the key only in the script path: /v2/<key>/api.js.
+	arkoseAPIPathRe   = regexp.MustCompile(`(?i)arkoselabs\.com/v2/([0-9A-Fa-f-]{36})/api\.js`)
 	arkoseSubdomainRe = regexp.MustCompile(`(?i)https?://([a-z0-9-]+\.arkoselabs\.com)`)
 	// Case-insensitive so extraction matches detectCaptchaType (which lowercases);
 	// tolerant of either quote style and whitespace around '='.
@@ -215,7 +217,7 @@ func extractSitekey(html, captchaType string) string {
 	// document-wide patterns, which is all a caller naming its own type can use.
 	switch captchaType {
 	case "funcaptcha":
-		return firstSubmatch(html, pkeyAttrRe, arkosePkURLRe, publicKeyJSONRe)
+		return firstSubmatch(html, pkeyAttrRe, arkosePkURLRe, arkoseAPIPathRe, publicKeyJSONRe)
 	case "recaptcha-v3":
 		// v3 has no data-sitekey widget; the key is in the api.js ?render= param.
 		return firstSubmatch(html, recaptchaRenderRe)

@@ -106,6 +106,9 @@ func TestExtractSitekey(t *testing.T) {
 	if got := extractSitekey(`<iframe src="https://x.arkoselabs.com/fc/gt2/?pk=0152B4EB-D2DC-460A-89A1-629838B529C9"></iframe>`, "funcaptcha"); got != "0152B4EB-D2DC-460A-89A1-629838B529C9" {
 		t.Errorf("funcaptcha pk= url = %q", got)
 	}
+	if got := extractSitekey(`<script src="https://client-api.arkoselabs.com/v2/DF9C4D87-CB7B-4062-9FEB-BADB6ADA61E6/api.js"></script>`, "funcaptcha"); got != "DF9C4D87-CB7B-4062-9FEB-BADB6ADA61E6" {
+		t.Errorf("funcaptcha /v2/<key>/api.js = %q", got)
+	}
 	// v3 sitekey lives in the api.js ?render= param, not data-sitekey.
 	if got := extractSitekey(`<script src="https://www.google.com/recaptcha/api.js?onload=cb&render=6Lc_V3_KEY"></script>`, "recaptcha-v3"); got != "6Lc_V3_KEY" {
 		t.Errorf("recaptcha-v3 render sitekey = %q", got)
