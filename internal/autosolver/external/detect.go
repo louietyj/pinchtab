@@ -49,6 +49,48 @@ func readTurnstileSitekey(ctx context.Context, executor autosolver.ActionExecuto
 	return ""
 }
 
+// geetestParams identifies a GeeTest challenge: gt and a single-use challenge
+// for v3, a captcha ID for v4.
+type geetestParams struct {
+	version                  int
+	gt, challenge, captchaID string
+}
+
+// readGeetest prefers what the bridge's document-start hook captured from the
+// site's initGeetest call, then the vendor's own request URLs, which name the
+// same values. A v3 challenge is single-use and reissued on refresh, so the most
+// recent request wins.
+func readGeetest(ctx context.Context, executor autosolver.ActionExecutor, html string) geetestParams {
+	var hooked struct {
+		Version       int
+		GT, Challenge string
+		CaptchaID     string `json:"captchaId"`
+	}
+	var raw string
+	expr := `(function(){try{return window.__ptGeetest?JSON.stringify(window.__ptGeetest):"";}catch(e){return "";}})()`
+	if executor.Evaluate(ctx, expr, &raw) == nil && raw != "" && json.Unmarshal([]byte(raw), &hooked) == nil {
+		if hooked.Version == 4 && hooked.CaptchaID != "" {
+			return geetestParams{version: 4, captchaID: hooked.CaptchaID}
+		}
+		if hooked.Version == 3 && hooked.GT != "" && hooked.Challenge != "" {
+			return geetestParams{version: 3, gt: hooked.GT, challenge: hooked.Challenge}
+		}
+	}
+
+	var urls []string
+	resources := `performance.getEntriesByType("resource").map(function(e){return e.name}).filter(function(n){return n.indexOf("geetest.com")>=0})`
+	_ = executor.Evaluate(ctx, resources, &urls)
+	seen := html + "\n" + strings.Join(urls, "\n")
+	if m := geetestV3Re.FindAllStringSubmatch(seen, -1); len(m) > 0 {
+		last := m[len(m)-1]
+		return geetestParams{version: 3, gt: last[1], challenge: last[2]}
+	}
+	if id := firstSubmatch(seen, geetestV4Re); id != "" {
+		return geetestParams{version: 4, captchaID: id}
+	}
+	return geetestParams{}
+}
+
 // readMTCaptchaSitekey reads the key from window.mtcaptchaConfig, which holds it
 // before the widget frame (and the key in its URL) has rendered.
 func readMTCaptchaSitekey(ctx context.Context, executor autosolver.ActionExecutor) string {
@@ -199,6 +241,8 @@ func vendorFromResources(html string) string {
 		return "mtcaptcha"
 	case awswafCaptchaSrcRe.MatchString(html):
 		return "awswaf"
+	case geetestSrcRe.MatchString(html):
+		return "geetest"
 	}
 	return ""
 }
@@ -285,6 +329,11 @@ var (
 	gokuPropsRe           = regexp.MustCompile(`(?s)window\.gokuProps\s*=\s*(\{[^}]*\})`)
 	awswafCookieDomainsRe = regexp.MustCompile(`awsWafCookieDomainList\s*=\s*\[([^\]]*)\]`)
 	quotedRe              = regexp.MustCompile(`["']([^"']+)["']`)
+
+	geetestSrcRe = regexp.MustCompile(`(?i)\b(?:api|static|gcaptcha4)\.geetest\.com/`)
+	// v3's JSONP get.php carries gt and the live challenge; DOM copies escape & as &amp;.
+	geetestV3Re = regexp.MustCompile(`(?i)api\.geetest\.com/get\.php\?[^"'\s<>]*?\bgt=([0-9a-f]{32})(?:&amp;|&)challenge=([0-9a-z]{32,})`)
+	geetestV4Re = regexp.MustCompile(`(?i)gcaptcha4\.geetest\.com/load\?[^"'\s<>]*?\bcaptcha_id=([0-9a-f]{32})`)
 
 	pkeyAttrRe      = regexp.MustCompile(`(?i)data-pkey\s*=\s*["']([^"']+)["']`)
 	publicKeyJSONRe = regexp.MustCompile(`(?i)"?public_?key"?\s*[:=]\s*["']([0-9A-Fa-f-]{20,})["']`)

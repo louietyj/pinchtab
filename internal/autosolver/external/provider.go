@@ -44,6 +44,7 @@ type captcha struct {
 	// userAgent is the browser's: Arkose and hCaptcha bind the token to it.
 	userAgent string
 	aws       awsWAFPage
+	geetest   geetestParams
 }
 
 type tokenSolution struct {
@@ -110,24 +111,31 @@ func (p *provider) Solve(ctx context.Context, page autosolver.Page, executor aut
 		return fail(msg, autosolver.Permanent(errors.New(msg)))
 	}
 
-	key := extractSitekey(html, typ)
-	if key == "" {
-		switch typ {
-		case "turnstile":
-			key = readTurnstileSitekey(ctx, executor)
-		case "mtcaptcha":
-			key = readMTCaptchaSitekey(ctx, executor)
-		}
+	c := readCaptcha(ctx, executor, html, typ, extractSitekey(html, typ), page.URL())
+	if typ == "geetest" && c.geetest.version == 3 {
+		// A v3 challenge is single-use and the widget's own get.php has already
+		// spent it; a fresh one comes only from the site's own register endpoint.
+		// Both providers refuse a spent challenge.
+		msg := "geetest v3: the page has already used its challenge"
+		return fail(msg, autosolver.Permanent(errors.New(msg)))
 	}
 	// AWS WAF has no sitekey: the page URL alone identifies it.
-	if key == "" && typ != "awswaf" {
+	if c.key == "" && typ != "awswaf" {
 		return fail("sitekey not found", fmt.Errorf("could not extract sitekey/public key from page"))
 	}
 
-	c := readCaptcha(ctx, executor, html, typ, key, page.URL())
 	raw, err := p.api.solve(ctx, p.task(c))
 	if err != nil {
 		return fail(err.Error(), err)
+	}
+	if typ == "geetest" {
+		if err := injectGeetest(ctx, executor, c.geetest.version, raw); err != nil {
+			return fail(fmt.Sprintf("inject token: %v", err), autosolver.Spent(err))
+		}
+		result.Solved = true
+		result.FinalTitle = page.Title()
+		result.FinalURL = page.URL()
+		return result, nil
 	}
 	var sol tokenSolution
 	if err := json.Unmarshal(raw, &sol); err != nil {
@@ -167,8 +175,21 @@ func readCaptcha(ctx context.Context, executor autosolver.ActionExecutor, html, 
 		c.enterprise = isRecaptchaEnterprise(html)
 		c.pageAction = extractRecaptchaAction(html)
 	case "turnstile":
+		if c.key == "" {
+			c.key = readTurnstileSitekey(ctx, executor)
+		}
 		c.turnstileAction = widgetAttr(html, "cf-turnstile", dataActionRe)
 		c.turnstileCData = widgetAttr(html, "cf-turnstile", dataCDataAttrRe)
+	case "mtcaptcha":
+		if c.key == "" {
+			c.key = readMTCaptchaSitekey(ctx, executor)
+		}
+	case "geetest":
+		c.geetest = readGeetest(ctx, executor, html)
+		c.key = c.geetest.gt
+		if c.geetest.version == 4 {
+			c.key = c.geetest.captchaID
+		}
 	case "funcaptcha":
 		c.arkoseHost = extractArkoseSubdomain(html)
 		if ac := readArkoseCapture(ctx, executor); ac != nil {

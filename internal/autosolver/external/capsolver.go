@@ -43,8 +43,11 @@ func NewCapsolver(cfg CapsolverConfig) *Capsolver {
 			pollInterval: cfg.PollInterval,
 			client:       &http.Client{Timeout: 30 * time.Second},
 		},
-		supports: map[string]bool{"recaptcha": true, "recaptcha-v3": true, "turnstile": true, "mtcaptcha": true, "awswaf": true},
-		task:     capsolverTaskFor,
+		supports: map[string]bool{
+			"recaptcha": true, "recaptcha-v3": true, "turnstile": true,
+			"mtcaptcha": true, "awswaf": true, "geetest": true,
+		},
+		task: capsolverTaskFor,
 	}}
 }
 
@@ -68,6 +71,9 @@ func capsolverTaskFor(c *captcha) any {
 	case "awswaf":
 		task.AwsKey, task.AwsIv, task.AwsContext = c.aws.Key, c.aws.IV, c.aws.Context
 		task.AwsChallengeJS = c.aws.ChallengeJS
+	case "geetest":
+		task.WebsiteKey = ""
+		task.GT, task.Challenge, task.CaptchaID = c.geetest.gt, c.geetest.challenge, c.geetest.captchaID
 	case "turnstile":
 		if c.turnstileAction != "" || c.turnstileCData != "" {
 			task.Metadata = map[string]string{}
@@ -97,6 +103,8 @@ func capsolverTaskType(captchaType string) (string, bool) {
 		return "MtCaptchaTaskProxyLess", true
 	case "awswaf":
 		return "AntiAwsWafTaskProxyLess", true
+	case "geetest":
+		return "GeeTestTaskProxyLess", true
 	default:
 		return "", false
 	}
@@ -120,4 +128,8 @@ type capsolverTask struct {
 	AwsIv          string `json:"awsIv,omitempty"`
 	AwsContext     string `json:"awsContext,omitempty"`
 	AwsChallengeJS string `json:"awsChallengeJS,omitempty"`
+	// GeeTest: gt and challenge for v3, captchaId for v4.
+	GT        string `json:"gt,omitempty"`
+	Challenge string `json:"challenge,omitempty"`
+	CaptchaID string `json:"captchaId,omitempty"`
 }

@@ -57,6 +57,15 @@ func DetectChallengeIntent(title, url, html string) *Intent {
 		}
 	}
 
+	if containsAny(lowerHTML, "api.geetest.com/", "static.geetest.com/", "gcaptcha4.geetest.com/") {
+		return &Intent{
+			Type:          IntentCaptcha,
+			Confidence:    0.9,
+			ChallengeType: "geetest",
+			Details:       "GeeTest challenge detected",
+		}
+	}
+
 	if containsAny(lowerHTML, "mtcaptcha.com/mtcv1/", `class="mtcaptcha"`) {
 		return &Intent{
 			Type:          IntentCaptcha,

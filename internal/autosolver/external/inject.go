@@ -78,6 +78,49 @@ const recaptchaInjectJS = `function(token){
   return true;
 }`
 
+// injectGeetest hands a GeeTest solve to the site the way the widget would: it
+// answers captchaObj.getValidate() and calls the site's onSuccess handlers, both
+// captured by the bridge's document-start hook. v3 form posts read the
+// geetest_* fields instead, so those are filled too.
+func injectGeetest(ctx context.Context, executor autosolver.ActionExecutor, version int, solution json.RawMessage) error {
+	var sol map[string]any
+	if err := json.Unmarshal(solution, &sol); err != nil {
+		return fmt.Errorf("decode geetest solution: %w", err)
+	}
+	validate := map[string]any{}
+	if version == 4 {
+		for _, k := range []string{"captcha_id", "lot_number", "pass_token", "gen_time", "captcha_output"} {
+			validate[k] = sol[k]
+		}
+		if sol["pass_token"] == nil && sol["captcha_output"] == nil {
+			return fmt.Errorf("geetest v4 solution carries no pass_token")
+		}
+	} else {
+		validate["geetest_challenge"] = sol["challenge"]
+		validate["geetest_validate"] = sol["validate"]
+		validate["geetest_seccode"] = sol["seccode"]
+		if sol["validate"] == nil {
+			return fmt.Errorf("geetest v3 solution carries no validate")
+		}
+	}
+	lit, err := json.Marshal(validate)
+	if err != nil {
+		return fmt.Errorf("encode geetest solution: %w", err)
+	}
+	var ok bool
+	return executor.Evaluate(ctx, fmt.Sprintf("(%s)(%s)", geetestInjectJS, lit), &ok)
+}
+
+const geetestInjectJS = `function(v){
+  var o=window.__ptGeetestObj;
+  try{ if(o){ o.getValidate=function(){return v;}; } }catch(e){}
+  Object.keys(v).forEach(function(k){
+    document.querySelectorAll('input[name="'+k+'"]').forEach(function(el){el.value=v[k];});
+  });
+  (window.__ptGeetestSuccess||[]).forEach(function(fn){ try{ fn(); }catch(e){} });
+  return true;
+}`
+
 // injectAWSWAFCookie stores the solved aws-waf-token where the page's own SDK
 // would, reloads, and checks the captcha is gone: AWS WAF reads the cookie on
 // the next request, never from the page.
