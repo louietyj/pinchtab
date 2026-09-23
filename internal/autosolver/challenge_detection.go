@@ -46,6 +46,17 @@ func DetectChallengeIntent(title, url, html string) *Intent {
 		}
 	}
 
+	// Only the captcha action; a silent challenge (token.awswaf.com alone) clears
+	// in the browser and has nothing to solve.
+	if containsAny(lowerHTML, ".captcha.awswaf.com/") {
+		return &Intent{
+			Type:          IntentCaptcha,
+			Confidence:    0.9,
+			ChallengeType: "awswaf",
+			Details:       "AWS WAF captcha detected",
+		}
+	}
+
 	if containsAny(lowerHTML, "mtcaptcha.com/mtcv1/", `class="mtcaptcha"`) {
 		return &Intent{
 			Type:          IntentCaptcha,

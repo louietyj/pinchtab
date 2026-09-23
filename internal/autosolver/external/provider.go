@@ -43,6 +43,7 @@ type captcha struct {
 	arkoseHost, arkoseBlob string
 	// userAgent is the browser's: Arkose and hCaptcha bind the token to it.
 	userAgent string
+	aws       awsWAFPage
 }
 
 type tokenSolution struct {
@@ -50,14 +51,19 @@ type tokenSolution struct {
 	Token              string `json:"token"`
 	// RespKey is hCaptcha's second value, read by sites through hcaptcha.getRespKey.
 	RespKey string `json:"respKey"`
+	// Cookie is AWS WAF's answer: the aws-waf-token value.
+	Cookie string `json:"cookie"`
 }
 
 // token returns the solve token regardless of which field the provider used.
 func (s tokenSolution) token() string {
-	if s.GRecaptchaResponse != "" {
+	switch {
+	case s.GRecaptchaResponse != "":
 		return s.GRecaptchaResponse
+	case s.Token != "":
+		return s.Token
 	}
-	return s.Token
+	return s.Cookie
 }
 
 func (p *provider) Name() string  { return p.name }
@@ -113,7 +119,8 @@ func (p *provider) Solve(ctx context.Context, page autosolver.Page, executor aut
 			key = readMTCaptchaSitekey(ctx, executor)
 		}
 	}
-	if key == "" {
+	// AWS WAF has no sitekey: the page URL alone identifies it.
+	if key == "" && typ != "awswaf" {
 		return fail("sitekey not found", fmt.Errorf("could not extract sitekey/public key from page"))
 	}
 
@@ -132,7 +139,12 @@ func (p *provider) Solve(ctx context.Context, page autosolver.Page, executor aut
 		return fail(err.Error(), err)
 	}
 
-	if err := injectToken(ctx, executor, typ, sol); err != nil {
+	if typ == "awswaf" {
+		err = injectAWSWAFCookie(ctx, executor, page, sol.token(), c.aws.CookieDomains)
+	} else {
+		err = injectToken(ctx, executor, typ, sol)
+	}
+	if err != nil {
 		return fail(fmt.Sprintf("inject token: %v", err), autosolver.Spent(err))
 	}
 
@@ -171,6 +183,8 @@ func readCaptcha(ctx context.Context, executor autosolver.ActionExecutor, html, 
 		c.userAgent = readUserAgent(ctx, executor)
 	case "hcaptcha":
 		c.userAgent = readUserAgent(ctx, executor)
+	case "awswaf":
+		c.aws = readAWSWAFPage(html)
 	}
 	return c
 }

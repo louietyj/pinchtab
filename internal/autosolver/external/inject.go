@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/pinchtab/pinchtab/internal/autosolver"
 )
@@ -75,6 +77,48 @@ const recaptchaInjectJS = `function(token){
   }catch(e){}
   return true;
 }`
+
+// injectAWSWAFCookie stores the solved aws-waf-token where the page's own SDK
+// would, reloads, and checks the captcha is gone: AWS WAF reads the cookie on
+// the next request, never from the page.
+func injectAWSWAFCookie(ctx context.Context, executor autosolver.ActionExecutor, page autosolver.Page, token string, domains []string) error {
+	pageURL := page.URL()
+	u, err := url.Parse(pageURL)
+	if err != nil {
+		return fmt.Errorf("parse page URL: %w", err)
+	}
+	cookie := "aws-waf-token=" + token + "; path=/"
+	// Written host-only when the SDK would scope it to a domain, a second cookie
+	// of the same name would shadow the one the server reads.
+	for _, d := range domains {
+		if u.Hostname() == d || strings.HasSuffix(u.Hostname(), "."+d) {
+			cookie += "; domain=" + d
+			break
+		}
+	}
+	if u.Scheme == "https" {
+		cookie += "; secure"
+	}
+	lit, err := json.Marshal(cookie)
+	if err != nil {
+		return fmt.Errorf("encode cookie: %w", err)
+	}
+	var ok bool
+	if err := executor.Evaluate(ctx, fmt.Sprintf("(function(c){document.cookie=c;return true;})(%s)", lit), &ok); err != nil {
+		return fmt.Errorf("set aws-waf-token: %w", err)
+	}
+	if err := executor.Navigate(ctx, pageURL); err != nil {
+		return fmt.Errorf("reload: %w", err)
+	}
+	html, err := page.HTML()
+	if err != nil {
+		return fmt.Errorf("read reloaded page: %w", err)
+	}
+	if awswafCaptchaSrcRe.MatchString(html) {
+		return fmt.Errorf("aws-waf-token rejected: the reloaded page still serves the captcha")
+	}
+	return nil
+}
 
 // recaptchaV3InjectJS also answers grecaptcha.execute with the token: a v3 site
 // reads it from the promise execute returns when the user acts, not from a field.

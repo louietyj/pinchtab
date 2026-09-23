@@ -43,7 +43,7 @@ func NewCapsolver(cfg CapsolverConfig) *Capsolver {
 			pollInterval: cfg.PollInterval,
 			client:       &http.Client{Timeout: 30 * time.Second},
 		},
-		supports: map[string]bool{"recaptcha": true, "recaptcha-v3": true, "turnstile": true, "mtcaptcha": true},
+		supports: map[string]bool{"recaptcha": true, "recaptcha-v3": true, "turnstile": true, "mtcaptcha": true, "awswaf": true},
 		task:     capsolverTaskFor,
 	}}
 }
@@ -65,6 +65,9 @@ func capsolverTaskFor(c *captcha) any {
 				task.RecaptchaDataSValue = c.dataS
 			}
 		}
+	case "awswaf":
+		task.AwsKey, task.AwsIv, task.AwsContext = c.aws.Key, c.aws.IV, c.aws.Context
+		task.AwsChallengeJS = c.aws.ChallengeJS
 	case "turnstile":
 		if c.turnstileAction != "" || c.turnstileCData != "" {
 			task.Metadata = map[string]string{}
@@ -92,6 +95,8 @@ func capsolverTaskType(captchaType string) (string, bool) {
 		return "AntiTurnstileTaskProxyLess", true
 	case "mtcaptcha":
 		return "MtCaptchaTaskProxyLess", true
+	case "awswaf":
+		return "AntiAwsWafTaskProxyLess", true
 	default:
 		return "", false
 	}
@@ -110,4 +115,9 @@ type capsolverTask struct {
 	EnterprisePayload   map[string]string `json:"enterprisePayload,omitempty"`
 	// Metadata carries Turnstile's action and cdata.
 	Metadata map[string]string `json:"metadata,omitempty"`
+	// AWS WAF: window.gokuProps and the challenge.js URL, read fresh each load.
+	AwsKey         string `json:"awsKey,omitempty"`
+	AwsIv          string `json:"awsIv,omitempty"`
+	AwsContext     string `json:"awsContext,omitempty"`
+	AwsChallengeJS string `json:"awsChallengeJS,omitempty"`
 }

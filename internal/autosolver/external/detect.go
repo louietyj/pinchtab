@@ -197,8 +197,38 @@ func vendorFromResources(html string) string {
 		return "recaptcha"
 	case mtcaptchaSrcRe.MatchString(html):
 		return "mtcaptcha"
+	case awswafCaptchaSrcRe.MatchString(html):
+		return "awswaf"
 	}
 	return ""
+}
+
+// awsWAFPage is what an AWS WAF captcha page hands its own SDK.
+type awsWAFPage struct {
+	Key, IV, Context string
+	ChallengeJS      string
+	// CookieDomains is awsWafCookieDomainList: where the SDK writes aws-waf-token.
+	CookieDomains []string
+}
+
+// readAWSWAFPage reads window.gokuProps, the challenge.js URL and the cookie
+// domain list off an AWS WAF captcha page. Any may be missing; CapSolver needs
+// only the page URL when the page is served fresh.
+func readAWSWAFPage(html string) awsWAFPage {
+	var p awsWAFPage
+	if m := gokuPropsRe.FindStringSubmatch(html); len(m) > 1 {
+		var goku struct{ Key, IV, Context string }
+		if json.Unmarshal([]byte(m[1]), &goku) == nil {
+			p.Key, p.IV, p.Context = goku.Key, goku.IV, goku.Context
+		}
+	}
+	p.ChallengeJS = firstSubmatch(html, awswafChallengeJSRe)
+	if m := awswafCookieDomainsRe.FindStringSubmatch(html); len(m) > 1 {
+		for _, q := range quotedRe.FindAllStringSubmatch(m[1], -1) {
+			p.CookieDomains = append(p.CookieDomains, q[1])
+		}
+	}
+	return p
 }
 
 // attrValue reads one attribute out of a single tag, or "" when absent.
@@ -248,6 +278,13 @@ var (
 	hcaptchaSrcRe  = regexp.MustCompile(`(?i)\b(?:js\.|newassets\.)?hcaptcha\.com`)
 	recaptchaSrcRe = regexp.MustCompile(`(?i)\b(?:www\.google\.com|www\.recaptcha\.net|recaptcha\.net)/recaptcha/`)
 	mtcaptchaSrcRe = regexp.MustCompile(`(?i)\bservice\d*\.mtcaptcha\.com/`)
+	// Only the captcha action loads captcha.js; a challenge-only page (token.
+	// awswaf.com/…/challenge.js alone) clears in the browser with nothing to buy.
+	awswafCaptchaSrcRe    = regexp.MustCompile(`(?i)\.captcha\.awswaf\.com/[^"'\s]*captcha\.js`)
+	awswafChallengeJSRe   = regexp.MustCompile(`(?i)(https://[^"'\s]+\.token\.awswaf\.com/[^"'\s]*challenge\.js)`)
+	gokuPropsRe           = regexp.MustCompile(`(?s)window\.gokuProps\s*=\s*(\{[^}]*\})`)
+	awswafCookieDomainsRe = regexp.MustCompile(`awsWafCookieDomainList\s*=\s*\[([^\]]*)\]`)
+	quotedRe              = regexp.MustCompile(`["']([^"']+)["']`)
 
 	pkeyAttrRe      = regexp.MustCompile(`(?i)data-pkey\s*=\s*["']([^"']+)["']`)
 	publicKeyJSONRe = regexp.MustCompile(`(?i)"?public_?key"?\s*[:=]\s*["']([0-9A-Fa-f-]{20,})["']`)
