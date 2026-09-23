@@ -97,6 +97,7 @@ var guardProbes = map[string]guardProbe{
 	"POST /navigate":              {body: `{"url":"http://127.0.0.1:9/"}`},
 	"POST /tab":                   {body: `{"action":"new","url":"http://127.0.0.1:9/"}`},
 	"POST /action":                {body: `{"kind":"click","selector":"#probe"}`},
+	"POST /vision":                {body: `{"module":"rotate_2","image":"#probe"}`},
 	"POST /actions":               {body: `{"actions":[{"kind":"click","selector":"#probe"}]}`},
 	"POST /macro":                 {body: `{"steps":[{"kind":"click","selector":"#probe"}]}`},
 	"POST /dialog":                {body: `{"action":"accept"}`},

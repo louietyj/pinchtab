@@ -12,6 +12,8 @@ POST /solve
 POST /solve/{name}
 POST /tabs/{id}/solve
 POST /tabs/{id}/solve/{name}
+POST /vision
+POST /tabs/{id}/vision
 ```
 
 ## List Solvers
@@ -137,6 +139,45 @@ Handles Cloudflare Turnstile and interstitial challenges.
 
 - `capsolver` (requires `autoSolver.external.capsolverKey`)
 - `twocaptcha` (requires `autoSolver.external.twoCaptchaKey`)
+
+Each provider takes only the captcha types it can solve, so list both in `autoSolver.solvers` (CapSolver first) and each page goes to one that can:
+
+| Captcha | CapSolver | 2Captcha |
+|---|---|---|
+| reCAPTCHA v2 / v3, Enterprise, invisible | yes | yes (fallback) |
+| Cloudflare Turnstile | yes | yes (fallback) |
+| MTCaptcha | yes | yes (fallback) |
+| GeeTest v4 | yes | yes (fallback) |
+| AWS WAF captcha | yes | no |
+| hCaptcha | no (dropped) | yes |
+| Arkose Labs FunCaptcha | no (dropped) | yes |
+
+GeeTest v3 is detected but not solved. Its challenge is single-use, and the widget has already spent it by the time the page shows the puzzle.
+
+A solve is paid for once. A solver that fails after buying its answer, including a poll that runs out of time, ends the run instead of retrying, and actions on a page whose challenge was just solved do not trigger another solve. 2Captcha's human-solved tasks get up to 180s whatever `solverTimeoutSec` says.
+
+## Vision
+
+`POST /vision` answers a visual puzzle with CapSolver's Vision Engine and can act on the answer. It needs `autoSolver.external.capsolverKey`.
+
+| `module` | Input | Answer | Action |
+|---|---|---|---|
+| `slider_1` | `image` (piece), `background` | distance | with `handle`: drags it so the piece fills the gap |
+| `rotate_1` / `rotate_2` | `image` (+ `background` for `rotate_1`) | angle | with `handle` and `track`: drags the control by angle/360 of the track |
+| `shein` | `image`, `question` | regions | with `click: true`: clicks each |
+| `ocr_gif` | `image` (animated GIF) | text | none |
+
+Elements are unified selectors. Images are read from the page's own data (a data: URL, a canvas, or the loaded resource in Chrome's cache), so nothing is fetched again. A slider is never read from a screenshot, because a crop of either image would include the piece lying over it. Every image is checked before the request, since the engine bills a nonsense answer to a bad crop. Drags use the humanized path.
+
+```bash
+curl -X POST http://localhost:9867/vision -H "Content-Type: application/json" -d '{
+  "module": "slider_1",
+  "image": "css:[class^=geetest_slice_bg_]",
+  "background": "css:[class^=geetest_bg_]",
+  "handle": "css:[class^=geetest_slider_] [class^=geetest_btn_]"
+}'
+# CLI: pinchtab vision slider <piece> --background <bg> --handle <handle>
+```
 
 ## Writing a Custom Solver
 

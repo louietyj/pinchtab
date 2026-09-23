@@ -407,6 +407,8 @@ func (h *Handlers) bridgeBindings() []routeBinding {
 		{pattern: "GET /config/autosolver", root: h.HandleAutoSolverConfig, guards: guardNone},
 		{pattern: "POST /solve", root: h.HandleSolve, tab: h.HandleTabSolve, guards: guardDomainPolicy | guardHandoffPause},
 		{pattern: "POST /solve/{name}", root: h.HandleSolve, tab: h.HandleTabSolve, guards: guardDomainPolicy | guardHandoffPause},
+		// No handoff pause: vision is the way on after an auto-solve parked the tab.
+		{pattern: "POST /vision", root: h.HandleVision, tab: h.HandleTabVision, guards: guardDomainPolicy},
 		{pattern: "POST /emulation/viewport", root: h.HandleSetViewport, tab: h.HandleTabSetViewport, guards: guardDomainPolicy | guardHandoffPause},
 		{pattern: "POST /emulation/geolocation", root: h.HandleSetGeolocation, tab: h.HandleTabSetGeolocation, guards: guardDomainPolicy | guardHandoffPause},
 		{pattern: "POST /emulation/offline", root: h.HandleSetOffline, tab: h.HandleTabSetOffline, guards: guardDomainPolicy | guardHandoffPause},

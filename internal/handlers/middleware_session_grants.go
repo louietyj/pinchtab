@@ -282,7 +282,9 @@ func sessionSolveGrantAllows(method, path string) bool {
 		return path == "/solvers" || path == "/config/autosolver"
 	case http.MethodPost:
 		switch {
-		case path == "/solve" || strings.HasPrefix(path, "/solve/"):
+		case path == "/solve" || strings.HasPrefix(path, "/solve/") || path == "/vision":
+			return true
+		case tabRouteHasSuffix(path, "/vision"):
 			return true
 		case tabRouteHasSuffix(path, "/solve") || (strings.HasPrefix(path, "/tabs/") && strings.Contains(path, "/solve/")):
 			return true

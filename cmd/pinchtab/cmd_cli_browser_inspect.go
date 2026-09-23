@@ -159,6 +159,25 @@ var attrCmd = &cobra.Command{
 	},
 }
 
+var visionCmd = &cobra.Command{
+	Use:   "vision <slider|rotate|select|ocr> <image>",
+	Short: "Solve a visual puzzle (slider, rotation, image selection, GIF text) with CapSolver Vision Engine",
+	Long: `Reads the puzzle image off the page, asks CapSolver's Vision Engine, and acts on the answer.
+
+  slider  <piece> --background <bg> --handle <handle>   drag the handle so the piece fills the gap
+  rotate  <image> [--background <bg>] --handle <h> --track <t>   drag a rotate control by the angle
+  select  <image> --question "..." [--click]           find (and click) the matching regions
+  ocr     <gif>                                         read the text of an animated GIF
+
+Every image is checked before anything is billed. Drags use the humanized path.`,
+	Args: cobra.ExactArgs(2),
+	Run: func(cmd *cobra.Command, args []string) {
+		runCLI(func(rt cliRuntime) {
+			browseractions.Vision(rt.client, rt.base, rt.token, cmd, args)
+		})
+	},
+}
+
 var boxCmd = &cobra.Command{
 	Use:   "box <ref>",
 	Short: "Get the bounding box of an element by ref",

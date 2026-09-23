@@ -26,7 +26,7 @@ func browserRootCommands() []*cobra.Command {
 		downloadCmd, uploadCmd, findCmd, selectCmd, checkCmd, uncheckCmd, networkCmd, waitCmd,
 		keyboardCmd, keydownCmd, keyupCmd, scrollintoviewCmd, dialogCmd, consoleCmd, errorsCmd,
 		clipboardCmd, cacheCmd, cookiesCmd, setCmd, storageCmd, stateCmd, closeCmd, handoffCmd,
-		resumeCmd, handoffStatusCmd, recordCmd, auditCmd, compareCmd, scrapeCmd,
+		resumeCmd, handoffStatusCmd, recordCmd, auditCmd, compareCmd, scrapeCmd, visionCmd,
 	}
 }
 
@@ -193,6 +193,12 @@ func configureBrowserFlags() {
 	attrCmd.Flags().Bool("json", false, "Output full JSON response instead of just attribute value")
 	countCmd.Flags().Bool("json", false, "Output full JSON response instead of just count")
 	boxCmd.Flags().Bool("json", false, "Output full JSON response instead of just bounding box")
+	visionCmd.Flags().String("background", "", "Background image element (slider, rotate)")
+	visionCmd.Flags().String("question", "", "What to select (select)")
+	visionCmd.Flags().String("handle", "", "Control to drag with the answer (slider, rotate)")
+	visionCmd.Flags().String("track", "", "Track the rotate handle travels along (rotate)")
+	visionCmd.Flags().Float64("ratio", 0, "Handle movement per pixel of piece movement, when they differ (slider; default 1)")
+	visionCmd.Flags().Bool("click", false, "Click each matched region (select)")
 	visibleCmd.Flags().Bool("json", false, "Output full JSON response instead of just visibility")
 	enabledCmd.Flags().Bool("json", false, "Output full JSON response instead of just enabled state")
 	checkedCmd.Flags().Bool("json", false, "Output full JSON response instead of just checked state")
@@ -236,6 +242,7 @@ func configureBrowserFlags() {
 		attrCmd,
 		countCmd,
 		boxCmd,
+		visionCmd,
 		visibleCmd,
 		enabledCmd,
 		checkedCmd,
