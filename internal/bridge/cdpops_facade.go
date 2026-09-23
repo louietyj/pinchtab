@@ -106,6 +106,10 @@ func DragBetweenPoints(ctx context.Context, x, y, endX, endY float64, button str
 	return bridgecdpops.DragBetweenPoints(ctx, x, y, endX, endY, button)
 }
 
+func HumanDragBetweenPoints(ctx context.Context, x, y, endX, endY float64, button string) error {
+	return bridgecdpops.HumanDragBetweenPoints(ctx, x, y, endX, endY, button)
+}
+
 func HoverByCoordinate(ctx context.Context, x, y float64) error {
 	return bridgecdpops.HoverByCoordinate(ctx, x, y)
 }

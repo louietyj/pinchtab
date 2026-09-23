@@ -664,25 +664,26 @@ func (b *Bridge) actionDrag(ctx context.Context, req ActionRequest) (map[string]
 	if req.DragX == 0 && req.DragY == 0 {
 		return nil, NewInvalidActionRequestError("dragX or dragY required for drag")
 	}
-	if req.NodeID > 0 {
-		err := DragByNodeID(ctx, req.NodeID, req.DragX, req.DragY, req.Button)
-		if err != nil {
-			return nil, err
-		}
-		return map[string]any{"dragged": true, "dragX": req.DragX, "dragY": req.DragY}, nil
+	if req.NodeID <= 0 && req.Selector == "" {
+		return nil, NewInvalidActionRequestError("need selector, ref, or nodeId")
 	}
-	if req.Selector != "" {
-		node, err := firstNodeBySelector(ctx, req.Selector)
-		if err != nil {
-			return nil, err
-		}
-		err = DragByNodeID(ctx, int64(node.BackendNodeID), req.DragX, req.DragY, req.Button)
-		if err != nil {
-			return nil, err
-		}
-		return map[string]any{"dragged": true, "dragX": req.DragX, "dragY": req.DragY}, nil
+	x, y, err := dragPointFor(ctx, dragEnd{nodeID: req.NodeID, selector: req.Selector})
+	if err != nil {
+		return nil, err
 	}
-	return nil, NewInvalidActionRequestError("need selector, ref, or nodeId")
+	if err := b.dragFunc(req)(ctx, x, y, x+float64(req.DragX), y+float64(req.DragY), req.Button); err != nil {
+		return nil, err
+	}
+	return map[string]any{"dragged": true, "dragX": req.DragX, "dragY": req.DragY}, nil
+}
+
+// dragFunc picks the humanized trajectory when the request or instance asks
+// for it; slider captchas reject the straight, constant-speed default.
+func (b *Bridge) dragFunc(req ActionRequest) func(ctx context.Context, x, y, endX, endY float64, button string) error {
+	if b.effectiveHumanize(req) {
+		return HumanDragBetweenPoints
+	}
+	return DragBetweenPoints
 }
 
 func (b *Bridge) dragToDestination(ctx context.Context, req ActionRequest) (map[string]any, error) {
@@ -694,7 +695,7 @@ func (b *Bridge) dragToDestination(ctx context.Context, req ActionRequest) (map[
 	if err != nil {
 		return nil, fmt.Errorf("drag destination: %w", err)
 	}
-	if err := DragBetweenPoints(ctx, fromX, fromY, toX, toY, req.Button); err != nil {
+	if err := b.dragFunc(req)(ctx, fromX, fromY, toX, toY, req.Button); err != nil {
 		return nil, err
 	}
 	return map[string]any{

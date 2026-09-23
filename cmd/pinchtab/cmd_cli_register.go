@@ -102,6 +102,7 @@ func configureBrowserFlags() {
 	addMouseButtonFlag(dragCmd)
 	dragCmd.Flags().Int("drag-x", 0, "Horizontal pixel offset for single-step drag action")
 	dragCmd.Flags().Int("drag-y", 0, "Vertical pixel offset for single-step drag action")
+	dragCmd.Flags().Bool("humanize", false, "Drag along an eased, slightly drifting path with an overshoot, as slider captchas expect")
 
 	focusCmd.Flags().String("css", "", "CSS selector instead of ref")
 

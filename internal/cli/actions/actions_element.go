@@ -418,9 +418,7 @@ func Drag(client *http.Client, base, token string, args []string, cmd *cobra.Com
 		dy, _ := cmd.Flags().GetInt("drag-y")
 		body["dragX"] = dx
 		body["dragY"] = dy
-		if button, _ := cmd.Flags().GetString("button"); button != "" {
-			body["button"] = button
-		}
+		setDragOptions(body, cmd)
 		postAction(client, base, token, cmd, body)
 		return
 	}
@@ -431,10 +429,18 @@ func Drag(client *http.Client, base, token string, args []string, cmd *cobra.Com
 
 	body := actionBodyForTarget(bridge.ActionDrag, parseDragTarget(args[0]))
 	setDragDestinationBody(body, parseDragTarget(args[1]))
+	setDragOptions(body, cmd)
+	postAction(client, base, token, cmd, body)
+}
+
+func setDragOptions(body map[string]any, cmd *cobra.Command) {
 	if button, _ := cmd.Flags().GetString("button"); button != "" {
 		body["button"] = button
 	}
-	postAction(client, base, token, cmd, body)
+	if cmd.Flags().Changed("humanize") {
+		v, _ := cmd.Flags().GetBool("humanize")
+		body["humanize"] = v
+	}
 }
 
 func setDragDestinationBody(body map[string]any, target dragTarget) {
