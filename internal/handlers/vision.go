@@ -217,15 +217,16 @@ func (h *Handlers) visionImage(ctx context.Context, tabID, sel string, allowShot
 }
 
 // visionSlide drags the handle so the piece lands where the engine placed the
-// gap. The answer is in background-image pixels; the piece's CSS offset from
-// the background's left edge is what the drag has to cover.
+// gap. The answer is how far the piece travels, in background-image pixels,
+// measured from where it starts: on DingXiang, whose piece starts 20px in,
+// subtracting that start again left every drag short.
 func (h *Handlers) visionSlide(ctx context.Context, tabID string, req visionRequest, piece, bg *visionElement, distance float64) (map[string]any, error) {
 	handle, err := h.getElementBox(ctx, tabID, req.Handle)
 	if err != nil {
 		return nil, fmt.Errorf("handle %s: %w", req.Handle, err)
 	}
 	scale := bg.box.Width / float64(bg.naturalW)
-	target := distance*scale - (piece.box.Left - bg.box.Left)
+	target := distance * scale
 	ratio := req.Ratio
 	if ratio == 0 {
 		ratio = 1
