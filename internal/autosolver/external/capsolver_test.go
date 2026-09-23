@@ -3,12 +3,15 @@ package external
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/pinchtab/pinchtab/internal/autosolver"
 )
 
 // --- fakes ---
@@ -59,12 +62,12 @@ type capsolverCreateRequest struct {
 }
 
 type capsolverResponse struct {
-	ErrorID          int               `json:"errorId"`
-	ErrorCode        string            `json:"errorCode"`
-	ErrorDescription string            `json:"errorDescription"`
-	TaskID           string            `json:"taskId"`
-	Status           string            `json:"status"`
-	Solution         capsolverSolution `json:"solution"`
+	ErrorID          int           `json:"errorId"`
+	ErrorCode        string        `json:"errorCode"`
+	ErrorDescription string        `json:"errorDescription"`
+	TaskID           string        `json:"taskId"`
+	Status           string        `json:"status"`
+	Solution         tokenSolution `json:"solution"`
 }
 
 // --- helper tests ---
@@ -134,9 +137,7 @@ func TestCapsolverTaskType(t *testing.T) {
 	cases := map[string]string{
 		"recaptcha":    "ReCaptchaV2TaskProxyLess",
 		"recaptcha-v3": "ReCaptchaV3TaskProxyLess",
-		"hcaptcha":     "HCaptchaTaskProxyLess",
 		"turnstile":    "AntiTurnstileTaskProxyLess",
-		"funcaptcha":   "FunCaptchaTaskProxyLess",
 	}
 	for in, want := range cases {
 		got, ok := capsolverTaskType(in)
@@ -144,8 +145,30 @@ func TestCapsolverTaskType(t *testing.T) {
 			t.Errorf("capsolverTaskType(%q) = %q,%v want %q", in, got, ok, want)
 		}
 	}
-	if _, ok := capsolverTaskType("bogus"); ok {
-		t.Error("expected bogus type to be unsupported")
+	// CapSolver's createTask answers both with "We don't support this service".
+	for _, gone := range []string{"hcaptcha", "funcaptcha", "bogus"} {
+		if _, ok := capsolverTaskType(gone); ok {
+			t.Errorf("capsolverTaskType(%q) is mapped; CapSolver does not solve it", gone)
+		}
+	}
+}
+
+func TestCapsolverRefusesTypesItDoesNotSolveWithoutCallingTheAPI(t *testing.T) {
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))
+	defer srv.Close()
+
+	c := NewCapsolver(CapsolverConfig{APIKey: "k", BaseURL: srv.URL})
+	page := &fakePage{url: "https://ex.com", html: `<div class="h-captcha" data-sitekey="HCAP"></div>`}
+	if ok, _ := c.CanHandle(context.Background(), page); ok {
+		t.Error("CanHandle accepted hCaptcha")
+	}
+	_, err := c.Solve(context.Background(), page, &fakeExecutor{})
+	if !errors.Is(err, autosolver.ErrPermanent) {
+		t.Errorf("Solve error = %v, want a permanent refusal", err)
+	}
+	if called {
+		t.Error("submitted a task CapSolver is known to refuse")
 	}
 }
 
@@ -161,11 +184,7 @@ func mockCapsolver(t *testing.T, token string, gotTask *capsolverTask) *httptest
 			_ = json.NewDecoder(r.Body).Decode(&req)
 			*gotTask = req.Task
 			resp := capsolverResponse{Status: "ready"}
-			if strings.Contains(req.Task.Type, "FunCaptcha") {
-				resp.Solution.Token = token
-			} else {
-				resp.Solution.GRecaptchaResponse = token
-			}
+			resp.Solution.GRecaptchaResponse = token
 			_ = json.NewEncoder(w).Encode(resp)
 			return
 		}
@@ -281,9 +300,6 @@ func TestSolveRecaptcha(t *testing.T) {
 	if task.Type != "ReCaptchaV2TaskProxyLess" || task.WebsiteKey != "6LcABC" {
 		t.Errorf("task = %+v", task)
 	}
-	if task.WebsitePublicKey != "" {
-		t.Errorf("recaptcha task should not set websitePublicKey")
-	}
 	if !strings.Contains(exec.lastInject, "RECAP-TOKEN") {
 		t.Errorf("token not injected: %q", exec.lastInject)
 	}
@@ -317,85 +333,8 @@ func TestSolveRecaptchaV3(t *testing.T) {
 	if task.PageAction != "login" {
 		t.Errorf("pageAction = %q (want login)", task.PageAction)
 	}
-	if task.WebsitePublicKey != "" {
-		t.Errorf("v3 task should not set websitePublicKey")
-	}
 	if !strings.Contains(exec.lastInject, "V3-TOKEN") {
 		t.Errorf("token not injected: %q", exec.lastInject)
-	}
-}
-
-func TestSolveFuncaptcha(t *testing.T) {
-	var task capsolverTask
-	srv := mockCapsolver(t, "FC-TOKEN", &task)
-	defer srv.Close()
-
-	c := NewCapsolver(CapsolverConfig{APIKey: "k", BaseURL: srv.URL})
-	page := &fakePage{
-		url:  "https://www.linkedin.com/checkpoint",
-		html: `<div data-pkey="0152B4EB-D2DC-460A-89A1-629838B529C9"></div><script src="https://lnkd-api.arkoselabs.com/v2/api.js"></script>`,
-	}
-	exec := &fakeExecutor{userAgent: "Mozilla/5.0 (TestUA)"}
-
-	res, err := c.Solve(context.Background(), page, exec)
-	if err != nil {
-		t.Fatalf("Solve: %v", err)
-	}
-	if !res.Solved {
-		t.Fatalf("expected solved, got error=%q", res.Error)
-	}
-	if task.Type != "FunCaptchaTaskProxyLess" {
-		t.Errorf("task type = %q", task.Type)
-	}
-	if task.UserAgent != "Mozilla/5.0 (TestUA)" {
-		t.Errorf("browser UA should be forwarded; got %q", task.UserAgent)
-	}
-	if task.WebsitePublicKey != "0152B4EB-D2DC-460A-89A1-629838B529C9" {
-		t.Errorf("websitePublicKey = %q", task.WebsitePublicKey)
-	}
-	if task.WebsiteKey != "" {
-		t.Errorf("funcaptcha task should not set websiteKey")
-	}
-	if task.FuncaptchaApiJSSubdomain != "https://lnkd-api.arkoselabs.com" {
-		t.Errorf("funcaptchaApiJSSubdomain = %q", task.FuncaptchaApiJSSubdomain)
-	}
-	if task.Data != "" {
-		t.Errorf("no blob captured, expected empty data, got %q", task.Data)
-	}
-	if !strings.Contains(exec.lastInject, "FC-TOKEN") {
-		t.Errorf("token not injected: %q", exec.lastInject)
-	}
-}
-
-// TestSolveFuncaptchaWithBlob verifies the document-start hook's captured
-// blob/pk/surl (window.__ptArkose) override static extraction and are forwarded
-// to CapSolver as the task data.
-func TestSolveFuncaptchaWithBlob(t *testing.T) {
-	var task capsolverTask
-	srv := mockCapsolver(t, "FC-TOKEN", &task)
-	defer srv.Close()
-
-	c := NewCapsolver(CapsolverConfig{APIKey: "k", BaseURL: srv.URL})
-	page := &fakePage{
-		url:  "https://www.linkedin.com/checkpoint",
-		html: `<div data-pkey="STATIC-PK"></div><script src="https://lnkd-api.arkoselabs.com/v2/api.js"></script>`,
-	}
-	exec := &fakeExecutor{arkoseJSON: `{"blob":"BDA-BLOB-XYZ","pk":"LIVE-PK","surl":"https://lnkd-api.arkoselabs.com"}`}
-
-	res, err := c.Solve(context.Background(), page, exec)
-	if err != nil || !res.Solved {
-		t.Fatalf("Solve: err=%v solved=%v error=%q", err, res.Solved, res.Error)
-	}
-	if task.WebsitePublicKey != "LIVE-PK" {
-		t.Errorf("captured pk should override static; got %q", task.WebsitePublicKey)
-	}
-	// Assert the JSON shape, not just substring — a wrong wrapper key must fail.
-	var dataObj map[string]string
-	if err := json.Unmarshal([]byte(task.Data), &dataObj); err != nil {
-		t.Fatalf("task.Data is not valid JSON: %q (%v)", task.Data, err)
-	}
-	if dataObj["blob"] != "BDA-BLOB-XYZ" {
-		t.Errorf("expected data.blob=BDA-BLOB-XYZ, got %+v", dataObj)
 	}
 }
 

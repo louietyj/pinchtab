@@ -297,6 +297,22 @@ func TestDetectChallengeIntent_HCaptcha(t *testing.T) {
 	}
 }
 
+func TestDetectChallengeIntent_FunCaptcha(t *testing.T) {
+	for _, html := range []string{
+		`<div id="arkose" data-pkey="0152B4EB-D2DC-460A-89A1-629838B529C9"></div>`,
+		`<script src="https://client-api.arkoselabs.com/v2/DF9C4D87/api.js"></script>`,
+	} {
+		intent := DetectChallengeIntent("Sign up", "https://example.com/signup", html)
+		if intent == nil || intent.ChallengeType != "funcaptcha" {
+			t.Errorf("DetectChallengeIntent(%q) = %+v, want funcaptcha", html, intent)
+		}
+	}
+	// A page that sells solving names the vendor without embedding it.
+	if intent := DetectChallengeIntent("Pricing", "https://example.com", `<a href="/funcaptcha">FunCaptcha via arkoselabs</a>`); intent != nil && intent.ChallengeType == "funcaptcha" {
+		t.Error("a mention of the vendor was classified as a FunCaptcha challenge")
+	}
+}
+
 func TestDetectChallengeIntent_CustomJS(t *testing.T) {
 	intent := DetectChallengeIntent(
 		"Browser Integrity Check",

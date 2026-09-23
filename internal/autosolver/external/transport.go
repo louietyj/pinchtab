@@ -60,7 +60,9 @@ func (a *taskAPI) solve(ctx context.Context, task any) (json.RawMessage, error) 
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("%s: context cancelled while polling: %w", a.label, ctx.Err())
+			// The provider keeps working an accepted task and bills it when done, so
+			// once polling breaks off (here or in a failed poll) a retry pays twice.
+			return nil, autosolver.Spent(fmt.Errorf("%s: context cancelled while polling: %w", a.label, ctx.Err()))
 		case <-ticker.C:
 			var res taskResponse
 			err := a.postJSON(ctx, "/getTaskResult", map[string]any{
@@ -68,7 +70,7 @@ func (a *taskAPI) solve(ctx context.Context, task any) (json.RawMessage, error) 
 				"taskId":    created.TaskID,
 			}, &res)
 			if err != nil {
-				return nil, fmt.Errorf("%s getTaskResult: %w", a.label, err)
+				return nil, autosolver.Spent(fmt.Errorf("%s getTaskResult: %w", a.label, err))
 			}
 			if res.ErrorID != 0 {
 				return nil, fmt.Errorf("%s getTaskResult error %s: %s", a.label, res.ErrorCode, res.ErrorDescription)
@@ -123,6 +125,14 @@ func (a *taskAPI) postJSON(ctx context.Context, path string, body, out interface
 		return err
 	}
 	if resp.StatusCode != http.StatusOK {
+		// CapSolver reports a refused task as a 400 carrying the usual error body;
+		// read it so the refusal is classified like any other.
+		var probe struct {
+			ErrorID int `json:"errorId"`
+		}
+		if json.Unmarshal(data, &probe) == nil && probe.ErrorID != 0 {
+			return json.Unmarshal(data, out)
+		}
 		return fmt.Errorf("http %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
 	}
 	return json.Unmarshal(data, out)

@@ -49,6 +49,8 @@ func TestTaskAPIClassifiesCreateTaskRefusals(t *testing.T) {
 		"ERROR_NO_SLOT_AVAILABLE":   false,
 	} {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// CapSolver sends refusals as 400s; the body is what classifies them.
+			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(`{"errorId":1,"errorCode":"` + code + `"}`))
 		}))
 		_, err := newTestTaskAPI(srv.URL).solve(context.Background(), map[string]string{})
@@ -59,6 +61,25 @@ func TestTaskAPIClassifiesCreateTaskRefusals(t *testing.T) {
 		if got := errors.Is(err, autosolver.ErrPermanent); got != permanent {
 			t.Errorf("%s: permanent = %v, want %v", code, got, permanent)
 		}
+	}
+}
+
+// A task still being worked when the deadline hits is billed when it finishes.
+func TestTaskAPITimeoutWhilePollingIsSpent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/createTask" {
+			_, _ = w.Write([]byte(`{"errorId":0,"taskId":"t"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"errorId":0,"status":"processing"}`))
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, err := newTestTaskAPI(srv.URL).solve(ctx, map[string]string{})
+	if !errors.Is(err, autosolver.ErrSpent) {
+		t.Errorf("err = %v, want it marked spent", err)
 	}
 }
 

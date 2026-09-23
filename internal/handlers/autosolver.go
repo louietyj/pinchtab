@@ -433,7 +433,14 @@ func estimateAutoSolverRunTimeout(cfg coreautosolver.Config) time.Duration {
 		attempts = 1
 	}
 
-	timeout := time.Duration(attempts) * cfg.SolverTimeout
+	// The slowest registered solver bounds an attempt: a solver that times out
+	// has spent its task, which ends the run rather than handing on to the next.
+	perAttempt := cfg.SolverTimeout
+	for _, s := range catalog.Registrable(cfg) {
+		perAttempt = max(perAttempt, coreautosolver.SolveTimeoutFor(s, cfg.SolverTimeout))
+	}
+
+	timeout := time.Duration(attempts) * perAttempt
 	if attempts > 1 {
 		timeout += time.Duration(attempts-1) * cfg.RetryMaxDelay
 	}

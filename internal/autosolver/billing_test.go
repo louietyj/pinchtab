@@ -59,6 +59,36 @@ func TestSolveSkipsAPermanentlyRefusingSolverButTriesTheNext(t *testing.T) {
 	}
 }
 
+type hintedSolver struct {
+	mockSolver
+	hint        time.Duration
+	gotDeadline time.Duration
+}
+
+func (h *hintedSolver) SolveTimeout() time.Duration { return h.hint }
+func (h *hintedSolver) Solve(ctx context.Context, p Page, e ActionExecutor) (*Result, error) {
+	if dl, ok := ctx.Deadline(); ok {
+		h.gotDeadline = time.Until(dl)
+	}
+	return h.mockSolver.Solve(ctx, p, e)
+}
+
+func TestSolverGetsTheLongerTimeoutItAsksFor(t *testing.T) {
+	slow := &hintedSolver{mockSolver: mockSolver{name: "people", canHandle: true, solved: true}, hint: time.Hour}
+	as := billingTestSolver()
+	as.Registry().MustRegister(slow)
+
+	if _, err := as.Solve(context.Background(), billingTestPage, &mockExecutor{}); err != nil {
+		t.Fatalf("Solve: %v", err)
+	}
+	if slow.gotDeadline < 59*time.Minute {
+		t.Errorf("solver got %s, want the hour it asked for", slow.gotDeadline)
+	}
+	if got := SolveTimeoutFor(&mockSolver{}, time.Minute); got != time.Minute {
+		t.Errorf("unhinted solver timeout = %s, want the configured minute", got)
+	}
+}
+
 func TestClassifiedErrorsKeepTheirMessage(t *testing.T) {
 	base := errors.New("capsolver createTask error ERROR_KEY_DENIED_ACCESS: bad key")
 	for _, err := range []error{Spent(base), Permanent(base)} {

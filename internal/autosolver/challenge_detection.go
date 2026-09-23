@@ -46,6 +46,15 @@ func DetectChallengeIntent(title, url, html string) *Intent {
 		}
 	}
 
+	if isFunCaptchaChallenge(lowerHTML) {
+		return &Intent{
+			Type:          IntentCaptcha,
+			Confidence:    0.9,
+			ChallengeType: "funcaptcha",
+			Details:       "Arkose Labs FunCaptcha challenge detected",
+		}
+	}
+
 	if isCustomJSChallenge(lowerTitle, lowerURL, lowerHTML) {
 		return &Intent{
 			Type:          IntentBlocked,
@@ -112,6 +121,17 @@ func isHCaptchaChallenge(url, html string) bool {
 		"hcaptcha.com/1/api.js",
 		"h-captcha",
 		"hcaptcha",
+	)
+}
+
+// isFunCaptchaChallenge keys on Arkose's resource paths and widget attribute,
+// never the bare vendor name: pages that sell solving mention it everywhere.
+func isFunCaptchaChallenge(html string) bool {
+	return containsAny(html,
+		".arkoselabs.com/v2/",
+		".arkoselabs.com/fc/",
+		".arkoselabs.com/cdn/fc/",
+		"data-pkey=",
 	)
 }
 

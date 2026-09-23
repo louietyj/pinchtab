@@ -356,7 +356,7 @@ func (as *AutoSolver) trySolvers(ctx context.Context, page Page, executor Action
 		if refused[s.Name()] {
 			continue
 		}
-		solverCtx, cancel := context.WithTimeout(ctx, as.config.SolverTimeout)
+		solverCtx, cancel := context.WithTimeout(ctx, SolveTimeoutFor(s, as.config.SolverTimeout))
 		solverStart := time.Now()
 
 		slog.Info("autosolver_attempt",
@@ -404,6 +404,14 @@ func (as *AutoSolver) trySolvers(ctx context.Context, page Page, executor Action
 	}
 
 	return false, false, entries
+}
+
+// SolveTimeoutFor is the time s gets to solve: configured, unless it asks for more.
+func SolveTimeoutFor(s Solver, configured time.Duration) time.Duration {
+	if h, ok := s.(SolveTimeoutHinter); ok && h.SolveTimeout() > configured {
+		return h.SolveTimeout()
+	}
+	return configured
 }
 
 func (as *AutoSolver) trySemantic(ctx context.Context, page Page, executor ActionExecutor, intent *Intent) (bool, *AttemptEntry) {

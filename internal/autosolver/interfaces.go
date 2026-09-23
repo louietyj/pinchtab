@@ -57,6 +57,12 @@ type ActionExecutor interface {
 	Navigate(ctx context.Context, url string) error
 }
 
+// SolveTimeoutHinter is implemented by a solver that needs longer than the
+// configured SolverTimeout, such as a provider whose solves are done by people.
+type SolveTimeoutHinter interface {
+	SolveTimeout() time.Duration
+}
+
 // Solver handles a specific class of browser challenge or automation task.
 // Solvers are registered with a Registry and selected based on CanHandle.
 type Solver interface {
