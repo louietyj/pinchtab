@@ -5,8 +5,6 @@ import (
 	"math"
 	"math/rand"
 	"time"
-
-	"github.com/chromedp/cdproto/input"
 )
 
 // dragStep is one pointer position on a humanized drag and the pause after it.
@@ -64,8 +62,10 @@ func humanDragPlan(rng *rand.Rand, x, y, endX, endY float64) []dragStep {
 	return append(plan, dragStep{x: endX, y: endY, pause: time.Duration(60+rng.Intn(140)) * time.Millisecond})
 }
 
-// HumanDragBetweenPoints presses at (x, y), moves along humanDragPlan with the
-// button held, and releases exactly at (endX, endY).
+// HumanDragBetweenPoints approaches (x, y) along a ghost-cursor path, presses,
+// moves along humanDragPlan with the button held, and releases exactly at
+// (endX, endY). Slider scorers see the approach too: a pointer that appears on
+// the handle and presses at once is the bot signature.
 func HumanDragBetweenPoints(ctx context.Context, x, y, endX, endY float64, button string) error {
 	held, err := heldButton(button)
 	if err != nil {
@@ -73,7 +73,7 @@ func HumanDragBetweenPoints(ctx context.Context, x, y, endX, endY float64, butto
 	}
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	if err := dispatchMouseMove(ctx, x, y, input.None, 0); err != nil {
+	if err := HumanApproach(ctx, x, y, 0); err != nil {
 		return err
 	}
 	// The reaction time between reaching the handle and pressing it.

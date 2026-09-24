@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"math"
 	"math/rand"
 	"time"
 
@@ -12,29 +11,9 @@ import (
 	"github.com/chromedp/cdproto/dom"
 	"github.com/chromedp/cdproto/input"
 	"github.com/chromedp/chromedp"
+
+	bridgecdpops "github.com/pinchtab/pinchtab/internal/bridge/cdpops"
 )
-
-// humanMouseStepTimeout caps each per-step Input.dispatchMouseEvent call in
-// the bezier-interpolated mouse moves below. Synthetic mouse events through
-// CDP can occasionally stall in --headless=new Chromium (the renderer ack
-// chain doesn't always complete for fast bursts of synthesized events). A
-// 30s outer ActionTimeout used to absorb the whole hang; this bound lets us
-// abandon the bezier early and snap to the target so Press/Release still
-// fires.
-const humanMouseStepTimeout = 500 * time.Millisecond
-
-// dispatchMouseMovedBounded runs Input.dispatchMouseEvent(mouseMoved, x, y)
-// with humanMouseStepTimeout, returning ctx.Err() if the outer context was
-// cancelled and a synthetic timeout error if just the step exceeded its bound.
-func dispatchMouseMovedBounded(ctx context.Context, x, y float64) error {
-	stepCtx, cancel := context.WithTimeout(ctx, humanMouseStepTimeout)
-	defer cancel()
-	return chromedp.Run(stepCtx,
-		chromedp.ActionFunc(func(c context.Context) error {
-			return input.DispatchMouseEvent(input.MouseMoved, x, y).Do(c)
-		}),
-	)
-}
 
 var humanRand = rand.New(rand.NewSource(time.Now().UnixNano()))
 
@@ -53,103 +32,23 @@ func (c *Config) getRand() *rand.Rand {
 	return humanRand
 }
 
+// MouseMove moves the pointer from (fromX, fromY) to (toX, toY) along a
+// ghost-cursor path (see cdpops.HumanMoveBetween).
 func MouseMove(ctx context.Context, fromX, fromY, toX, toY float64) error {
-	distance := math.Sqrt((toX-fromX)*(toX-fromX) + (toY-fromY)*(toY-fromY))
-	baseDuration := 100 + (distance/2000)*200
-	duration := baseDuration + float64(humanRand.Intn(100))
-
-	steps := int(duration / 20)
-	if steps < 5 {
-		steps = 5
-	}
-	if steps > 30 {
-		steps = 30
-	}
-
-	cp1X := fromX + (toX-fromX)*0.25 + (humanRand.Float64()-0.5)*50
-	cp1Y := fromY + (toY-fromY)*0.25 + (humanRand.Float64()-0.5)*50
-	cp2X := fromX + (toX-fromX)*0.75 + (humanRand.Float64()-0.5)*50
-	cp2Y := fromY + (toY-fromY)*0.75 + (humanRand.Float64()-0.5)*50
-
-	for i := 0; i <= steps; i++ {
-		rawT := float64(i) / float64(steps)
-		// Ease-in-out velocity curve to avoid perfectly linear timing.
-		t := 0.5 - (math.Cos(math.Pi*rawT) / 2.0)
-
-		oneMinusT := 1 - t
-		x := oneMinusT*oneMinusT*oneMinusT*fromX +
-			3*oneMinusT*oneMinusT*t*cp1X +
-			3*oneMinusT*t*t*cp2X +
-			t*t*t*toX
-
-		y := oneMinusT*oneMinusT*oneMinusT*fromY +
-			3*oneMinusT*oneMinusT*t*cp1Y +
-			3*oneMinusT*t*t*cp2Y +
-			t*t*t*toY
-
-		x += (humanRand.Float64() - 0.5) * 2
-		y += (humanRand.Float64() - 0.5) * 2
-
-		if err := dispatchMouseMovedBounded(ctx, x, y); err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			// Bezier step stalled past the per-step bound. Abandon the
-			// rest of the trail and snap to the target so the caller's
-			// click can still proceed.
-			slog.Debug("humanMove bezier step stalled, snapping to target",
-				"step", i, "of", steps, "err", err)
-			return dispatchMouseMovedBounded(ctx, toX, toY)
-		}
-
-		delay := time.Duration(16+humanRand.Intn(8)) * time.Millisecond
-		time.Sleep(delay)
-	}
-
-	// End-frame micro-jitter near target to emulate tiny hand stabilization.
-	for i := 0; i < 2; i++ {
-		jx := toX + (humanRand.Float64()-0.5)*1.2
-		jy := toY + (humanRand.Float64()-0.5)*1.2
-		if err := dispatchMouseMovedBounded(ctx, jx, jy); err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			// Jitter stalled — outer ctx still good, just give up on
-			// micro-jitter; the bezier already landed us at the target.
-			return nil
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	return nil
+	return bridgecdpops.HumanMoveBetween(ctx, fromX, fromY, toX, toY, 0)
 }
 
-// approachTarget walks the pointer to (x, y) from a random nearby start along
-// the bezier trail. Best-effort: the trail is only there for human-trail
-// realism, so a stall is logged and swallowed and the caller proceeds — its own
-// dispatch at (x, y) is what has to land. Only a cancelled outer context is
-// reported back.
+// approachTarget walks the pointer to (x, y) from where it last was on this
+// tab. Best-effort: the trail is only there for human-trail realism, so a
+// failure is logged and swallowed and the caller proceeds — its own dispatch
+// at (x, y) is what has to land. Only a cancelled outer context is reported
+// back.
 func approachTarget(ctx context.Context, x, y float64) error {
-	startOffsetX := (humanRand.Float64()-0.5)*200 + 50
-	startOffsetY := (humanRand.Float64()-0.5)*200 + 50
-	startX := x + startOffsetX
-	startY := y + startOffsetY
-
-	distance := math.Sqrt(startOffsetX*startOffsetX + startOffsetY*startOffsetY)
-	if distance <= 30 {
-		return nil
-	}
-
-	if err := dispatchMouseMovedBounded(ctx, startX, startY); err != nil {
+	if err := bridgecdpops.HumanApproach(ctx, x, y, 0); err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		slog.Debug("humanized initial-move stalled, skipping bezier", "err", err)
-	} else if err := MouseMove(ctx, startX, startY, x, y); err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		slog.Debug("humanized bezier trail failed, proceeding to action", "err", err)
+		slog.Debug("humanized approach failed, proceeding to action", "err", err)
 	}
 	return nil
 }

@@ -110,7 +110,15 @@ func validatePointerCoordinates(x, y float64) error {
 // trusted-CDP move/press/release steps stop being hand-rolled per call site.
 func mouseEventAction(payload map[string]any) chromedp.Action {
 	return chromedp.ActionFunc(func(ctx context.Context) error {
-		return chromedp.FromContext(ctx).Target.Execute(ctx, "Input.dispatchMouseEvent", payload, nil)
+		if err := chromedp.FromContext(ctx).Target.Execute(ctx, "Input.dispatchMouseEvent", payload, nil); err != nil {
+			return err
+		}
+		if x, ok := payload["x"].(float64); ok {
+			if y, ok := payload["y"].(float64); ok {
+				notePointer(ctx, x, y)
+			}
+		}
+		return nil
 	})
 }
 
@@ -161,16 +169,19 @@ var (
 
 func dispatchMouseMove(ctx context.Context, x, y float64, button input.MouseButton, buttons int64) error {
 	err := dispatchRealMouseMoveFunc(ctx, x, y, button, buttons)
-	if err == nil {
-		return nil
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if !errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
+		if err := dispatchSyntheticMouseMoveFunc(ctx, x, y, button, buttons); err != nil {
+			return err
+		}
 	}
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	if !errors.Is(err, context.DeadlineExceeded) {
-		return err
-	}
-	return dispatchSyntheticMouseMoveFunc(ctx, x, y, button, buttons)
+	notePointer(ctx, x, y)
+	return nil
 }
 
 func dispatchMouseMoveToNode(ctx context.Context, nodeID int64, x, y float64, button input.MouseButton, buttons int64) error {
