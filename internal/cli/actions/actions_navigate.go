@@ -109,10 +109,20 @@ func autoSolveHint(result map[string]any) string {
 	}
 
 	if solved, _ := raw["solved"].(bool); solved {
+		// "cleared" means no solver succeeded and the challenge went away, which
+		// a Cloudflare interstitial does on its own.
+		solver, _ := raw["solver"].(string)
+		if solver == "cleared" {
+			return fmt.Sprintf("a %s challenge on this page cleared on its own; the page is ready to use.", challenge)
+		}
+		by := "for you"
+		if solver != "" {
+			by = "by " + solver
+		}
 		return fmt.Sprintf(
-			"a %s challenge on this page was already solved for you -- do NOT click the "+
+			"a %s challenge on this page was already solved %s -- do NOT click the "+
 				"captcha widget. It stays visually unticked even when solved; the page is ready to use.",
-			challenge)
+			challenge, by)
 	}
 
 	if msg, _ := raw["error"].(string); msg != "" {

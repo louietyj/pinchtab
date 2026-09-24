@@ -108,6 +108,21 @@ func TestPunishPageIsANoCaptchaChallenge(t *testing.T) {
 	}
 }
 
+// AliExpress also punishes an item page's data API, which shows the punish page
+// in a cross-origin iframe over the item. While that iframe is there, the page
+// is still challenged, or the run would report it cleared.
+func TestPunishFrameOverAnItemPageIsStillAChallenge(t *testing.T) {
+	frame := `<div class="pdp"></div><iframe src="https://acs.aliexpress.us:443//h5/mtop.aliexpress.pdp.pc.query/1.0/_____tmd_____/punish?x5secdata=x" style="display:block"></iframe>`
+	intent := autosolver.DetectChallengeIntent("", "https://www.aliexpress.us/item/3256812972357268.html", frame)
+	if intent == nil || intent.ChallengeType != "punish-frame" {
+		t.Errorf("intent = %+v", intent)
+	}
+	// Baxia's own config can name the path in a script; only an iframe counts.
+	if intent := autosolver.DetectChallengeIntent("", "https://www.aliexpress.us/item/1.html", `<script>var p="/_____tmd_____/punish"</script>`); intent != nil {
+		t.Errorf("a script mentioning the path was read as %+v", intent)
+	}
+}
+
 func TestPunishOrigin(t *testing.T) {
 	for in, want := range map[string]string{
 		punishURL: "https://www.aliexpress.us/item/3256805716460801.html",

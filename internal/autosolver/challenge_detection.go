@@ -1,6 +1,11 @@
 package autosolver
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
+
+var punishFrameRe = regexp.MustCompile(`<iframe[^>]+src="[^"]*/_____tmd_____/punish`)
 
 // DetectChallengeIntent classifies known challenge pages using title, URL,
 // and HTML markers. It returns nil when no challenge signal is found.
@@ -27,6 +32,19 @@ func DetectChallengeIntent(title, url, html string) *Intent {
 			Confidence:    0.9,
 			ChallengeType: "nocaptcha",
 			Details:       "Alibaba NoCaptcha slider detected",
+		}
+	}
+
+	// The same punish page can instead come up in an iframe over an ordinary
+	// page, when AliExpress punishes the page's data API rather than the page.
+	// Its content is cross-origin, so the iframe itself is the only marker; while
+	// it is there the challenge is not gone.
+	if punishFrameRe.MatchString(lowerHTML) {
+		return &Intent{
+			Type:          IntentCaptcha,
+			Confidence:    0.9,
+			ChallengeType: "punish-frame",
+			Details:       "Alibaba punish challenge in an iframe",
 		}
 	}
 

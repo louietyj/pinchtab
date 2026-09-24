@@ -38,6 +38,8 @@ func TestAutoSolveHint(t *testing.T) {
 		{"pending without a title", "", pending, "Run `sleep 15; pinchtab snap`"},
 		{"pending with a quote in the title", "Don't panic", pending, "Run `sleep 15; pinchtab snap`"},
 		{"solved", "", map[string]any{"solved": true}, "a captcha challenge on this page was already solved for you"},
+		{"solved by a named solver", "", map[string]any{"solved": true, "challengeType": "nocaptcha", "solver": "nocaptcha"}, "a nocaptcha challenge on this page was already solved by nocaptcha"},
+		{"cleared with no solver", "", map[string]any{"solved": true, "challengeType": "turnstile", "solver": "cleared"}, "a turnstile challenge on this page cleared on its own"},
 		{"not solved", "", map[string]any{"solved": false, "error": "all 2 attempts exhausted"}, "NOT solved: all 2 attempts exhausted"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
