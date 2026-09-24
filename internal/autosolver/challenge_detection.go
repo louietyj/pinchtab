@@ -165,9 +165,13 @@ func DetectChallengeIntent(title, url, html string) *Intent {
 		}
 	}
 
-	if containsAny(lowerTitle, "captcha", "verify you are human", "i am not a robot") ||
-		containsAny(lowerURL, "captcha", "recaptcha", "hcaptcha", "turnstile") ||
-		containsAny(lowerHTML, "captcha", "verify you are human", "i am not a robot") {
+	// Words alone are what an article about captchas is made of ("CAPTCHA -
+	// Wikipedia"). Only a title that asks the visitor something counts by
+	// itself; the rest needs a page with little text, as challenge pages are.
+	if containsAny(lowerTitle, "verify you are human", "i am not a robot") ||
+		((containsAny(lowerTitle, "captcha") || containsAny(lowerURL, "captcha") ||
+			containsAny(lowerHTML, "verify you are human", "i am not a robot", "check if you are a robot")) &&
+			visibleTextLen(html) < challengePageMaxText) {
 		return &Intent{
 			Type:          IntentCaptcha,
 			Confidence:    0.7,
@@ -203,27 +207,39 @@ func isRecaptchaV3Challenge(url, html string) bool {
 	)
 }
 
+// challengePageMaxText separates a challenge page from an ordinary one that
+// merely talks about captchas: a challenge is a widget and a sentence or two.
+// Visible text, not HTML size: AliExpress's punish page is 114 KB of script.
+const challengePageMaxText = 3000
+
+var (
+	scriptOrStyleRe = regexp.MustCompile(`(?is)<(script|style|noscript)\b.*?</(script|style|noscript)>`)
+	tagRe           = regexp.MustCompile(`(?s)<[^>]*>`)
+)
+
+// visibleTextLen approximates how much text a page shows.
+func visibleTextLen(html string) int {
+	text := tagRe.ReplaceAllString(scriptOrStyleRe.ReplaceAllString(html, " "), " ")
+	return len(strings.Join(strings.Fields(text), " "))
+}
+
+// The vendor detectors key on the widget's own resources and markup: a page
+// can name the vendor ("/wiki/ReCAPTCHA", a link to hcaptcha.com) without
+// showing its widget.
 func isRecaptchaV2Challenge(url, html string) bool {
-	return containsAny(url,
-		"recaptcha",
-		"google.com/recaptcha",
-	) || containsAny(html,
-		"g-recaptcha",
-		"recaptcha-checkbox",
-		"api2/anchor",
-		"google.com/recaptcha/api.js",
-	)
+	return containsAny(url, "google.com/recaptcha") || recaptchaWidgetRe.MatchString(html)
 }
 
 func isHCaptchaChallenge(url, html string) bool {
-	return containsAny(url,
-		"hcaptcha",
-	) || containsAny(html,
-		"hcaptcha.com/1/api.js",
-		"h-captcha",
-		"hcaptcha",
-	)
+	return containsAny(url, "hcaptcha.com/") || hcaptchaWidgetRe.MatchString(html)
 }
+
+// The widget markers count only in real attributes. An article's code sample
+// shows the same words escaped (class=&quot;g-recaptcha&quot;) or as text.
+var (
+	recaptchaWidgetRe = regexp.MustCompile(`class=["'][^"']*\bg-recaptcha\b|src=["'][^"']*(?:google\.com|recaptcha\.net)/recaptcha/(?:api\.js|enterprise\.js|api2/anchor|enterprise/anchor)`)
+	hcaptchaWidgetRe  = regexp.MustCompile(`class=["'][^"']*\bh-captcha\b|src=["'][^"']*hcaptcha\.com/(?:1/api\.js|captcha/)`)
+)
 
 // isFunCaptchaChallenge keys on Arkose's resource paths and widget attribute,
 // never the bare vendor name: pages that sell solving mention it everywhere.
@@ -249,22 +265,28 @@ func isCustomJSChallenge(title, url, html string) bool {
 		"bot",
 		"verify",
 	)
-	htmlSignal := containsAny(html,
+	// Cloudflare's own challenge markup is enough by itself.
+	if containsAny(html,
 		"__cf_chl",
 		"window._cf_chl_opt",
 		"challenge-form",
 		"jschl",
+		"checking your browser before accessing",
+		"browser integrity check",
+	) {
+		return true
+	}
+	// These phrases fill ordinary pages too: nearly every site has a <noscript>
+	// "please enable javascript", and fingerprinting scripts read
+	// navigator.webdriver. With a block-page title they mean a challenge; alone
+	// they sent jschallenge clicking submit buttons on ordinary pages.
+	if titleSignal && containsAny(html,
 		"bot challenge",
 		"anti-bot",
 		"anti bot",
 		"please enable javascript",
-		"checking your browser before accessing",
-		"browser integrity check",
 		"navigator.webdriver",
-	)
-
-	// Primary signal comes from HTML markers.
-	if htmlSignal {
+	) {
 		return true
 	}
 

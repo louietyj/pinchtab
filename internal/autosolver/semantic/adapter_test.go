@@ -166,8 +166,10 @@ var detectIntentGolden = []struct {
 	{"Home page", "https://example.com/challenge/step", autosolver.IntentCaptcha, "", 0.8, "captcha detected via semantic analysis"},
 	{"Home page", "https://example.com/verify-me", autosolver.IntentCaptcha, "", 0.8, "captcha detected via semantic analysis"},
 	{"Home page", "https://example.com/captcha", autosolver.IntentCaptcha, "captcha-generic", 0.7, "generic captcha challenge detected"},
-	{"Home page", "https://example.com/recaptcha", autosolver.IntentCaptcha, "recaptcha-v2", 0.9, "reCAPTCHA v2 challenge detected"},
-	{"Home page", "https://example.com/hcaptcha", autosolver.IntentCaptcha, "hcaptcha", 0.9, "hCaptcha challenge detected"},
+	// A URL naming a vendor is not its widget (en.wikipedia.org/wiki/ReCAPTCHA),
+	// so with no markup these are only a generic captcha on a small page.
+	{"Home page", "https://example.com/recaptcha", autosolver.IntentCaptcha, "captcha-generic", 0.7, "generic captcha challenge detected"},
+	{"Home page", "https://example.com/hcaptcha", autosolver.IntentCaptcha, "captcha-generic", 0.7, "generic captcha challenge detected"},
 	{"Log In", "", autosolver.IntentLogin, "", 0.7, "login page detected via semantic title analysis"},
 	{"Login", "", autosolver.IntentLogin, "", 0.7, "login page detected via semantic title analysis"},
 	{"Sign In", "", autosolver.IntentLogin, "", 0.7, "login page detected via semantic title analysis"},
