@@ -2,6 +2,7 @@ package autosolver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -523,7 +524,28 @@ func (as *AutoSolver) planSemanticStep(ctx context.Context, page Page, intent *I
 	return action, nil
 }
 
+// challengeClickRefusalJS says why a semantic click on a challenge page must
+// not land on sel, or "" when it may. The matcher scores every button and link
+// on the page against "captcha checkbox verify button", so on an ordinary page
+// that merely has a captcha somewhere it picked things like a site menu titled
+// "Captcha solver". A control counts only inside something marked as a
+// challenge, or on a page small enough to be nothing but the challenge.
+const challengeClickRefusalJS = `(function(sel){
+  var el = document.querySelector(sel);
+  if (!el) return 'no such element';
+  if (el.closest('nav,header,footer,[role=navigation],[role=menu],[role=menubar],[role=banner],[role=contentinfo]')) return 'it is in the page navigation';
+  for (var e = el; e && e !== document.body; e = e.parentElement) {
+    var s = ((e.id || '') + ' ' + (typeof e.className === 'string' ? e.className : '')).toLowerCase();
+    if (/captcha|challenge|verif|robot|human|geetest|turnstile|slider|punish/.test(s)) return '';
+  }
+  var text = ((document.body && document.body.innerText) || '').length;
+  return text < 3000 ? '' : 'it is outside any challenge widget';
+})`
+
 func (as *AutoSolver) executeSemanticStep(ctx context.Context, page Page, executor ActionExecutor, intent *Intent, step int, action *SuggestedAction) error {
+	if err := challengeClickAllowed(ctx, executor, intent, action); err != nil {
+		return err
+	}
 	err := executeSuggestedAction(ctx, executor, action)
 	if err == nil {
 		return nil
@@ -534,10 +556,31 @@ func (as *AutoSolver) executeSemanticStep(ctx context.Context, page Page, execut
 		return fmt.Errorf("execute semantic action: %v; self-heal failed: %v", err, healErr)
 	}
 
+	if err := challengeClickAllowed(ctx, executor, intent, healed); err != nil {
+		return err
+	}
 	if execErr := executeSuggestedAction(ctx, executor, healed); execErr != nil {
 		return fmt.Errorf("execute semantic self-heal action: %v", execErr)
 	}
 
+	return nil
+}
+
+// challengeClickAllowed refuses a click on a captcha or block page that would
+// land outside the challenge (see challengeClickRefusalJS).
+func challengeClickAllowed(ctx context.Context, executor ActionExecutor, intent *Intent, action *SuggestedAction) error {
+	t := intentTypeOf(intent)
+	if (t != IntentCaptcha && t != IntentBlocked) || action == nil || action.Action != ActionClick || action.Selector == "" {
+		return nil
+	}
+	sel, _ := json.Marshal(action.Selector)
+	var refusal string
+	if err := executor.Evaluate(ctx, fmt.Sprintf("(%s)(%s)", challengeClickRefusalJS, sel), &refusal); err != nil {
+		return fmt.Errorf("check challenge click on %s: %w", action.Selector, err)
+	}
+	if refusal != "" {
+		return fmt.Errorf("no challenge control to click: the best match, %s, was not clicked because %s", action.Selector, refusal)
+	}
 	return nil
 }
 
