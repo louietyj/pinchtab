@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/pinchtab/pinchtab/internal/autosolver"
@@ -176,6 +177,10 @@ func readCaptcha(ctx context.Context, executor autosolver.ActionExecutor, html, 
 	case "recaptcha-v3":
 		c.enterprise = isRecaptchaEnterprise(html)
 		c.pageAction = extractRecaptchaAction(html)
+	case "punish-frame":
+		if err := readPunishFrame(ctx, executor, c); err != nil {
+			slog.Debug("punish frame not read", "err", err)
+		}
 	case "turnstile":
 		if c.key == "" {
 			c.key = readTurnstileSitekey(ctx, executor)

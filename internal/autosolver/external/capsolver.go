@@ -45,7 +45,7 @@ func NewCapsolver(cfg CapsolverConfig) *Capsolver {
 		},
 		supports: map[string]bool{
 			"recaptcha": true, "recaptcha-v3": true, "turnstile": true,
-			"mtcaptcha": true, "awswaf": true, "geetest": true,
+			"mtcaptcha": true, "awswaf": true, "geetest": true, "punish-frame": true,
 		},
 		task: capsolverTaskFor,
 	}}
@@ -55,7 +55,7 @@ func capsolverTaskFor(c *captcha) any {
 	taskType, _ := capsolverTaskType(c.typ)
 	task := capsolverTask{Type: taskType, WebsiteURL: c.url, WebsiteKey: c.key, PageAction: c.pageAction}
 	switch c.typ {
-	case "recaptcha", "recaptcha-v3":
+	case "recaptcha", "recaptcha-v3", "punish-frame":
 		if c.enterprise {
 			// ReCaptchaV2TaskProxyLess -> ReCaptchaV2EnterpriseTaskProxyLess, and v3 alike.
 			task.Type = strings.Replace(task.Type, "TaskProxyLess", "EnterpriseTaskProxyLess", 1)
@@ -93,7 +93,7 @@ func capsolverTaskFor(c *captcha) any {
 // infrastructure — browsing-side proxying is a separate concern.
 func capsolverTaskType(captchaType string) (string, bool) {
 	switch captchaType {
-	case "recaptcha":
+	case "recaptcha", "punish-frame":
 		return "ReCaptchaV2TaskProxyLess", true
 	case "recaptcha-v3":
 		return "ReCaptchaV3TaskProxyLess", true

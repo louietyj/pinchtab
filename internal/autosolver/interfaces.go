@@ -64,6 +64,13 @@ type Dragger interface {
 	Drag(ctx context.Context, x, y, endX, endY float64) error
 }
 
+// FrameEvaluator is implemented by an executor that can run JavaScript in the
+// main world of a child frame: the first, depth-first, whose URL match accepts.
+// expr is evaluated in that frame and its value unmarshalled into result.
+type FrameEvaluator interface {
+	EvaluateInFrame(ctx context.Context, match func(url string) bool, expr string, result any) error
+}
+
 // SolveTimeoutHinter is implemented by a solver that needs longer than the
 // configured SolverTimeout, such as a provider whose solves are done by people.
 type SolveTimeoutHinter interface {

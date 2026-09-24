@@ -89,8 +89,9 @@ var structuredInjectors = map[string]func(ctx context.Context, executor autosolv
 	"geetest": func(ctx context.Context, executor autosolver.ActionExecutor, c *captcha, solution json.RawMessage) error {
 		return injectGeetest(ctx, executor, c.geetest.version, solution)
 	},
-	"lemin":   injectStructured(leminInjectJS, "answer"),
-	"tencent": injectStructured(tencentInjectJS, "ticket"),
+	"lemin":        injectStructured(leminInjectJS, "answer"),
+	"tencent":      injectStructured(tencentInjectJS, "ticket"),
+	"punish-frame": injectPunishFrame,
 }
 
 // injectStructured passes the whole solution object to js, once it is checked

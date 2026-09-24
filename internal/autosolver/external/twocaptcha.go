@@ -48,6 +48,7 @@ func NewTwoCaptcha(cfg TwoCaptchaConfig) *TwoCaptcha {
 			"recaptcha": true, "recaptcha-v3": true, "turnstile": true,
 			"hcaptcha": true, "funcaptcha": true, "mtcaptcha": true, "geetest": true,
 			"yandex": true, "prosopo": true, "lemin": true, "tencent": true, "yidun": true,
+			"punish-frame": true,
 		},
 		task:    twoCaptchaTaskFor,
 		timeout: twoCaptchaSolveTimeout,
@@ -70,9 +71,10 @@ func twoCaptchaTaskFor(c *captcha) any {
 		}
 	}
 	switch c.typ {
-	case "recaptcha":
+	case "recaptcha", "punish-frame":
 		task["type"] = "RecaptchaV2TaskProxyless"
 		task["websiteKey"] = c.key
+		setIf("pageAction", c.pageAction)
 		if c.invisible {
 			task["isInvisible"] = true
 		}

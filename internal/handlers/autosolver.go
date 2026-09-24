@@ -213,7 +213,11 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) (autoSolveOu
 		return nil, nil
 	}
 
-	challengeType := deriveChallengeType(result, page)
+	// The type seen when the run started: a solved page no longer shows it.
+	challengeType := challenge.ChallengeType
+	if challengeType == "" {
+		challengeType = deriveChallengeType(result, page)
+	}
 	outcome := autoSolveOutcome{
 		"solved":        result.Solved,
 		"challengeType": challengeType,

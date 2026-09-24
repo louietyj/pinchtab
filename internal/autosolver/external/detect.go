@@ -357,6 +357,10 @@ func firstSubmatch(s string, res ...*regexp.Regexp) string {
 // recognized. reCAPTCHA splits into "recaptcha" (v2 checkbox/invisible) and
 // "recaptcha-v3"; Enterprise is a property of either (isRecaptchaEnterprise).
 func detectCaptchaType(html string) string {
+	// The punish iframe's reCAPTCHA is two frames down, out of this document.
+	if punishFrameRe.MatchString(html) {
+		return "punish-frame"
+	}
 	return findCaptchaWidget(html).typ
 }
 
