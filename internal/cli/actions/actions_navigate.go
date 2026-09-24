@@ -152,7 +152,18 @@ func Navigate(client *http.Client, base, token string, url string, cmd *cobra.Co
 
 	jsonOutput, _ := cmd.Flags().GetBool("json")
 	if jsonOutput {
-		result, usedFallback := postNavigate(client, base, token, req, true)
+		result, usedFallback := postNavigate(client, base, token, req, false)
+		// The HINT is what an agent acts on (a pending solve's check command
+		// included), so --json carries it rather than dropping it.
+		if raw, ok := result["autoSolve"].(map[string]any); ok {
+			if hint := autoSolveHint(result); hint != "" {
+				raw["hint"] = hint
+			}
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetEscapeHTML(false) // URLs keep their & as &
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(result)
 		resultTabID := tabIDFromNavigateResult(result)
 		reportFallbackNewTab(cmd, usedFallback, req.tabID, resultTabID)
 		apiclient.SuggestNextAction("navigate", result)

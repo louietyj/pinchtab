@@ -101,7 +101,8 @@ func (s *NoCaptcha) Solve(ctx context.Context, page autosolver.Page, executor au
 		}
 
 		st, err := waitNC(ctx, executor, noCaptchaMountWait, func(st ncState) bool {
-			return st.Blocked || (st.Handle != nil && st.Track != nil)
+			// An error code with no handle is a spent slider: no point waiting.
+			return st.Blocked || (st.Handle != nil && st.Track != nil) || (st.ErrCode != "" && st.Handle == nil)
 		})
 		if err != nil {
 			result.Error = err.Error()
@@ -112,8 +113,10 @@ func (s *NoCaptcha) Solve(ctx context.Context, page autosolver.Page, executor au
 			return result, autosolver.Permanent(errNoCaptchaBlocked)
 		}
 		if st.Handle == nil || st.Track == nil {
-			result.Error = "slider never appeared"
-			return result, nil
+			// A refused slider can leave "Oops... Please refresh" with no
+			// handle; the page it guards serves a new one.
+			codes = append(codes, "no slider")
+			continue
 		}
 
 		// Press somewhere on the handle rather than its exact centre, and let
@@ -143,7 +146,7 @@ func (s *NoCaptcha) Solve(ctx context.Context, page autosolver.Page, executor au
 		codes = append(codes, code)
 	}
 	result.FinalURL, result.FinalTitle = page.URL(), page.Title()
-	result.Error = fmt.Sprintf("slider refused %d drags (%s)", len(codes), strings.Join(codes, ", "))
+	result.Error = fmt.Sprintf("slider not passed in %d tries (%s)", len(codes), strings.Join(codes, ", "))
 	return result, nil
 }
 

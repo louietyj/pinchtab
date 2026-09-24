@@ -575,6 +575,17 @@ func (h *Handlers) runNavigate(w http.ResponseWriter, r *http.Request, ex navExe
 
 	navURL, _ := h.Bridge.CurrentURL(ex.ctx)
 	title, _ := bridge.WaitForTitle(ex.ctx, ex.titleWait)
+	// A page can be challenged a moment after load: AliExpress punishes the
+	// item page's recommendations request with an overlay that was usually in
+	// place by now, but not yet when detection ran. Looking again costs one
+	// HTML read on a clean page.
+	if autoSolve == nil {
+		if late := h.maybeAutoSolve(ex.ctx, ex.tabID, autoSolverTriggerNavigate); late != nil {
+			autoSolve = late
+			navURL, _ = h.Bridge.CurrentURL(ex.ctx)
+			title, _ = bridge.WaitForTitle(ex.ctx, ex.titleWait)
+		}
+	}
 	h.setCurrentTabForRequest(r, ex.tabID)
 	if ex.isNewTab {
 		h.recordResolvedTab(r, ex.tabID)

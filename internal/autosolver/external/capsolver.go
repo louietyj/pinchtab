@@ -48,8 +48,14 @@ func NewCapsolver(cfg CapsolverConfig) *Capsolver {
 			"mtcaptcha": true, "awswaf": true, "geetest": true, "punish-frame": true,
 		},
 		task: capsolverTaskFor,
+		// A solve plus AliExpress's punish overlay closing, which took ~20 s
+		// after its verify had already passed (punishFrameSettle).
+		timeout: capsolverSolveTimeout,
 	}}
 }
+
+// capsolverSolveTimeout covers CapSolver's own ~10-30 s and punishFrameSettle.
+const capsolverSolveTimeout = 75 * time.Second
 
 func capsolverTaskFor(c *captcha) any {
 	taskType, _ := capsolverTaskType(c.typ)

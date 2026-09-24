@@ -21,6 +21,8 @@ type ncBrowser struct {
 	drags    [][4]float64
 	navs     []string
 	dragged  bool
+	// noSliderUntilNav shows the "Oops" state, with no handle, until a reload.
+	noSliderUntilNav bool
 }
 
 func (b *ncBrowser) URL() string                              { return b.url }
@@ -36,6 +38,7 @@ func (b *ncBrowser) WaitFor(context.Context, string, time.Duration) error { retu
 func (b *ncBrowser) Navigate(_ context.Context, url string) error {
 	b.navs = append(b.navs, url)
 	b.url = punishURL
+	b.noSliderUntilNav = false
 	return nil
 }
 func (b *ncBrowser) Drag(_ context.Context, x, y, endX, endY float64) error {
@@ -52,6 +55,8 @@ func (b *ncBrowser) Evaluate(_ context.Context, _ string, result interface{}) er
 	st := map[string]any{"h": []float64{572, 466, 42, 30}, "t": []float64{570, 464, 300, 34}}
 	if b.blocked {
 		st = map[string]any{"blocked": true}
+	} else if b.noSliderUntilNav {
+		st = map[string]any{"err": "ei5Xq"}
 	} else if b.dragged {
 		b.dragged = false
 		st["err"] = b.outcomes[len(b.drags)-1]
@@ -85,8 +90,18 @@ func TestNoCaptchaRetriesOnAFreshSliderUntilADragPasses(t *testing.T) {
 func TestNoCaptchaGivesUpAfterThreeRefusals(t *testing.T) {
 	b := &ncBrowser{url: punishURL, outcomes: []string{"a1", "b2", "c3"}}
 	res, _ := (&NoCaptcha{}).Solve(context.Background(), b, b)
-	if res.Solved || len(b.drags) != 3 || res.Error != "slider refused 3 drags (a1, b2, c3)" {
+	if res.Solved || len(b.drags) != 3 || res.Error != "slider not passed in 3 tries (a1, b2, c3)" {
 		t.Errorf("Solve = %+v after %d drags", res, len(b.drags))
+	}
+}
+
+// Run 24: after refused drags the widget sat at "Oops... Please refresh" with
+// no handle, and the next attempt gave up on "slider never appeared".
+func TestNoCaptchaReloadsWhenTheSliderIsGone(t *testing.T) {
+	b := &ncBrowser{url: punishURL, outcomes: []string{""}, noSliderUntilNav: true}
+	res, err := (&NoCaptcha{}).Solve(context.Background(), b, b)
+	if err != nil || !res.Solved || len(b.navs) != 1 || len(b.drags) != 1 {
+		t.Errorf("Solve = %+v, %v after %d navs, %d drags", res, err, len(b.navs), len(b.drags))
 	}
 }
 

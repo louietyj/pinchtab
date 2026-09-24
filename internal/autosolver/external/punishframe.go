@@ -99,8 +99,10 @@ const punishFrameInjectJS = `(function(token){
 
 const punishFrameGoneJS = `!document.querySelector('iframe[src*="/_____tmd_____/punish"]')`
 
-// punishFrameSettle is how long the verify page gets to lift the overlay.
-const punishFrameSettle = 20 * time.Second
+// punishFrameSettle is how long the verify page gets to lift the overlay. It
+// has taken ~20 s after the pass cookie (x5sec) was issued, on a recom-acs
+// frame; a shorter wait reported that working, paid solve as failed.
+const punishFrameSettle = 40 * time.Second
 
 // injectPunishFrame hands the token to the inner frame's callback, then waits
 // for the punish iframe to leave the page: only that shows the token was taken.
