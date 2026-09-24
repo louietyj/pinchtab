@@ -283,6 +283,7 @@ func configureBrowserFlags() {
 	)
 
 	evalCmd.Flags().Bool("await-promise", false, "Resolve a returned Promise before responding")
+	evalCmd.Flags().String("frame", "", "Run in a child frame (cross-site too): its frame ID, or part of its URL. `pinchtab frame` scoping does not apply to eval")
 	navCmd.Flags().Bool("print-tab-id", false, "Print only the tab ID on stdout (also triggered automatically when stdout is a pipe)")
 	for _, cmd := range []*cobra.Command{handoffCmd, tabHandoffCmd} {
 		cmd.Flags().String("reason", "", "Reason for human handoff (default: manual_handoff)")

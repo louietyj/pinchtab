@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/pinchtab/pinchtab/internal/activity"
+	"github.com/pinchtab/pinchtab/internal/autosolver/adapters"
 	"github.com/pinchtab/pinchtab/internal/bridge"
 	"github.com/pinchtab/pinchtab/internal/httpx"
 	"github.com/pinchtab/pinchtab/internal/routes"
@@ -31,6 +32,10 @@ func (h *Handlers) HandleEvaluate(w http.ResponseWriter, r *http.Request) {
 		TabID        string `json:"tabId"`
 		Expression   string `json:"expression"`
 		AwaitPromise bool   `json:"awaitPromise"`
+		// Frame runs the expression in a child frame instead of the top
+		// document: a frame ID, or part of the frame's URL. Cross-site frames
+		// included.
+		Frame string `json:"frame"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodySize)).Decode(&req); err != nil {
 		httpx.Error(w, 400, fmt.Errorf("decode: %w", err))
@@ -57,6 +62,32 @@ func (h *Handlers) HandleEvaluate(w http.ResponseWriter, r *http.Request) {
 	)
 
 	var result any
+	if req.Frame != "" {
+		frames, err := adapters.TabFrames(tCtx)
+		if err != nil {
+			httpx.Error(w, 500, fmt.Errorf("list frames: %w", err))
+			return
+		}
+		frame, found := adapters.FindFrame(frames, req.Frame)
+		if !found {
+			available := make([]map[string]string, 0, len(frames))
+			urls := make([]string, 0, len(frames))
+			for _, f := range frames[min(1, len(frames)):] {
+				available = append(available, map[string]string{"frameId": f.ID, "url": f.URL})
+				urls = append(urls, f.URL)
+			}
+			// The CLI prints only the message, so the frames go in it too.
+			httpx.ErrorCode(w, 404, "frame_not_found", fmt.Sprintf("no frame matches %q; the tab's frames are: %s", req.Frame, strings.Join(urls, " , ")), false, map[string]any{"frames": available})
+			return
+		}
+		if err := adapters.EvaluateInFrame(tCtx, frame.ID, req.Expression, &result, req.AwaitPromise); err != nil {
+			httpx.Error(w, 500, fmt.Errorf("evaluate in frame %s: %w", frame.URL, err))
+			return
+		}
+		h.recordActivity(r, activity.Update{Action: "evaluate"})
+		httpx.JSON(w, 200, map[string]any{"result": result, "frame": map[string]string{"frameId": frame.ID, "url": frame.URL}})
+		return
+	}
 	opts := bridge.EvalOpts{AwaitPromise: req.AwaitPromise}
 	if err := h.evalRuntime(tCtx, req.Expression, &result, opts); err != nil {
 		errMsg := err.Error()

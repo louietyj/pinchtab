@@ -126,9 +126,9 @@ func autoSolveHint(result map[string]any) string {
 	}
 
 	if msg, _ := raw["error"].(string); msg != "" {
-		return fmt.Sprintf("a %s challenge on this page was NOT solved: %s", challenge, msg)
+		return fmt.Sprintf("a %s challenge on this page was NOT solved: %s. `nav --json` lists each solver's attempt.", challenge, msg)
 	}
-	return fmt.Sprintf("a %s challenge on this page was NOT solved.", challenge)
+	return fmt.Sprintf("a %s challenge on this page was NOT solved. `nav --json` lists each solver's attempt.", challenge)
 }
 
 // pendingSolveCheck is the command the pending hint hands the caller. Waiting for the

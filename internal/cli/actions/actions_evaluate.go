@@ -15,6 +15,9 @@ func Evaluate(client *http.Client, base, token string, args []string, cmd *cobra
 	if awaitPromise, _ := cmd.Flags().GetBool("await-promise"); awaitPromise {
 		body["awaitPromise"] = true
 	}
+	if frame, _ := cmd.Flags().GetString("frame"); frame != "" {
+		body["frame"] = frame
+	}
 	tabID, _ := cmd.Flags().GetString("tab")
 	path := "/evaluate"
 	if tabID != "" {

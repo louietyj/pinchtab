@@ -561,6 +561,10 @@ func (h *Handlers) runNavigate(w http.ResponseWriter, r *http.Request, ex navExe
 		return
 	}
 
+	if !ex.dispatchOnly {
+		h.unstickRedirect(ex.ctx, ex.url, ex.maxRedirects)
+	}
+
 	if err := h.waitForNavigationState(ex.ctx, ex.waitFor, ex.waitSelector); err != nil {
 		httpx.ErrorCode(w, 400, "bad_wait_for", err.Error(), false, nil)
 		return

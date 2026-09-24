@@ -19,25 +19,25 @@ import (
 func (p *PinchtabPage) Frames(ctx context.Context) ([]autosolver.FrameRef, error) {
 	ctx, cancel := onTab(p.ctx, ctx)
 	defer cancel()
-	return tabFrames(ctx)
+	return TabFrames(ctx)
 }
 
 func (p *PinchtabPage) EvaluateInFrame(ctx context.Context, frameID, expr string, result any) error {
 	ctx, cancel := onTab(p.ctx, ctx)
 	defer cancel()
-	return evaluateInFrame(ctx, frameID, expr, result)
+	return EvaluateInFrame(ctx, frameID, expr, result, false)
 }
 
 func (e *PinchtabExecutor) Frames(ctx context.Context) ([]autosolver.FrameRef, error) {
 	ctx, cancel := onTab(e.ctx, ctx)
 	defer cancel()
-	return tabFrames(ctx)
+	return TabFrames(ctx)
 }
 
 func (e *PinchtabExecutor) EvaluateInFrame(ctx context.Context, frameID, expr string, result any) error {
 	ctx, cancel := onTab(e.ctx, ctx)
 	defer cancel()
-	return evaluateInFrame(ctx, frameID, expr, result)
+	return EvaluateInFrame(ctx, frameID, expr, result, false)
 }
 
 // onTab runs on the tab's CDP context, which callers such as a solver's
@@ -51,11 +51,11 @@ func onTab(tab, caller context.Context) (context.Context, context.CancelFunc) {
 	return ctx, func() { stop(); cancel() }
 }
 
-// tabFrames lists the tab's frames. The page's own frame tree holds only the
+// TabFrames lists the tab's frames. The page's own frame tree holds only the
 // frames in its process; a cross-site frame is a separate "iframe" target,
 // found in the browser's target list by following parent targets back to
 // this tab. Its frame ID is its target ID.
-func tabFrames(ctx context.Context) ([]autosolver.FrameRef, error) {
+func TabFrames(ctx context.Context) ([]autosolver.FrameRef, error) {
 	var tree *cdppage.FrameTree
 	if err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		var err error
@@ -99,10 +99,11 @@ func tabFrames(ctx context.Context) ([]autosolver.FrameRef, error) {
 	return frames, nil
 }
 
-// evaluateInFrame runs expr in the frame's main world, where the page's own
-// globals are: a captcha callback is one. (Bridge.EvaluateInFrame uses an
-// isolated world on purpose, so page script cannot interfere with reads.)
-func evaluateInFrame(ctx context.Context, frameID, expr string, result any) error {
+// EvaluateInFrame runs expr in the frame's main world, where the page's own
+// globals are: a captcha callback is one, and so is whatever `pinchtab eval`
+// is asked about. (Bridge.EvaluateInFrame uses an isolated world on purpose,
+// so page script cannot interfere with reads.)
+func EvaluateInFrame(ctx context.Context, frameID, expr string, result any, awaitPromise bool) error {
 	var tree *cdppage.FrameTree
 	if err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		var err error
@@ -113,11 +114,11 @@ func evaluateInFrame(ctx context.Context, frameID, expr string, result any) erro
 	}
 	switch {
 	case string(tree.Frame.ID) == frameID:
-		return chromedp.Run(ctx, chromedp.Evaluate(expr, result))
+		return chromedp.Run(ctx, chromedp.Evaluate(expr, result, awaitOpt(awaitPromise)))
 	case inTree(tree.ChildFrames, cdp.FrameID(frameID)):
-		return evaluateInProcessFrame(ctx, cdp.FrameID(frameID), expr, result)
+		return evaluateInProcessFrame(ctx, cdp.FrameID(frameID), expr, result, awaitPromise)
 	default:
-		return evaluateInFrameTarget(ctx, target.ID(frameID), expr, result)
+		return evaluateInFrameTarget(ctx, target.ID(frameID), expr, result, awaitPromise)
 	}
 }
 
@@ -132,7 +133,7 @@ func inTree(frames []*cdppage.FrameTree, id cdp.FrameID) bool {
 
 // evaluateInProcessFrame calls a function on the frame's document node, which
 // runs in that document's globals.
-func evaluateInProcessFrame(ctx context.Context, frameID cdp.FrameID, expr string, result any) error {
+func evaluateInProcessFrame(ctx context.Context, frameID cdp.FrameID, expr string, result any, awaitPromise bool) error {
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		owner, _, err := dom.GetFrameOwner(frameID).Do(ctx)
 		if err != nil {
@@ -151,7 +152,7 @@ func evaluateInProcessFrame(ctx context.Context, frameID cdp.FrameID, expr strin
 		}
 		body := "function(){ return (" + strings.TrimRight(strings.TrimSpace(expr), ";") + "); }"
 		res, exc, err := cdpruntime.CallFunctionOn(body).
-			WithObjectID(doc.ObjectID).WithReturnByValue(true).WithAwaitPromise(true).Do(ctx)
+			WithObjectID(doc.ObjectID).WithReturnByValue(true).WithAwaitPromise(awaitPromise).Do(ctx)
 		if err != nil {
 			return err
 		}
@@ -166,7 +167,7 @@ func evaluateInProcessFrame(ctx context.Context, frameID cdp.FrameID, expr strin
 }
 
 // evaluateInFrameTarget attaches to a cross-site frame's own target.
-func evaluateInFrameTarget(ctx context.Context, id target.ID, expr string, result any) error {
+func evaluateInFrameTarget(ctx context.Context, id target.ID, expr string, result any, awaitPromise bool) error {
 	fctx, cancel := chromedp.NewContext(ctx, chromedp.WithTargetID(id))
 	defer func() {
 		// Cancelling closes the target chromedp was attached to, and closing an
@@ -176,5 +177,25 @@ func evaluateInFrameTarget(ctx context.Context, id target.ID, expr string, resul
 		}
 		cancel()
 	}()
-	return chromedp.Run(fctx, chromedp.Evaluate(expr, result))
+	return chromedp.Run(fctx, chromedp.Evaluate(expr, result, awaitOpt(awaitPromise)))
+}
+
+func awaitOpt(await bool) chromedp.EvaluateOption {
+	return func(p *cdpruntime.EvaluateParams) *cdpruntime.EvaluateParams { return p.WithAwaitPromise(await) }
+}
+
+// FindFrame resolves match to one of the tab's frames below the top document:
+// a frame ID, or else the first frame whose URL contains match.
+func FindFrame(frames []autosolver.FrameRef, match string) (autosolver.FrameRef, bool) {
+	for _, f := range frames[min(1, len(frames)):] {
+		if f.ID == match {
+			return f, true
+		}
+	}
+	for _, f := range frames[min(1, len(frames)):] {
+		if strings.Contains(f.URL, match) {
+			return f, true
+		}
+	}
+	return autosolver.FrameRef{}, false
 }

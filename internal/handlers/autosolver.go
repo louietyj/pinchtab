@@ -199,6 +199,7 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) (autoSolveOu
 	}
 
 	var types, solvers []string
+	var history []map[string]any
 	for round := 1; ; round++ {
 		result, err := h.autoSolveRound(ctx, tabCtx, tabID, as, cfg, page, executor)
 		if err != nil {
@@ -232,6 +233,18 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) (autoSolveOu
 		}
 		if result.Error != "" {
 			outcome["error"] = result.Error
+		}
+		// Per-solver attempts, which a sandboxed agent cannot otherwise read:
+		// the server log and POST /solve are out of its session's reach.
+		for _, h := range result.History {
+			entry := map[string]any{"challenge": challengeType, "solver": h.Solver, "status": h.Status, "ms": h.Duration.Milliseconds()}
+			if h.Error != "" {
+				entry["error"] = h.Error
+			}
+			history = append(history, entry)
+		}
+		if len(history) > 0 {
+			outcome["history"] = history
 		}
 
 		if !result.Solved {
