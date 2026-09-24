@@ -123,6 +123,27 @@ func TestPunishFrameOverAnItemPageIsStillAChallenge(t *testing.T) {
 	}
 }
 
+// Run 19's escalation: a blank item page under an iframe of the punish template.
+func TestPunishBlockFrameIsReportedBlockedWithoutADrag(t *testing.T) {
+	html := `<div id="root"></div><iframe src="https://bixi-intl.alicdn.com/punish/punish:resource:template:AESpace:default_486949.html?qrcode=x&uuid=y"></iframe>`
+	b := &ncBrowser{url: "https://www.aliexpress.us/item/3256812246543173.html"}
+	page := &htmlPage{ncBrowser: b, html: html}
+	if ok, _ := (&NoCaptcha{}).CanHandle(context.Background(), page); !ok {
+		t.Fatal("did not claim the punish block")
+	}
+	res, err := (&NoCaptcha{}).Solve(context.Background(), page, b)
+	if res.Solved || len(b.drags) != 0 || !errors.Is(err, autosolver.ErrPermanent) {
+		t.Errorf("Solve = %+v, %v after %d drags", res, err, len(b.drags))
+	}
+}
+
+type htmlPage struct {
+	*ncBrowser
+	html string
+}
+
+func (p *htmlPage) HTML() (string, error) { return p.html, nil }
+
 func TestPunishOrigin(t *testing.T) {
 	for in, want := range map[string]string{
 		punishURL: "https://www.aliexpress.us/item/3256805716460801.html",

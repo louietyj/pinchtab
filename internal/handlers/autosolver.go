@@ -198,58 +198,97 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) (autoSolveOu
 		return nil, err
 	}
 
-	// The caller's budget still cancels the run; both are sized from the same
-	// estimate, so neither can cut short a solve the other considers live.
-	solveCtx, cancel := context.WithTimeout(tabCtx, estimateAutoSolverRunTimeout(cfg))
-	defer cancel()
-	defer context.AfterFunc(ctx, cancel)()
+	var types, solvers []string
+	for round := 1; ; round++ {
+		result, err := h.autoSolveRound(ctx, tabCtx, tabID, as, cfg, page, executor)
+		if err != nil {
+			return nil, err
+		}
+		// Attempts==0 means detection fired but no solver ran, which is not something
+		// the caller needs told about — report only runs that actually did work.
+		if result == nil || result.Attempts == 0 {
+			if round == 1 {
+				return nil, nil
+			}
+			break
+		}
 
-	result, err := as.Solve(solveCtx, page, executor)
-	if err != nil {
-		return nil, err
-	}
+		// The type seen when the round started: a solved page no longer shows it.
+		challengeType := challenge.ChallengeType
+		if challengeType == "" {
+			challengeType = deriveChallengeType(result, page)
+		}
+		types = append(types, challengeType)
+		if result.SolverUsed != "" {
+			solvers = append(solvers, result.SolverUsed)
+		}
+		outcome := autoSolveOutcome{
+			"solved":        result.Solved,
+			"challengeType": strings.Join(types, ", then "),
+			"attempts":      result.Attempts,
+		}
+		if len(solvers) > 0 {
+			outcome["solver"] = strings.Join(solvers, ", then ")
+		}
+		if result.Error != "" {
+			outcome["error"] = result.Error
+		}
 
-	if result == nil {
-		return nil, nil
-	}
-
-	// The type seen when the run started: a solved page no longer shows it.
-	challengeType := challenge.ChallengeType
-	if challengeType == "" {
-		challengeType = deriveChallengeType(result, page)
-	}
-	outcome := autoSolveOutcome{
-		"solved":        result.Solved,
-		"challengeType": challengeType,
-		"attempts":      result.Attempts,
-	}
-	if result.SolverUsed != "" {
-		outcome["solver"] = result.SolverUsed
-	}
-	if result.Error != "" {
-		outcome["error"] = result.Error
-	}
-
-	if result.Solved && result.Attempts > 0 {
+		if !result.Solved {
+			slog.Warn("autosolver auto-trigger did not solve challenge",
+				"tab_id", tabID,
+				"attempts", result.Attempts,
+				"error", result.Error)
+			h.autoHandoffAfterFailure(tabID, challengeType)
+			return outcome, nil
+		}
 		h.autoSolve.markSolved(tabID, challengeURL, challenge.ChallengeType)
 		slog.Info("autosolver auto-trigger solved challenge",
 			"tab_id", tabID,
 			"solver", result.SolverUsed,
 			"attempts", result.Attempts)
-	} else if !result.Solved && result.Attempts > 0 {
-		slog.Warn("autosolver auto-trigger did not solve challenge",
-			"tab_id", tabID,
-			"attempts", result.Attempts,
-			"error", result.Error)
-		h.autoHandoffAfterFailure(tabID, challengeType)
-	}
 
-	// Attempts==0 means detection fired but no solver ran, which is not something
-	// the caller needs told about — report only runs that actually did work.
-	if result.Attempts == 0 {
-		return nil, nil
+		// A solve can land on a page that challenges again at once: AliExpress
+		// lets a slider pass through to an item page whose data request it then
+		// punishes with reCAPTCHA. Nobody else would look before the next call.
+		next := h.challengeAfterSolve(ctx, page)
+		if round == autoSolveMaxRounds || next == nil ||
+			h.autoSolve.recentlySolved(tabID, page.URL(), next.ChallengeType) {
+			return outcome, nil
+		}
+		challenge, challengeURL = next, page.URL()
 	}
-	return outcome, nil
+	return nil, nil
+}
+
+// autoSolveMaxRounds caps how many challenges one navigation solves in a row.
+const autoSolveMaxRounds = 3
+
+// challengeAfterSolveDelay lets a solved page load what it loads next, which
+// is when a follow-up challenge appears.
+const challengeAfterSolveDelay = 2 * time.Second
+
+func (h *Handlers) challengeAfterSolve(ctx context.Context, page coreautosolver.Page) *coreautosolver.Intent {
+	select {
+	case <-ctx.Done():
+		return nil
+	case <-time.After(challengeAfterSolveDelay):
+	}
+	html, err := page.HTMLWithin(autoDetectHTMLTimeout)
+	if err != nil {
+		return nil
+	}
+	return coreautosolver.DetectChallengeIntent(page.Title(), page.URL(), html)
+}
+
+// autoSolveRound runs one solve of the challenge now on the tab.
+func (h *Handlers) autoSolveRound(ctx, tabCtx context.Context, tabID string, as *coreautosolver.AutoSolver, cfg coreautosolver.Config, page coreautosolver.Page, executor coreautosolver.ActionExecutor) (*coreautosolver.Result, error) {
+	// The caller's budget still cancels the run; both are sized from the same
+	// estimate, so neither can cut short a solve the other considers live.
+	solveCtx, cancel := context.WithTimeout(tabCtx, estimateAutoSolverRunTimeout(cfg))
+	defer cancel()
+	defer context.AfterFunc(ctx, cancel)()
+	return as.Solve(solveCtx, page, executor)
 }
 
 // autoHandoffAfterFailure flips the tab into paused_handoff so action routes

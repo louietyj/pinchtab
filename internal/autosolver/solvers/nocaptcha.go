@@ -39,7 +39,7 @@ func (s *NoCaptcha) CanHandle(_ context.Context, page autosolver.Page) (bool, er
 		return false, nil
 	}
 	intent := autosolver.DetectChallengeIntent(page.Title(), page.URL(), html)
-	return intent != nil && intent.ChallengeType == "nocaptcha", nil
+	return intent != nil && (intent.ChallengeType == "nocaptcha" || intent.ChallengeType == "punish-block"), nil
 }
 
 // ncState is the slider as the page shows it. Rects are [left, top, width,
@@ -73,6 +73,12 @@ func (s *NoCaptcha) Solve(ctx context.Context, page autosolver.Page, executor au
 	if !ok {
 		result.Error = "executor cannot drag"
 		return result, autosolver.Permanent(errors.New(result.Error))
+	}
+	if html, err := page.HTML(); err == nil {
+		if intent := autosolver.DetectChallengeIntent(page.Title(), page.URL(), html); intent != nil && intent.ChallengeType == "punish-block" {
+			result.Error = errNoCaptchaBlocked.Error()
+			return result, autosolver.Permanent(errNoCaptchaBlocked)
+		}
 	}
 	origin := punishOrigin(page.URL())
 

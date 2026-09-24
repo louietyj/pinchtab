@@ -5,7 +5,10 @@ import (
 	"strings"
 )
 
-var punishFrameRe = regexp.MustCompile(`<iframe[^>]+src="[^"]*/_____tmd_____/punish`)
+var (
+	punishFrameRe      = regexp.MustCompile(`<iframe[^>]+src="[^"]*/_____tmd_____/punish`)
+	punishBlockFrameRe = regexp.MustCompile(`<iframe[^>]+src="[^"]*alicdn\.com/punish/punish:resource:template:`)
+)
 
 // DetectChallengeIntent classifies known challenge pages using title, URL,
 // and HTML markers. It returns nil when no challenge signal is found.
@@ -39,6 +42,18 @@ func DetectChallengeIntent(title, url, html string) *Intent {
 	// page, when AliExpress punishes the page's data API rather than the page.
 	// Its content is cross-origin, so the iframe itself is the only marker; while
 	// it is there the challenge is not gone.
+	// The outright block ("Sorry, there was a problem accessing the page") can
+	// also arrive as an iframe of Alibaba's punish template over a blank page.
+	// Nothing passes it, but it must not read as an ordinary page.
+	if punishBlockFrameRe.MatchString(lowerHTML) {
+		return &Intent{
+			Type:          IntentCaptcha,
+			Confidence:    0.9,
+			ChallengeType: "punish-block",
+			Details:       "Alibaba punish block in an iframe",
+		}
+	}
+
 	if punishFrameRe.MatchString(lowerHTML) {
 		return &Intent{
 			Type:          IntentCaptcha,

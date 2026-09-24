@@ -156,6 +156,14 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 
 	result.TotalDuration = time.Since(start)
 	result.Error = fmt.Sprintf("all %d attempts exhausted", as.config.MaxAttempts)
+	// A solver that refused for good knows why the page cannot be passed
+	// ("blocked outright"), which says more than the count.
+	for i := len(result.History) - 1; i >= 0; i-- {
+		if h := result.History[i]; refused[h.Solver] && h.Error != "" {
+			result.Error += " (" + h.Solver + ": " + h.Error + ")"
+			break
+		}
+	}
 	if spentErr != "" {
 		result.Error = "stopped after a paid solve failed: " + spentErr
 	}
