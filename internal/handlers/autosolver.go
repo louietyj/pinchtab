@@ -181,6 +181,16 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) (autoSolveOu
 	}
 	defer h.autoSolve.end(tabID)
 
+	// A puzzle only Vision can solve goes straight to it: the token solvers
+	// would refuse it, and the semantic stage clicks around the page meanwhile.
+	if puzzle := matchVisionPuzzle(html); puzzle != nil {
+		outcome := h.solveVisionPuzzle(ctx, tabID, puzzle)
+		if solved, _ := outcome["solved"].(bool); solved {
+			h.autoSolve.markSolved(tabID, challengeURL, challenge.ChallengeType)
+		}
+		return outcome, nil
+	}
+
 	cfg := h.normalizedAutoSolverConfig()
 	if cfg.MaxAttempts > autoTriggerMaxAttempts {
 		cfg.MaxAttempts = autoTriggerMaxAttempts

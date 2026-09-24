@@ -154,7 +154,24 @@ type visionElement struct {
 const visionImageInfoJS = `function() {
   var el = this, r = {};
   if (el.tagName === 'IMG') { r.src = el.currentSrc || el.src; }
-  else if (el.tagName === 'CANVAS') { try { r.dataURL = el.toDataURL('image/png'); } catch (e) { r.tainted = true; } }
+  else if (el.tagName === 'CANVAS') {
+    try {
+      r.dataURL = el.toDataURL('image/png');
+      // A slider piece is often drawn into a transparent canvas the size of the
+      // whole puzzle (GeeTest v3). The engine wants the piece alone: crop to
+      // the opaque pixels when they cover well under half the canvas.
+      var w = el.width, h = el.height, d = el.getContext('2d').getImageData(0, 0, w, h).data;
+      var x0 = w, y0 = h, x1 = -1, y1 = -1;
+      for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) {
+        if (d[(y * w + x) * 4 + 3] > 16) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+      }
+      if (x1 >= x0 && (x1 - x0 + 1) * (y1 - y0 + 1) < 0.4 * w * h) {
+        var c = document.createElement('canvas'); c.width = x1 - x0 + 1; c.height = y1 - y0 + 1;
+        c.getContext('2d').drawImage(el, x0, y0, c.width, c.height, 0, 0, c.width, c.height);
+        r.dataURL = c.toDataURL('image/png'); r.cropped = true;
+      }
+    } catch (e) { r.tainted = true; }
+  }
   else {
     var m = (getComputedStyle(el).backgroundImage || '').match(/url\(["']?(.*?)["']?\)/);
     if (m) { r.src = new URL(m[1], document.baseURI).href; }
