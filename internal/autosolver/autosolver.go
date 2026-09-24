@@ -94,7 +94,7 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 
 	// Not detectIntent: the semantic engine reads an ordinary page as a login or
 	// navigation flow, so it would never see the challenge as gone.
-	startedOnChallenge, _ := onChallenge(page)
+	startedOnChallenge, _ := onChallenge(ctx, page)
 
 	// Solvers that refused permanently this run; asking again only repeats it.
 	refused := map[string]bool{}
@@ -184,18 +184,18 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 // succeeding. Like llmFallbackSolverLabel, it must never become config-selectable.
 const challengeClearedSolverLabel = "cleared"
 
-func onChallenge(page Page) (bool, error) {
+func onChallenge(ctx context.Context, page Page) (bool, error) {
 	html, err := page.HTMLWithin(intentHTMLTimeout)
 	if err != nil {
 		return false, err
 	}
-	return DetectChallengeIntent(page.Title(), page.URL(), html) != nil, nil
+	return DetectPageChallenge(ctx, page, html) != nil, nil
 }
 
 // challengeCleared requires the challenge gone twice, a retry delay apart: a
 // document mid-redirect is blank, and carries no challenge markers either.
 func (as *AutoSolver) challengeCleared(ctx context.Context, page Page) bool {
-	if present, err := onChallenge(page); err != nil || present {
+	if present, err := onChallenge(ctx, page); err != nil || present {
 		return false
 	}
 	select {
@@ -203,7 +203,7 @@ func (as *AutoSolver) challengeCleared(ctx context.Context, page Page) bool {
 		return false
 	case <-time.After(as.backoffDelay(1)):
 	}
-	present, err := onChallenge(page)
+	present, err := onChallenge(ctx, page)
 	return err == nil && !present
 }
 
@@ -239,7 +239,17 @@ const intentHTMLTimeout = 5 * time.Second
 
 func (as *AutoSolver) detectIntent(ctx context.Context, page Page) (*Intent, error) {
 	if as.semantic != nil {
-		return as.semantic.DetectIntent(ctx, page)
+		intent, err := as.semantic.DetectIntent(ctx, page)
+		// The semantic engine reads the top document; a widget hosted in a
+		// child frame is not in it.
+		if t := intentTypeOf(intent); err == nil && (t == IntentNormal || t == IntentUnknown) {
+			if html, herr := page.HTMLWithin(intentHTMLTimeout); herr == nil {
+				if challenge := DetectPageChallenge(ctx, page, html); challenge != nil {
+					return challenge, nil
+				}
+			}
+		}
+		return intent, err
 	}
 
 	// DetectChallengeIntent classifies on title, URL and HTML, but the fallback
@@ -247,7 +257,7 @@ func (as *AutoSolver) detectIntent(ctx context.Context, page Page) (*Intent, err
 	// than the challenge then reads as normal, and Solve reports solved with zero
 	// attempts on an unsolved page.
 	if html, err := page.HTMLWithin(intentHTMLTimeout); err == nil {
-		if challenge := DetectChallengeIntent(page.Title(), page.URL(), html); challenge != nil {
+		if challenge := DetectPageChallenge(ctx, page, html); challenge != nil {
 			return challenge, nil
 		}
 	}

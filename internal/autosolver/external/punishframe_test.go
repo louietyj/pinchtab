@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/pinchtab/pinchtab/internal/autosolver"
 )
 
 // punishFrameExecutor is an item page under AliExpress's punish iframe: frame
@@ -17,8 +19,12 @@ type punishFrameExecutor struct {
 	lifted           bool
 }
 
-func (e *punishFrameExecutor) EvaluateInFrame(_ context.Context, match func(string) bool, expr string, result any) error {
-	if !match(e.frameURL) {
+func (e *punishFrameExecutor) Frames(context.Context) ([]autosolver.FrameRef, error) {
+	return []autosolver.FrameRef{{ID: "top", URL: "https://www.aliexpress.us/item/1.html"}, {ID: "inner", ParentID: "outer", URL: e.frameURL}}, nil
+}
+
+func (e *punishFrameExecutor) EvaluateInFrame(_ context.Context, frameID, expr string, result any) error {
+	if frameID != "inner" {
 		return errNoFrameAccess
 	}
 	switch r := result.(type) {

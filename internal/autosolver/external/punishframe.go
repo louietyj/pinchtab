@@ -27,6 +27,20 @@ import (
 // to the page that verifies it. There is no form, so nothing reads the textarea.
 var punishFrameRe = regexp.MustCompile(`(?i)<iframe[^>]+src="[^"]*/_____tmd_____/punish`)
 
+// findFrame is the tab's first frame whose URL match accepts.
+func findFrame(ctx context.Context, fe autosolver.FrameEvaluator, match func(string) bool) (autosolver.FrameRef, bool) {
+	frames, err := fe.Frames(ctx)
+	if err != nil {
+		return autosolver.FrameRef{}, false
+	}
+	for _, f := range frames {
+		if match(f.URL) {
+			return f, true
+		}
+	}
+	return autosolver.FrameRef{}, false
+}
+
 func isPunishRecaptchaFrame(u string) bool {
 	return strings.Contains(u, "/_____tmd_____/punish") && strings.Contains(u, "recaptcha=1")
 }
@@ -53,7 +67,7 @@ func readPunishFrame(ctx context.Context, executor autosolver.ActionExecutor, c 
 	deadline := time.Now().Add(punishFrameWait)
 	for {
 		var got struct{ Href, Anchor string }
-		if err := fe.EvaluateInFrame(ctx, isPunishRecaptchaFrame, punishFrameReadJS, &got); err == nil && got.Anchor != "" {
+		if f, ok := findFrame(ctx, fe, isPunishRecaptchaFrame); ok && fe.EvaluateInFrame(ctx, f.ID, punishFrameReadJS, &got) == nil && got.Anchor != "" {
 			a, err := url.Parse(got.Anchor)
 			if err != nil {
 				return fmt.Errorf("parse reCAPTCHA anchor: %w", err)
@@ -106,7 +120,10 @@ func injectPunishFrame(ctx context.Context, executor autosolver.ActionExecutor, 
 	// The callback navigates its own frame away, so the call can fail after it
 	// delivered ("Cannot find context"). Whether the overlay leaves is the verdict.
 	var delivered bool
-	deliverErr := fe.EvaluateInFrame(ctx, isPunishRecaptchaFrame, fmt.Sprintf("%s(%s)", punishFrameInjectJS, tok), &delivered)
+	deliverErr := errors.New("no punish frame")
+	if f, ok := findFrame(ctx, fe, isPunishRecaptchaFrame); ok {
+		deliverErr = fe.EvaluateInFrame(ctx, f.ID, fmt.Sprintf("%s(%s)", punishFrameInjectJS, tok), &delivered)
+	}
 	if deliverErr == nil && !delivered {
 		return errors.New("the punish frame has no __recaptchaValidateCB__")
 	}

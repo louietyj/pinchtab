@@ -5,15 +5,9 @@ package adapters
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
-	"github.com/chromedp/cdproto/cdp"
-	"github.com/chromedp/cdproto/dom"
-	cdppage "github.com/chromedp/cdproto/page"
-	cdpruntime "github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 	"github.com/pinchtab/pinchtab/internal/autosolver"
 	"github.com/pinchtab/pinchtab/internal/bridge"
@@ -24,6 +18,7 @@ var (
 	_ autosolver.ActionExecutor = (*PinchtabExecutor)(nil)
 	_ autosolver.Dragger        = (*PinchtabExecutor)(nil)
 	_ autosolver.FrameEvaluator = (*PinchtabExecutor)(nil)
+	_ autosolver.FrameEvaluator = (*PinchtabPage)(nil)
 )
 
 // PinchtabPage implements autosolver.Page by wrapping a chromedp tab context.
@@ -101,63 +96,6 @@ func (e *PinchtabExecutor) Click(ctx context.Context, x, y float64) error {
 
 func (e *PinchtabExecutor) Drag(ctx context.Context, x, y, endX, endY float64) error {
 	return bridge.HumanDragBetweenPoints(ctx, x, y, endX, endY, "")
-}
-
-// EvaluateInFrame runs expr in the main world of the first frame, depth-first,
-// whose URL match accepts. It calls a function on the frame's document node,
-// which runs in that document's own globals. That reaches frames in this page's
-// process (same-site ones); a cross-site frame is a separate target, and its
-// document is not visible from here.
-func (e *PinchtabExecutor) EvaluateInFrame(ctx context.Context, match func(string) bool, expr string, result any) error {
-	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
-		tree, err := cdppage.GetFrameTree().Do(ctx)
-		if err != nil {
-			return err
-		}
-		frameID := findFrame(tree.ChildFrames, match)
-		if frameID == "" {
-			return errors.New("no matching frame")
-		}
-		owner, _, err := dom.GetFrameOwner(frameID).Do(ctx)
-		if err != nil {
-			return err
-		}
-		node, err := dom.DescribeNode().WithBackendNodeID(owner).WithDepth(1).WithPierce(true).Do(ctx)
-		if err != nil {
-			return err
-		}
-		if node.ContentDocument == nil {
-			return errors.New("frame document is out of process")
-		}
-		doc, err := dom.ResolveNode().WithBackendNodeID(node.ContentDocument.BackendNodeID).Do(ctx)
-		if err != nil {
-			return err
-		}
-		res, exc, err := cdpruntime.CallFunctionOn("function(){ return (" + expr + "); }").
-			WithObjectID(doc.ObjectID).WithReturnByValue(true).WithAwaitPromise(true).Do(ctx)
-		if err != nil {
-			return err
-		}
-		if exc != nil {
-			return fmt.Errorf("frame script: %s", exc.Text)
-		}
-		if result == nil || len(res.Value) == 0 {
-			return nil
-		}
-		return json.Unmarshal(res.Value, result)
-	}))
-}
-
-func findFrame(frames []*cdppage.FrameTree, match func(string) bool) cdp.FrameID {
-	for _, f := range frames {
-		if match(f.Frame.URL) {
-			return f.Frame.ID
-		}
-		if id := findFrame(f.ChildFrames, match); id != "" {
-			return id
-		}
-	}
-	return ""
 }
 
 func (e *PinchtabExecutor) Type(ctx context.Context, text string) error {

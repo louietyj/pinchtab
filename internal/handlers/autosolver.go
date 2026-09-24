@@ -168,7 +168,7 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) (autoSolveOu
 		return nil, err
 	}
 
-	challenge := coreautosolver.DetectChallengeIntent(page.Title(), page.URL(), html)
+	challenge := coreautosolver.DetectPageChallenge(ctx, page, html)
 	if challenge == nil {
 		return nil, nil
 	}
@@ -278,7 +278,7 @@ func (h *Handlers) challengeAfterSolve(ctx context.Context, page coreautosolver.
 	if err != nil {
 		return nil
 	}
-	return coreautosolver.DetectChallengeIntent(page.Title(), page.URL(), html)
+	return coreautosolver.DetectPageChallenge(ctx, page, html)
 }
 
 // autoSolveRound runs one solve of the challenge now on the tab.

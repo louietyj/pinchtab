@@ -62,25 +62,24 @@ const recaptchaInjectJS = `function(token){
     els=[ta];
   }
   els.forEach(function(el){el.value=token;});
-  try{
-    var cfg=window.___grecaptcha_cfg;
-    if(cfg&&cfg.clients){
-      for(var cid in cfg.clients){
-        var client=cfg.clients[cid];
-        for(var k in client){
-          var o=client[k];
-          if(o&&typeof o==='object'){
-            for(var kk in o){
-              var oo=o[kk];
-              if(oo&&typeof oo==='object'&&typeof oo.callback==='function'){
-                try{oo.callback(token);}catch(e){}
-              }
-            }
-          }
-        }
-      }
-    }
-  }catch(e){}
+  // The widget's callback lives in ___grecaptcha_cfg, a few levels down and at
+  // a depth that varies by release; a declarative widget stores it by name
+  // (data-callback="onOk"). Each distinct callback is called once.
+  var cbs=[];
+  function add(cb){
+    if(typeof cb==='string'){ cb=window[cb]; }
+    if(typeof cb==='function'&&cbs.indexOf(cb)<0){ cbs.push(cb); }
+  }
+  function walk(o,depth){
+    try{
+      if(!o||typeof o!=='object'||depth>4||o.nodeType||o.window===o){ return; }
+      if('callback' in o){ add(o.callback); }
+      for(var k in o){ walk(o[k],depth+1); }
+    }catch(e){}
+  }
+  try{ var cfg=window.___grecaptcha_cfg; if(cfg&&cfg.clients){ walk(cfg.clients,0); } }catch(e){}
+  document.querySelectorAll('.g-recaptcha[data-callback]').forEach(function(el){ add(el.getAttribute('data-callback')); });
+  cbs.forEach(function(cb){ try{ cb(token); }catch(e){} });
   return true;
 }`
 

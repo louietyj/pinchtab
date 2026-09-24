@@ -84,7 +84,15 @@ func (p *provider) CanHandle(_ context.Context, page autosolver.Page) (bool, err
 	if err != nil {
 		return false, nil
 	}
-	return p.supports[detectCaptchaType(html)], nil
+	typ := detectCaptchaType(html)
+	if typ == "" {
+		if fp, _, ok := widgetFrame(context.Background(), page, nil); ok {
+			if fhtml, err := fp.HTML(); err == nil {
+				typ = detectCaptchaType(fhtml)
+			}
+		}
+	}
+	return p.supports[typ], nil
 }
 
 // Solve submits the page's CAPTCHA to the provider, then injects the returned
@@ -105,7 +113,15 @@ func (p *provider) Solve(ctx context.Context, page autosolver.Page, executor aut
 		return fail(fmt.Sprintf("get HTML: %v", err), err)
 	}
 
+	top := page
 	typ := detectCaptchaType(html)
+	if typ == "" {
+		if fp, fx, ok := widgetFrame(ctx, page, executor); ok {
+			if fhtml, err := fp.HTML(); err == nil {
+				page, executor, html, typ = fp, fx, fhtml, detectCaptchaType(fhtml)
+			}
+		}
+	}
 	if typ == "" {
 		return fail("no supported CAPTCHA detected", fmt.Errorf("no supported CAPTCHA detected on page"))
 	}
@@ -136,8 +152,8 @@ func (p *provider) Solve(ctx context.Context, page autosolver.Page, executor aut
 			return fail(fmt.Sprintf("inject token: %v", err), autosolver.Spent(err))
 		}
 		result.Solved = true
-		result.FinalTitle = page.Title()
-		result.FinalURL = page.URL()
+		result.FinalTitle = top.Title()
+		result.FinalURL = top.URL()
 		return result, nil
 	}
 	var sol tokenSolution
@@ -160,8 +176,8 @@ func (p *provider) Solve(ctx context.Context, page autosolver.Page, executor aut
 	}
 
 	result.Solved = true
-	result.FinalTitle = page.Title()
-	result.FinalURL = page.URL()
+	result.FinalTitle = top.Title()
+	result.FinalURL = top.URL()
 	return result, nil
 }
 

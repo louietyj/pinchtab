@@ -10,6 +10,17 @@ var (
 	punishBlockFrameRe = regexp.MustCompile(`<iframe[^>]+src="[^"]*alicdn\.com/punish/punish:resource:template:`)
 )
 
+// childFrameIntent is a captcha widget found in a child frame (see
+// DetectPageChallenge), named "<vendor>-in-frame".
+func childFrameIntent(vendor string) *Intent {
+	return &Intent{
+		Type:          IntentCaptcha,
+		Confidence:    0.9,
+		ChallengeType: vendor + "-in-frame",
+		Details:       vendor + " widget in a child frame",
+	}
+}
+
 // DetectChallengeIntent classifies known challenge pages using title, URL,
 // and HTML markers. It returns nil when no challenge signal is found.
 func DetectChallengeIntent(title, url, html string) *Intent {
