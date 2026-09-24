@@ -19,6 +19,17 @@ func DetectChallengeIntent(title, url, html string) *Intent {
 		}
 	}
 
+	// Alibaba's slide-to-end NoCaptcha. The punish interstitial mounts its
+	// slider after load, so its URL is enough on its own.
+	if strings.Contains(lowerURL, "/_____tmd_____/punish") || containsAny(lowerHTML, `id="nc_1_n1z"`, `id="nc_1_wrapper"`) {
+		return &Intent{
+			Type:          IntentCaptcha,
+			Confidence:    0.9,
+			ChallengeType: "nocaptcha",
+			Details:       "Alibaba NoCaptcha slider detected",
+		}
+	}
+
 	if v3 {
 		return &Intent{
 			Type:          IntentCaptcha,

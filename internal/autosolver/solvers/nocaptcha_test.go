@@ -1,0 +1,120 @@
+package solvers
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/pinchtab/pinchtab/internal/autosolver"
+)
+
+const punishURL = "https://www.aliexpress.us//item/3256805716460801.html/_____tmd_____/punish?x5secdata=abc&x5step=1"
+
+// ncBrowser is a punish page whose drags fail with the given codes in turn;
+// "" passes, which navigates to the item the way AliExpress does.
+type ncBrowser struct {
+	url      string
+	outcomes []string
+	blocked  bool
+	drags    [][4]float64
+	navs     []string
+	dragged  bool
+}
+
+func (b *ncBrowser) URL() string                              { return b.url }
+func (b *ncBrowser) Title() string                            { return "Captcha Interception" }
+func (b *ncBrowser) HTML() (string, error)                    { return `<div id="nocaptcha"></div>`, nil }
+func (b *ncBrowser) HTMLWithin(time.Duration) (string, error) { return b.HTML() }
+func (b *ncBrowser) Screenshot() ([]byte, error)              { return nil, nil }
+func (b *ncBrowser) Click(context.Context, float64, float64) error {
+	return nil
+}
+func (b *ncBrowser) Type(context.Context, string) error                   { return nil }
+func (b *ncBrowser) WaitFor(context.Context, string, time.Duration) error { return nil }
+func (b *ncBrowser) Navigate(_ context.Context, url string) error {
+	b.navs = append(b.navs, url)
+	b.url = punishURL
+	return nil
+}
+func (b *ncBrowser) Drag(_ context.Context, x, y, endX, endY float64) error {
+	b.drags = append(b.drags, [4]float64{x, y, endX, endY})
+	b.dragged = true
+	if b.outcomes[len(b.drags)-1] == "" {
+		b.url = "https://www.aliexpress.us/item/3256805716460801.html"
+		return errors.New("Cannot read properties of null (reading 'dispatchEvent')")
+	}
+	return nil
+}
+
+func (b *ncBrowser) Evaluate(_ context.Context, _ string, result interface{}) error {
+	st := map[string]any{"h": []float64{572, 466, 42, 30}, "t": []float64{570, 464, 300, 34}}
+	if b.blocked {
+		st = map[string]any{"blocked": true}
+	} else if b.dragged {
+		b.dragged = false
+		st["err"] = b.outcomes[len(b.drags)-1]
+	}
+	raw, _ := json.Marshal(st)
+	return json.Unmarshal(raw, result)
+}
+
+func TestNoCaptchaRetriesOnAFreshSliderUntilADragPasses(t *testing.T) {
+	b := &ncBrowser{url: punishURL, outcomes: []string{"FhaEp", ""}}
+	res, err := (&NoCaptcha{}).Solve(context.Background(), b, b)
+	if err != nil || !res.Solved {
+		t.Fatalf("Solve = %+v, %v", res, err)
+	}
+	if len(b.drags) != 2 {
+		t.Fatalf("%d drags, want 2", len(b.drags))
+	}
+	if len(b.navs) != 1 || b.navs[0] != "https://www.aliexpress.us/item/3256805716460801.html" {
+		t.Errorf("fresh slider loaded from %v, want the item page the punish page guards", b.navs)
+	}
+	for _, d := range b.drags {
+		if d[0] < 572 || d[0] > 614 || d[1] < 466 || d[1] > 496 {
+			t.Errorf("pressed at (%.0f,%.0f), outside the handle", d[0], d[1])
+		}
+		if d[2] <= 870 {
+			t.Errorf("released at x=%.0f, short of the track's end (870)", d[2])
+		}
+	}
+}
+
+func TestNoCaptchaGivesUpAfterThreeRefusals(t *testing.T) {
+	b := &ncBrowser{url: punishURL, outcomes: []string{"a1", "b2", "c3"}}
+	res, _ := (&NoCaptcha{}).Solve(context.Background(), b, b)
+	if res.Solved || len(b.drags) != 3 || res.Error != "slider refused 3 drags (a1, b2, c3)" {
+		t.Errorf("Solve = %+v after %d drags", res, len(b.drags))
+	}
+}
+
+func TestNoCaptchaDoesNotDragAnOutrightBlock(t *testing.T) {
+	b := &ncBrowser{url: punishURL, blocked: true}
+	res, err := (&NoCaptcha{}).Solve(context.Background(), b, b)
+	if res.Solved || len(b.drags) != 0 || !errors.Is(err, autosolver.ErrPermanent) {
+		t.Errorf("Solve = %+v, %v after %d drags", res, err, len(b.drags))
+	}
+}
+
+func TestPunishPageIsANoCaptchaChallenge(t *testing.T) {
+	intent := autosolver.DetectChallengeIntent("Captcha Interception", punishURL, `<div id="nocaptcha"></div>`)
+	if intent == nil || intent.ChallengeType != "nocaptcha" {
+		t.Errorf("intent = %+v", intent)
+	}
+	if ok, _ := (&NoCaptcha{}).CanHandle(context.Background(), &ncBrowser{url: "https://www.aliexpress.us/item/1.html"}); ok {
+		t.Error("claimed an ordinary item page")
+	}
+}
+
+func TestPunishOrigin(t *testing.T) {
+	for in, want := range map[string]string{
+		punishURL: "https://www.aliexpress.us/item/3256805716460801.html",
+		"https://login.taobao.com/member/login.jhtml": "",
+	} {
+		if got := punishOrigin(in); got != want {
+			t.Errorf("punishOrigin(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

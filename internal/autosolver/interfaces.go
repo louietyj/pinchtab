@@ -57,6 +57,13 @@ type ActionExecutor interface {
 	Navigate(ctx context.Context, url string) error
 }
 
+// Dragger is implemented by an executor that can press at (x, y), drag along
+// a humanized path and release at (endX, endY). Slider solvers need it;
+// ActionExecutor stays click-only so other runtimes need not provide it.
+type Dragger interface {
+	Drag(ctx context.Context, x, y, endX, endY float64) error
+}
+
 // SolveTimeoutHinter is implemented by a solver that needs longer than the
 // configured SolverTimeout, such as a provider whose solves are done by people.
 type SolveTimeoutHinter interface {

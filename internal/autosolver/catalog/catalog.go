@@ -27,6 +27,7 @@ func buildAll(cfg autosolver.Config) []autosolver.Solver {
 	return []autosolver.Solver{
 		&solvers.Cloudflare{},
 		&solvers.JSChallenge{},
+		&solvers.NoCaptcha{},
 		external.NewCapsolver(external.CapsolverConfig{APIKey: cfg.APIKey(autosolver.CapsolverSolverName)}),
 		external.NewTwoCaptcha(external.TwoCaptchaConfig{APIKey: cfg.APIKey(autosolver.TwoCaptchaSolverName)}),
 	}

@@ -18,6 +18,9 @@ const SemanticSolverName = "semantic"
 // llmFallbackSolverLabel.
 const CloudflareSolverName = "cloudflare"
 
+// NoCaptchaSolverName is the registry name solvers.NoCaptcha answers to.
+const NoCaptchaSolverName = "nocaptcha"
+
 // IntentType classifies the detected page state.
 type IntentType string
 

@@ -91,6 +91,10 @@ func (e *PinchtabExecutor) Click(ctx context.Context, x, y float64) error {
 	return bridge.Click(ctx, x, y)
 }
 
+func (e *PinchtabExecutor) Drag(ctx context.Context, x, y, endX, endY float64) error {
+	return bridge.HumanDragBetweenPoints(ctx, x, y, endX, endY, "")
+}
+
 func (e *PinchtabExecutor) Type(ctx context.Context, text string) error {
 	actions := bridge.Type(text, false)
 	return chromedp.Run(ctx, actions...)

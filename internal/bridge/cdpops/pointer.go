@@ -203,6 +203,7 @@ func dispatchSyntheticMouseMove(ctx context.Context, x, y float64, button input.
 	expr := fmt.Sprintf(`(function() {
 		var cx = %f, cy = %f, button = %d, buttons = %d;
 		var target = document.elementFromPoint(cx, cy) || document.documentElement;
+		if (!target) return;
 		var init = {
 			clientX: cx, clientY: cy, screenX: cx, screenY: cy,
 			button: button, buttons: buttons,
