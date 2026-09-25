@@ -137,7 +137,10 @@ func autoSolveHint(result map[string]any) string {
 	next := "pinchtab has given up on it; it is yours to try."
 	msg, _ := raw["error"].(string)
 	if strings.Contains(msg, "blocked outright") {
-		next = "Nothing gets past this; go on without this page."
+		// No solver passes it, but a fresh browser has: after `server restart`
+		// and a new nav, an AliExpress item page loaded again. Whether the
+		// restart, the time, or a new egress IP did it is not known yet.
+		next = "No solver gets past this block. Restart the browser once (`pinchtab server restart`), then nav to the page again; if it is still blocked, go on without it."
 	}
 	if msg != "" {
 		return fmt.Sprintf("a %s challenge on this page was NOT solved: %s. %s `nav --json` lists each solver's attempt.", challenge, msg, next)
