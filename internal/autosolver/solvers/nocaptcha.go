@@ -15,9 +15,9 @@ import (
 // NoCaptcha passes Alibaba's slide-to-end NoCaptcha (nc.js), the slider behind
 // AliExpress and Taobao's "_____tmd_____/punish" interstitial. There is no
 // answer to buy: the server scores the drag itself, so this drags the handle
-// to the end along a humanized path. Each drag passes or fails independently
-// (3 of 5 from a flagged claude.ai IP), so a failed one is retried on a fresh
-// slider by loading the page the interstitial stands in front of.
+// to the end along a humanized path, once: a refused drag is reported rather
+// than retried (see Solve). A slider already spent ("Oops... Please refresh",
+// no handle) is replaced by loading the page the interstitial stands in front of.
 type NoCaptcha struct{}
 
 const (
@@ -139,14 +139,20 @@ func (s *NoCaptcha) Solve(ctx context.Context, page autosolver.Page, executor au
 		if (origin != "" && !strings.Contains(page.URL(), punishMarker)) || st.Passed {
 			return passed(result, page), nil
 		}
+		// One drag per slider. Every pass so far came on the first drag, and
+		// no retry within seconds of a refusal ever passed (a dozen, across
+		// two runs); more refused drags only add to the IP's record. The page
+		// passed later instead: the next item, a minute on.
 		code := st.ErrCode
 		if code == "" {
 			code = "no verdict"
 		}
-		codes = append(codes, code)
+		result.FinalURL, result.FinalTitle = page.URL(), page.Title()
+		result.Error = fmt.Sprintf("slider refused the drag (error %s). An immediate retry has never passed; wait a minute and open the page again, or go on to another page", code)
+		return result, autosolver.Permanent(errors.New(result.Error))
 	}
 	result.FinalURL, result.FinalTitle = page.URL(), page.Title()
-	result.Error = fmt.Sprintf("slider not passed in %d tries (%s)", len(codes), strings.Join(codes, ", "))
+	result.Error = fmt.Sprintf("no slider to drag after %d loads (%s)", len(codes), strings.Join(codes, ", "))
 	return result, nil
 }
 

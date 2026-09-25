@@ -12,6 +12,7 @@ import (
 	"github.com/pinchtab/pinchtab/internal/autosolver/catalog"
 	autosolverllm "github.com/pinchtab/pinchtab/internal/autosolver/llm"
 	autosolversemantic "github.com/pinchtab/pinchtab/internal/autosolver/semantic"
+	"github.com/pinchtab/pinchtab/internal/bridge"
 )
 
 const (
@@ -282,6 +283,18 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) (autoSolveOu
 		challenge, challengeURL = next, page.URL()
 	}
 	return nil, nil
+}
+
+// manualPointerAction is an agent working a widget by hand, such as dragging a
+// slider the solver already failed. Solving after it fought the agent for the
+// same slider: in a real session the solver reloaded the page under the agent's
+// drag while it was checking the result.
+func manualPointerAction(kind string) bool {
+	switch kind {
+	case bridge.ActionDrag, bridge.ActionMouseDown, bridge.ActionMouseMove, bridge.ActionMouseUp:
+		return true
+	}
+	return false
 }
 
 // autoSolveMaxRounds caps how many challenges one navigation solves in a row.

@@ -11,3 +11,16 @@ func TestMatchVisionPuzzle(t *testing.T) {
 		t.Errorf("GeeTest v4 matched %s", p.name)
 	}
 }
+
+func TestManualPointerActionsDoNotTriggerASolve(t *testing.T) {
+	for _, kind := range []string{"drag", "mouse-down", "mouse-move", "mouse-up"} {
+		if !manualPointerAction(kind) {
+			t.Errorf("%s would start a solve under the agent's own drag", kind)
+		}
+	}
+	for _, kind := range []string{"click", "fill", "press"} {
+		if manualPointerAction(kind) {
+			t.Errorf("%s no longer checks for a challenge", kind)
+		}
+	}
+}

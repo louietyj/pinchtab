@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -65,33 +66,31 @@ func (b *ncBrowser) Evaluate(_ context.Context, _ string, result interface{}) er
 	return json.Unmarshal(raw, result)
 }
 
-func TestNoCaptchaRetriesOnAFreshSliderUntilADragPasses(t *testing.T) {
-	b := &ncBrowser{url: punishURL, outcomes: []string{"FhaEp", ""}}
+func TestNoCaptchaPassesOnTheFirstDrag(t *testing.T) {
+	b := &ncBrowser{url: punishURL, outcomes: []string{""}}
 	res, err := (&NoCaptcha{}).Solve(context.Background(), b, b)
-	if err != nil || !res.Solved {
-		t.Fatalf("Solve = %+v, %v", res, err)
+	if err != nil || !res.Solved || len(b.drags) != 1 {
+		t.Fatalf("Solve = %+v, %v after %d drags", res, err, len(b.drags))
 	}
-	if len(b.drags) != 2 {
-		t.Fatalf("%d drags, want 2", len(b.drags))
+	d := b.drags[0]
+	if d[0] < 572 || d[0] > 614 || d[1] < 466 || d[1] > 496 {
+		t.Errorf("pressed at (%.0f,%.0f), outside the handle", d[0], d[1])
 	}
-	if len(b.navs) != 1 || b.navs[0] != "https://www.aliexpress.us/item/3256805716460801.html" {
-		t.Errorf("fresh slider loaded from %v, want the item page the punish page guards", b.navs)
-	}
-	for _, d := range b.drags {
-		if d[0] < 572 || d[0] > 614 || d[1] < 466 || d[1] > 496 {
-			t.Errorf("pressed at (%.0f,%.0f), outside the handle", d[0], d[1])
-		}
-		if d[2] <= 870 {
-			t.Errorf("released at x=%.0f, short of the track's end (870)", d[2])
-		}
+	if d[2] <= 870 {
+		t.Errorf("released at x=%.0f, short of the track's end (870)", d[2])
 	}
 }
 
-func TestNoCaptchaGivesUpAfterThreeRefusals(t *testing.T) {
-	b := &ncBrowser{url: punishURL, outcomes: []string{"a1", "b2", "c3"}}
-	res, _ := (&NoCaptcha{}).Solve(context.Background(), b, b)
-	if res.Solved || len(b.drags) != 3 || res.Error != "slider not passed in 3 tries (a1, b2, c3)" {
-		t.Errorf("Solve = %+v after %d drags", res, len(b.drags))
+// A refused drag is not retried: no retry within seconds of a refusal has ever
+// passed, and each refusal counts against the IP.
+func TestNoCaptchaDoesNotRetryARefusedDrag(t *testing.T) {
+	b := &ncBrowser{url: punishURL, outcomes: []string{"ZeNz9q", ""}}
+	res, err := (&NoCaptcha{}).Solve(context.Background(), b, b)
+	if res.Solved || len(b.drags) != 1 || len(b.navs) != 0 || !errors.Is(err, autosolver.ErrPermanent) {
+		t.Fatalf("Solve = %+v, %v after %d drags, %d navs", res, err, len(b.drags), len(b.navs))
+	}
+	if !strings.Contains(res.Error, "ZeNz9q") || !strings.Contains(res.Error, "wait a minute") {
+		t.Errorf("error = %q", res.Error)
 	}
 }
 

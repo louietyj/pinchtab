@@ -725,7 +725,7 @@ func (h *Handlers) HandleAction(w http.ResponseWriter, r *http.Request) {
 		actionBackend = "chrome"
 	}
 	var autoSolve autoSolveOutcome
-	if actionBackend != "static" {
+	if actionBackend != "static" && !manualPointerAction(req.Kind) {
 		autoSolve = h.maybeAutoSolve(tCtx, resolvedTabID, autoSolverTriggerAction)
 		if req.WaitNav && req.DismissBanners {
 			h.dismissBanners(tCtx, resolvedTabID, true)
