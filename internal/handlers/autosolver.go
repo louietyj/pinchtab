@@ -177,6 +177,14 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) (autoSolveOu
 	if h.autoSolve.recentlySolved(tabID, challengeURL, challenge.ChallengeType) {
 		return nil, nil
 	}
+	// A challenge the solver gave up on is the caller's; say so again, don't retry.
+	if out, ok := h.autoSolve.gaveUpOn(tabID, challenge.ChallengeType); ok {
+		return out, nil
+	}
+	// The solver will be back for this challenge; nobody else touches it first.
+	if left, ok := h.autoSolve.retryPending(tabID); ok {
+		return autoSolveOutcome{"solved": false, "pending": true, "challengeType": challenge.ChallengeType, "retryInSec": int(left.Seconds()) + 1}, nil
+	}
 	if !h.autoSolve.begin(tabID) {
 		return autoSolveOutcome{"solved": false, "pending": true}, nil
 	}
@@ -259,6 +267,16 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) (autoSolveOu
 		}
 
 		if !result.Solved {
+			// A refusal that may pass after a pause is retried here, once, by
+			// the solver: the challenge stays the solver's until then, and the
+			// caller is told to wait rather than to try it.
+			if after := result.RetryAfter(); after > 0 && h.autoSolve.scheduleRetry(tabID, challengeURL, time.Now().Add(after)) {
+				outcome["pending"] = true
+				outcome["retryInSec"] = int(after.Seconds())
+				go h.retryChallengeLater(tabID, challengeURL, after)
+				return outcome, nil
+			}
+			h.autoSolve.markGaveUp(tabID, challenge.ChallengeType, outcome)
 			slog.Warn("autosolver auto-trigger did not solve challenge",
 				"tab_id", tabID,
 				"attempts", result.Attempts,
@@ -296,6 +314,24 @@ func manualPointerAction(kind string) bool {
 	}
 	return false
 }
+
+// retryChallengeLater runs the scheduled retry of tabID's challenge, unless the
+// tab has navigated since.
+func (h *Handlers) retryChallengeLater(tabID, challengeURL string, after time.Duration) {
+	time.Sleep(after)
+	if !h.autoSolve.retryDue(tabID, challengeURL) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), retryRunTimeout)
+	defer cancel()
+	slog.Info("autosolver: retrying a challenge after its pause", "tab_id", tabID, "url", challengeURL)
+	if _, err := h.runAutoSolver(ctx, tabID); err != nil {
+		slog.Warn("autosolver: scheduled retry failed", "tab_id", tabID, "err", err)
+	}
+}
+
+// retryRunTimeout bounds a scheduled retry, which has no caller waiting on it.
+const retryRunTimeout = 3 * time.Minute
 
 // autoSolveMaxRounds caps how many challenges one navigation solves in a row.
 const autoSolveMaxRounds = 3

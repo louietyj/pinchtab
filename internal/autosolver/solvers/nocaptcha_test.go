@@ -89,8 +89,8 @@ func TestNoCaptchaDoesNotRetryARefusedDrag(t *testing.T) {
 	if res.Solved || len(b.drags) != 1 || len(b.navs) != 0 || !errors.Is(err, autosolver.ErrPermanent) {
 		t.Fatalf("Solve = %+v, %v after %d drags, %d navs", res, err, len(b.drags), len(b.navs))
 	}
-	if !strings.Contains(res.Error, "ZeNz9q") || !strings.Contains(res.Error, "wait a minute") {
-		t.Errorf("error = %q", res.Error)
+	if !strings.Contains(res.Error, "ZeNz9q") || autosolver.RetryAfter(err) != time.Minute {
+		t.Errorf("error = %q, retry after %v", res.Error, autosolver.RetryAfter(err))
 	}
 }
 

@@ -77,6 +77,22 @@ type AttemptEntry struct {
 	Status   SolverStatus  `json:"status"`
 	Duration time.Duration `json:"duration"`
 	Error    string        `json:"error,omitempty"`
+	// RetryAfter is the pause the solver asked for before trying again
+	// (see RetryLater); 0 when a retry would not help.
+	RetryAfter time.Duration `json:"retryAfter,omitempty"`
+}
+
+// RetryAfter is the longest pause any attempt asked for before the challenge
+// is worth another try, or 0: an unsolved result that asks for none is final.
+func (r *Result) RetryAfter() time.Duration {
+	var after time.Duration
+	if r == nil || r.Solved {
+		return 0
+	}
+	for _, h := range r.History {
+		after = max(after, h.RetryAfter)
+	}
+	return after
 }
 
 // Intent represents the autosolver's understanding of the current page.

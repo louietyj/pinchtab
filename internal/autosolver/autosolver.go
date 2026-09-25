@@ -393,6 +393,7 @@ func (as *AutoSolver) trySolvers(ctx context.Context, page Page, executor Action
 		if err != nil {
 			entry.Status = StatusFailed
 			entry.Error = err.Error()
+			entry.RetryAfter = RetryAfter(err)
 			slog.Warn("autosolver_failure",
 				"solver", s.Name(),
 				"error", err,

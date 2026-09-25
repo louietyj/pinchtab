@@ -101,6 +101,13 @@ func autoSolveHint(result map[string]any) string {
 	}
 
 	if pending, _ := raw["pending"].(bool); pending {
+		if retryIn, ok := raw["retryInSec"].(float64); ok && retryIn > 0 {
+			return fmt.Sprintf(
+				"a %s challenge on this page is still pinchtab's: it will try it again by itself in about %.0fs. "+
+					"Don't touch the page, and don't navigate away (that cancels the retry). Run `sleep %.0f; %s` "+
+					"to see the result. If the challenge is still there after that, pinchtab has given up and it is yours to try.",
+				challenge, retryIn, retryIn+5, pendingSolveCheck(result))
+		}
 		return fmt.Sprintf(
 			"a %s challenge on this page is still being solved in the background; this call "+
 				"could not wait for it. Do NOT click the captcha widget or navigate away. Run "+
@@ -125,10 +132,17 @@ func autoSolveHint(result map[string]any) string {
 			challenge, by)
 	}
 
-	if msg, _ := raw["error"].(string); msg != "" {
-		return fmt.Sprintf("a %s challenge on this page was NOT solved: %s. `nav --json` lists each solver's attempt.", challenge, msg)
+	// Final: nothing more is scheduled, so the challenge is the caller's now,
+	// unless nothing can pass it.
+	next := "pinchtab has given up on it; it is yours to try."
+	msg, _ := raw["error"].(string)
+	if strings.Contains(msg, "blocked outright") {
+		next = "Nothing gets past this; go on without this page."
 	}
-	return fmt.Sprintf("a %s challenge on this page was NOT solved. `nav --json` lists each solver's attempt.", challenge)
+	if msg != "" {
+		return fmt.Sprintf("a %s challenge on this page was NOT solved: %s. %s `nav --json` lists each solver's attempt.", challenge, msg, next)
+	}
+	return fmt.Sprintf("a %s challenge on this page was NOT solved. %s `nav --json` lists each solver's attempt.", challenge, next)
 }
 
 // pendingSolveCheck is the command the pending hint hands the caller. Waiting for the

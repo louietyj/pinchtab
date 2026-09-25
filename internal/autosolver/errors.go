@@ -1,6 +1,9 @@
 package autosolver
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 // ErrSpent marks a failure after a paid solve was bought. Retrying buys another,
 // so the run stops instead.
@@ -32,4 +35,33 @@ func Permanent(err error) error {
 		return nil
 	}
 	return classifiedError{err: err, class: ErrPermanent}
+}
+
+// retryLaterError is a refusal the same solver may pass after a pause, though
+// not at once: a slider that refused a drag has never passed a drag seconds
+// later, and has a minute later. It is ErrPermanent for the run; the caller
+// can come back after the pause.
+type retryLaterError struct {
+	err   error
+	after time.Duration
+}
+
+func (e retryLaterError) Error() string   { return e.err.Error() }
+func (e retryLaterError) Unwrap() []error { return []error{e.err, ErrPermanent} }
+
+// RetryLater tags err as a refusal worth retrying after the pause.
+func RetryLater(err error, after time.Duration) error {
+	if err == nil {
+		return nil
+	}
+	return retryLaterError{err: err, after: after}
+}
+
+// RetryAfter is the pause err asks for, or 0 when it asks for none.
+func RetryAfter(err error) time.Duration {
+	var r retryLaterError
+	if errors.As(err, &r) {
+		return r.after
+	}
+	return 0
 }

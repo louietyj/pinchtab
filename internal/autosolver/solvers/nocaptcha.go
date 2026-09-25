@@ -20,6 +20,10 @@ import (
 // no handle) is replaced by loading the page the interstitial stands in front of.
 type NoCaptcha struct{}
 
+// noCaptchaRetryAfter is how long a refused slider is left before another drag:
+// the next item page a minute after a refusal has passed.
+const noCaptchaRetryAfter = time.Minute
+
 const (
 	noCaptchaAttempts   = 3
 	noCaptchaMountWait  = 10 * time.Second
@@ -148,8 +152,8 @@ func (s *NoCaptcha) Solve(ctx context.Context, page autosolver.Page, executor au
 			code = "no verdict"
 		}
 		result.FinalURL, result.FinalTitle = page.URL(), page.Title()
-		result.Error = fmt.Sprintf("slider refused the drag (error %s). An immediate retry has never passed; wait a minute and open the page again, or go on to another page", code)
-		return result, autosolver.Permanent(errors.New(result.Error))
+		result.Error = fmt.Sprintf("slider refused the drag (error %s)", code)
+		return result, autosolver.RetryLater(errors.New(result.Error), noCaptchaRetryAfter)
 	}
 	result.FinalURL, result.FinalTitle = page.URL(), page.Title()
 	result.Error = fmt.Sprintf("no slider to drag after %d loads (%s)", len(codes), strings.Join(codes, ", "))

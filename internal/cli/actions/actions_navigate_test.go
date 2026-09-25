@@ -40,7 +40,9 @@ func TestAutoSolveHint(t *testing.T) {
 		{"solved", "", map[string]any{"solved": true}, "a captcha challenge on this page was already solved for you"},
 		{"solved by a named solver", "", map[string]any{"solved": true, "challengeType": "nocaptcha", "solver": "nocaptcha"}, "a nocaptcha challenge on this page was already solved by nocaptcha"},
 		{"cleared with no solver", "", map[string]any{"solved": true, "challengeType": "turnstile", "solver": "cleared"}, "a turnstile challenge on this page cleared on its own"},
-		{"not solved", "", map[string]any{"solved": false, "error": "all 2 attempts exhausted"}, "NOT solved: all 2 attempts exhausted"},
+		{"not solved", "", map[string]any{"solved": false, "error": "all 2 attempts exhausted"}, "NOT solved: all 2 attempts exhausted. pinchtab has given up on it; it is yours to try."},
+		{"blocked outright", "", map[string]any{"solved": false, "error": "all 2 attempts exhausted (nocaptcha: refused without a slider: this IP is blocked outright)"}, "Nothing gets past this"},
+		{"retry scheduled", "Captcha Interception", map[string]any{"solved": false, "pending": true, "challengeType": "nocaptcha", "retryInSec": float64(60)}, "will try it again by itself in about 60s. Don't touch the page"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			result := map[string]any{}
