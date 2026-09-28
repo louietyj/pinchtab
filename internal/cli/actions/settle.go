@@ -7,16 +7,30 @@ import (
 	"github.com/pinchtab/pinchtab/internal/cli/apiclient"
 )
 
-// domQuietJS resolves true once the DOM has gone 300ms unchanged with no busy
-// indicator showing (a CSS spinner awaiting a fetch mutates nothing), or false
-// at 2s. Only an indeterminate progressbar counts: a determinate one, like a
+// domQuietJS resolves true once the DOM has gone 300ms unchanged and unscrolled
+// with no busy indicator showing (a CSS spinner awaiting a fetch mutates
+// nothing), or false at 2s. A wheel scroll eases for ~1s, in Chrome and in JS
+// scrollers like Lenis, without touching the DOM, and positions read mid-ease
+// are wrong. A finite CSS animation is busy for the same reason; infinite ones
+// never end. Only an indeterminate progressbar counts: a determinate one, like a
 // checkout stepper, never goes away. It starts two frames in, or 100ms in a tab
 // that paints none. Network idleness is no signal: analytics never stop.
 const domQuietJS = `new Promise(function (resolve) {
   var quiet = 300, cap = 2000, t0 = performance.now(), last = t0, started = false;
-  var mo = new MutationObserver(function () { last = performance.now(); });
+  function bump() { last = performance.now(); }
+  var mo = new MutationObserver(bump);
   mo.observe(document, {subtree: true, childList: true, attributes: true, characterData: true});
+  addEventListener('scroll', bump, {capture: true, passive: true});
+  function animating() {
+    var as = document.getAnimations ? document.getAnimations() : [];
+    for (var i = 0; i < as.length; i++) {
+      var e = as[i].effect;
+      if (as[i].playState === 'running' && e && isFinite(e.getComputedTiming().endTime)) return true;
+    }
+    return false;
+  }
   function busy() {
+    if (animating()) return true;
     var els = document.querySelectorAll('[aria-busy="true"], [role="progressbar"]:not([aria-valuenow]), [class*="spinner" i], [class*="loading" i], [class*="loader" i]');
     for (var i = 0; i < els.length; i++) {
       var r = els[i].getBoundingClientRect(), s = getComputedStyle(els[i]);
@@ -27,7 +41,11 @@ const domQuietJS = `new Promise(function (resolve) {
   }
   function check() {
     var now = performance.now(), settled = now - last >= quiet && !busy();
-    if (settled || now - t0 >= cap) { mo.disconnect(); resolve(settled); }
+    if (settled || now - t0 >= cap) {
+      mo.disconnect();
+      removeEventListener('scroll', bump, {capture: true});
+      resolve(settled);
+    }
     else setTimeout(check, 50);
   }
   function start() { if (!started) { started = true; check(); } }
