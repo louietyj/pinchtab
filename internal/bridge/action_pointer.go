@@ -33,8 +33,10 @@ var jsDoubleClickByBackendNodeAction = JSDoubleClickByBackendNode
 // the whole action timeout, but 100ms proved too tight under heavy CPU
 // contention (e.g. many concurrent browser instances): a legitimate CDP click
 // could exceed it, fall back to JS, and time out there too, failing the
-// action. 250ms keeps the dialog-hang bound small while surviving contention.
-const trustedNodeClickTimeout = 250 * time.Millisecond
+// action. So did 250ms, with one browser on one vCPU re-rendering a
+// 2,000-node SVG map after each click. A timeout after the press no longer
+// clicks twice, so the bound can be generous.
+const trustedNodeClickTimeout = 2 * time.Second
 
 func clickByNodeIDWithJSFallback(ctx context.Context, nodeID int64) error {
 	trustedCtx, cancel := context.WithTimeout(ctx, trustedNodeClickTimeout)
