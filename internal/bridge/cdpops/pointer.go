@@ -350,23 +350,50 @@ func ClickByCoordinate(ctx context.Context, x, y float64, modifiers int) error {
 	return MouseUpByCoordinate(ctx, x, y, "left", modifiers)
 }
 
+// ErrClickUnconfirmed means a node click's press reached the page but the rest of
+// the click was not acknowledged in time. The click may well have landed, so the
+// caller must not click again on its own: a second click undoes a toggle.
+var ErrClickUnconfirmed = errors.New("click dispatched; outcome unconfirmed")
+
+// releaseAfterTimeout bounds the release sent for a press whose acknowledgement
+// ran out of time, once the caller's own deadline has already passed.
+const releaseAfterTimeout = 2 * time.Second
+
 func ClickByNodeID(ctx context.Context, nodeID int64) error {
 	x, y, err := PointerPointForNode(ctx, nodeID, true)
 	if err != nil {
 		return err
 	}
-
-	actions := []chromedp.Action{
-		mouseEventAction(map[string]any{"type": "mouseMoved", "x": x, "y": y}),
+	if err := dispatchMouseEvent(ctx, map[string]any{"type": "mouseMoved", "x": x, "y": y}); err != nil {
+		return err
 	}
-	actions = append(actions, mousePressReleaseActions(x, y, 1)...)
 	// CDP mouse events don't trigger default browser navigation on <a>
 	// elements. For links, fire a JS-level .click() so the browser
 	// follows the href.
-	actions = append(actions, chromedp.ActionFunc(func(ctx context.Context) error {
+	return pressAndRelease(ctx, x, y, 1, chromedp.ActionFunc(func(ctx context.Context) error {
 		return jsClickIfLink(ctx, nodeID)
 	}))
-	return chromedp.Run(ctx, actions...)
+}
+
+// pressAndRelease is a node click's point of no return: every failure after the
+// press is sent is ErrClickUnconfirmed, not a cue for a fallback click. A press
+// that ran out of time still gets its release, so the button is not left held.
+func pressAndRelease(ctx context.Context, x, y float64, clickCount int, after ...chromedp.Action) error {
+	pair := mousePressReleaseActions(x, y, clickCount)
+	press, release := pair[0], pair[1]
+	if err := chromedp.Run(ctx, press); err != nil {
+		if ctx.Err() == nil {
+			return err // refused by the browser, so never dispatched
+		}
+		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), releaseAfterTimeout)
+		defer cancel()
+		_ = chromedp.Run(releaseCtx, release)
+		return fmt.Errorf("%w: %v", ErrClickUnconfirmed, err)
+	}
+	if err := chromedp.Run(ctx, append([]chromedp.Action{release}, after...)...); err != nil {
+		return fmt.Errorf("%w: %v", ErrClickUnconfirmed, err)
+	}
+	return nil
 }
 
 func jsClickIfLink(ctx context.Context, nodeID int64) error {
@@ -435,13 +462,12 @@ func DoubleClickByNodeID(ctx context.Context, nodeID int64) error {
 		return err
 	}
 
-	actions := []chromedp.Action{
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			return chromedp.FromContext(ctx).Target.Execute(ctx, "DOM.focus", map[string]any{"backendNodeId": nodeID}, nil)
-		}),
+	if err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
+		return chromedp.FromContext(ctx).Target.Execute(ctx, "DOM.focus", map[string]any{"backendNodeId": nodeID}, nil)
+	})); err != nil {
+		return err
 	}
-	actions = append(actions, mousePressReleaseActions(x, y, 2)...)
-	return chromedp.Run(ctx, actions...)
+	return pressAndRelease(ctx, x, y, 2)
 }
 
 func DragByNodeID(ctx context.Context, nodeID int64, dx, dy int, button string) error {

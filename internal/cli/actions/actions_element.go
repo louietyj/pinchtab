@@ -212,6 +212,11 @@ func printActionResult(kind string, result map[string]any) {
 				return
 			}
 		}
+		if confirmed, ok := actionResult["confirmed"].(bool); ok && !confirmed {
+			output.Value("UNCONFIRMED")
+			output.Hint("the click reached the page but was not acknowledged in time; check the page before clicking again, since a second click undoes a toggle")
+			return
+		}
 	}
 
 	output.Success()

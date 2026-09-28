@@ -74,6 +74,8 @@ func ClickByCoordinate(ctx context.Context, x, y float64, modifiers int) error {
 	return bridgecdpops.ClickByCoordinate(ctx, x, y, modifiers)
 }
 
+var ErrClickUnconfirmed = bridgecdpops.ErrClickUnconfirmed
+
 func ClickByNodeID(ctx context.Context, nodeID int64) error {
 	return bridgecdpops.ClickByNodeID(ctx, nodeID)
 }

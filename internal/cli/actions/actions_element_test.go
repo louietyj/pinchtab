@@ -102,6 +102,18 @@ func TestPrintActionResultSubmitSuccessNamesObservedSignal(t *testing.T) {
 	}
 }
 
+func TestPrintActionResultUnconfirmedClickIsNotOK(t *testing.T) {
+	got := captureStdout(t, func() {
+		printActionResult("click", map[string]any{
+			"success": true,
+			"result":  map[string]any{"clicked": true, "confirmed": false},
+		})
+	})
+	if got != "UNCONFIRMED\n" {
+		t.Fatalf("unconfirmed output = %q, want UNCONFIRMED", got)
+	}
+}
+
 func TestClickWaitNav(t *testing.T) {
 	m := newMockServer()
 	defer m.close()

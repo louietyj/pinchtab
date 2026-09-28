@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -678,6 +679,54 @@ func TestClickByNodeIDWithJSFallback_SkipsFallbackOnCancelledCtx(t *testing.T) {
 	}
 	if fallbackCalled {
 		t.Fatal("JS fallback should not run when parent context is cancelled")
+	}
+}
+
+func TestClickByNodeIDWithJSFallback_NoFallbackOnceThePressIsSent(t *testing.T) {
+	origTrusted := clickByNodeIDAction
+	origFallback := jsClickByBackendNodeAction
+	t.Cleanup(func() {
+		clickByNodeIDAction = origTrusted
+		jsClickByBackendNodeAction = origFallback
+	})
+
+	var fallbackCalled bool
+	clickByNodeIDAction = func(context.Context, int64) error {
+		return fmt.Errorf("%w: %w", ErrClickUnconfirmed, context.DeadlineExceeded)
+	}
+	jsClickByBackendNodeAction = func(context.Context, int64) error {
+		fallbackCalled = true
+		return nil
+	}
+
+	err := clickByNodeIDWithJSFallback(context.Background(), 42)
+	if !errors.Is(err, ErrClickUnconfirmed) {
+		t.Fatalf("error = %v, want ErrClickUnconfirmed", err)
+	}
+	if fallbackCalled {
+		t.Fatal("JS fallback after the press would click twice")
+	}
+}
+
+func TestActionClick_UnconfirmedIsAResultNotAnError(t *testing.T) {
+	origTrusted := clickByNodeIDAction
+	origFlyout := clickFloatingFlyoutItemAction
+	t.Cleanup(func() {
+		clickByNodeIDAction = origTrusted
+		clickFloatingFlyoutItemAction = origFlyout
+	})
+	clickByNodeIDAction = func(context.Context, int64) error {
+		return fmt.Errorf("%w: %v", ErrClickUnconfirmed, context.DeadlineExceeded)
+	}
+	clickFloatingFlyoutItemAction = func(context.Context, int64) (bool, error) { return false, nil }
+
+	b := New(context.Background(), nil, &config.RuntimeConfig{})
+	result, err := b.actionClick(context.Background(), ActionRequest{Kind: ActionClick, NodeID: 42})
+	if err != nil {
+		t.Fatalf("error = %v; an error invites a retry that undoes a toggle", err)
+	}
+	if result["clicked"] != true || result["confirmed"] != false {
+		t.Fatalf("result = %v, want clicked and confirmed=false", result)
 	}
 }
 

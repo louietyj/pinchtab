@@ -46,7 +46,8 @@ func clickByNodeIDWithJSFallback(ctx context.Context, nodeID int64) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
+	// Past the press, a JS click would be a second click.
+	if errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, ErrClickUnconfirmed) {
 		// Re-check: the parent context may have been cancelled (e.g. by the
 		// dialog-detection polling loop) while the trusted click was running.
 		if ctx.Err() != nil {
@@ -132,7 +133,7 @@ func doubleClickByNodeIDWithJSFallback(ctx context.Context, nodeID int64) error 
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, ErrClickUnconfirmed) {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -341,6 +342,9 @@ func (b *Bridge) actionClick(ctx context.Context, req ActionRequest) (result map
 		for {
 			select {
 			case result := <-resultCh:
+				if errors.Is(result.err, ErrClickUnconfirmed) {
+					return unconfirmedClick("clicked", result.err), nil
+				}
 				if result.err != nil {
 					return nil, result.err
 				}
@@ -360,6 +364,9 @@ func (b *Bridge) actionClick(ctx context.Context, req ActionRequest) (result map
 	}
 
 	res := <-resultCh
+	if errors.Is(res.err, ErrClickUnconfirmed) {
+		return unconfirmedClick("clicked", res.err), nil
+	}
 	if res.err != nil {
 		return nil, res.err
 	}
@@ -370,6 +377,12 @@ func (b *Bridge) actionClick(ctx context.Context, req ActionRequest) (result map
 		_ = chromedp.Run(ctx, chromedp.Sleep(b.Config.WaitNavDelay))
 	}
 	return map[string]any{"clicked": true}, nil
+}
+
+// unconfirmedClick reports a click the page may or may not have taken as a
+// result, not an error: an error invites a retry, and a retry undoes a toggle.
+func unconfirmedClick(key string, err error) map[string]any {
+	return map[string]any{key: true, "confirmed": false, "warning": err.Error()}
 }
 
 func waitForArmedDialogSettle(dm *DialogManager, tabID string, timeout time.Duration) {
@@ -419,6 +432,9 @@ func (b *Bridge) actionDoubleClick(ctx context.Context, req ActionRequest) (resu
 		err = DoubleClickByCoordinate(ctx, req.X, req.Y)
 	} else {
 		return nil, NewInvalidActionRequestError("need selector, ref, nodeId, or x/y coordinates")
+	}
+	if errors.Is(err, ErrClickUnconfirmed) {
+		return unconfirmedClick("doubleclicked", err), nil
 	}
 	if err != nil {
 		return nil, err
