@@ -45,8 +45,8 @@ func TestNavAutoStartsBeforeNavigateAndSnap(t *testing.T) {
 		navCmd.Run(navCmd, []string{"example.com"})
 	})
 
-	if len(paths) < 3 || paths[0] != "/health" || paths[1] != "/navigate" || paths[2] != "/snapshot" {
-		t.Fatalf("request paths = %v, want /health, /navigate, /snapshot", paths)
+	if len(paths) < 4 || paths[0] != "/health" || paths[1] != "/navigate" || paths[2] != "/tabs/T1/evaluate" || paths[3] != "/snapshot" {
+		t.Fatalf("request paths = %v, want /health, /navigate, the settle's /tabs/T1/evaluate, /snapshot", paths)
 	}
 }
 

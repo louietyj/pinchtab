@@ -274,14 +274,44 @@ func TestPressWithSnapDiffFetchesSnapshot(t *testing.T) {
 	_ = cmd.Flags().Set("snap-diff", "true")
 	ActionSimple(client, m.base(), "", "press", []string{"Enter"}, cmd)
 
-	if len(m.requests) != 2 {
-		t.Fatalf("expected 2 requests (action + snapshot), got %d", len(m.requests))
+	if len(m.requests) != 3 {
+		t.Fatalf("expected 3 requests (action + settle + snapshot), got %d", len(m.requests))
 	}
-	if m.requests[1].Path != "/snapshot" {
-		t.Fatalf("snapshot path = %q, want /snapshot", m.requests[1].Path)
+	if m.requests[1].Path != "/evaluate" {
+		t.Fatalf("second request = %q, want the /evaluate settle before the snapshot", m.requests[1].Path)
 	}
-	if m.requests[1].Query != "filter=interactive&format=compact&diff=true" {
-		t.Fatalf("snapshot query = %q", m.requests[1].Query)
+	if m.requests[2].Path != "/snapshot" {
+		t.Fatalf("snapshot path = %q, want /snapshot", m.requests[2].Path)
+	}
+	if m.requests[2].Query != "filter=interactive&format=compact&diff=true" {
+		t.Fatalf("snapshot query = %q", m.requests[2].Query)
+	}
+}
+
+func TestSettleDOM(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+		want   bool
+	}{
+		{"settled", 200, `{"result":true}`, true},
+		{"still changing at the cap", 200, `{"result":false}`, false},
+		{"evaluate failed", 500, `{"error":"context destroyed"}`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newMockServer()
+			defer m.close()
+			m.setResponse("POST", "/evaluate", tc.status, tc.body)
+			if got := settleDOM(m.server.Client(), m.base(), "", ""); got != tc.want {
+				t.Fatalf("settleDOM = %v, want %v", got, tc.want)
+			}
+			var body map[string]any
+			_ = json.Unmarshal([]byte(m.lastBody), &body)
+			if body["awaitPromise"] != true {
+				t.Fatalf("awaitPromise = %v, want true", body["awaitPromise"])
+			}
+		})
 	}
 }
 

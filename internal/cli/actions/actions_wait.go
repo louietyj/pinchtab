@@ -22,6 +22,14 @@ func Wait(client *http.Client, base, token string, args []string, cmd *cobra.Com
 	timeoutFlag, _ := cmd.Flags().GetInt("timeout")
 	tabID, _ := cmd.Flags().GetString("tab")
 
+	if domQuiet, _ := cmd.Flags().GetBool("dom-quiet"); domQuiet {
+		if !settleDOM(client, base, token, tabID) {
+			output.Hint("the page was still changing after 2s")
+		}
+		output.Success()
+		return
+	}
+
 	switch {
 	case textFlag != "":
 		body["text"] = textFlag

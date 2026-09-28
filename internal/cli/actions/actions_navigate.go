@@ -64,10 +64,14 @@ func historyNav(client *http.Client, base, token, action string, cmd *cobra.Comm
 func printPostActionOutput(client *http.Client, base, token, tabID string, cmd *cobra.Command, extraVocabKeys ...string) {
 	snap, _ := cmd.Flags().GetBool("snap")
 	snapDiff, _ := cmd.Flags().GetBool("snap-diff")
+	text, _ := cmd.Flags().GetBool("text")
+	if snap || snapDiff || text {
+		settleDOM(client, base, token, tabID)
+	}
 	if snap || snapDiff {
 		fetchAndPrintSnapshot(client, base, token, tabID, snapDiff, extraVocabKeys...)
 	}
-	if text, _ := cmd.Flags().GetBool("text"); text {
+	if text {
 		fetchAndPrintText(client, base, token, tabID)
 	}
 }

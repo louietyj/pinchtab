@@ -143,16 +143,7 @@ func postActionWithHeaders(client *http.Client, base, token string, cmd *cobra.C
 		output.Hint(hint)
 	}
 
-	snap, _ := cmd.Flags().GetBool("snap")
-	snapDiff, _ := cmd.Flags().GetBool("snap-diff")
-	if snap || snapDiff {
-		fetchAndPrintSnapshot(client, base, token, tabID, snapDiff)
-	}
-
-	text, _ := cmd.Flags().GetBool("text")
-	if text {
-		fetchAndPrintText(client, base, token, tabID)
-	}
+	printPostActionOutput(client, base, token, tabID, cmd)
 }
 
 func fetchAndPrintSnapshot(client *http.Client, base, token, tabID string, diff bool, extraVocabKeys ...string) {

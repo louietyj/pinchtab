@@ -369,6 +369,7 @@ func configureBrowserFlags() {
 	waitCmd.Flags().String("not-text", "", "Wait for text to disappear from page")
 	waitCmd.Flags().String("url", "", "Wait for URL glob match")
 	waitCmd.Flags().String("load", "", "Wait for load state (networkidle)")
+	waitCmd.Flags().Bool("dom-quiet", false, "Wait until the DOM goes 300ms unchanged with no spinner showing (at most 2s); unlike networkidle, analytics don't hold it up")
 	waitCmd.Flags().String("fn", "", "Wait for JS expression to be truthy")
 	waitCmd.Flags().String("state", "", "Element state: visible (default) or hidden")
 	waitCmd.Flags().Int("timeout", 0, "Timeout in milliseconds (default 10000, max 30000)")
