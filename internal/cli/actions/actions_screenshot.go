@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -135,4 +136,16 @@ func Screenshot(client *http.Client, base, token string, cmd *cobra.Command) {
 		cli.Fatal("Write failed: %v", err)
 	}
 	printSaved(saved, len(data))
+
+	if f, _ := cmd.Flags().GetFloat64("also-scale"); f > 0 && f < 1 {
+		small, err := downscaleImage(data, f)
+		if err != nil {
+			cli.Fatal("Downscale failed: %v", err)
+		}
+		smallPath := strings.TrimSuffix(saved, ext) + fmt.Sprintf("-scale-%g", f) + ext
+		if err := os.WriteFile(smallPath, small, 0o600); err != nil {
+			cli.Fatal("Write failed: %v", err)
+		}
+		printSaved(smallPath, len(small))
+	}
 }
