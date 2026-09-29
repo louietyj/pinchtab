@@ -131,10 +131,18 @@ proc.on('error', (err) => {
   process.exit(1);
 });
 
-process.on('SIGINT', () => {
-  proc.kill();
-});
+const forwardSignal = () => proc.kill();
+process.on('SIGINT', forwardSignal);
+process.on('SIGTERM', forwardSignal);
 
-process.on('SIGTERM', () => {
-  proc.kill();
+// Without this, Node exits 0 whatever the child returned. A signal is re-raised
+// here, with the forwarders removed first so they don't swallow it.
+proc.on('exit', (code, signal) => {
+  if (signal) {
+    process.removeListener('SIGINT', forwardSignal);
+    process.removeListener('SIGTERM', forwardSignal);
+    process.kill(process.pid, signal);
+    return;
+  }
+  process.exit(code ?? 1);
 });

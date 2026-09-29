@@ -21,7 +21,8 @@ const sourceWrapperPath = path.join(repoRoot, 'npm', 'bin', 'pinchtab');
 const compiledPlatformPath = path.join(repoRoot, 'npm', 'dist', 'src', 'platform.js');
 const tempRoots: string[] = [];
 
-function createFakeCheckout(stdoutText: string, recordPath: string) {
+// `tail` is appended to the fake binary, to make it exit or die a given way.
+function createFakeCheckout(stdoutText: string, recordPath: string, tail = '') {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pinchtab-wrapper-test-'));
   tempRoots.push(tempRoot);
 
@@ -38,6 +39,7 @@ fs.writeFileSync(${JSON.stringify(recordPath)}, JSON.stringify({
   argv: process.argv.slice(2),
 }, null, 2));
 process.stdout.write(${JSON.stringify(stdoutText)});
+${tail}
 `;
   fs.writeFileSync(path.join(tempRoot, 'pinchtab-dev'), contents, { mode: 0o755 });
   fs.chmodSync(path.join(tempRoot, 'npm', 'bin', 'pinchtab'), 0o755);
@@ -87,5 +89,31 @@ describe('wrapper source-checkout binary path', () => {
     const recorded = JSON.parse(fs.readFileSync(recordPath, 'utf-8'));
     fs.rmSync(recordPath, { force: true });
     assert.deepStrictEqual(recorded.argv, ['mcp']);
+  });
+
+  test("passes the binary's exit code through", () => {
+    const recordPath = path.join(repoRoot, 'npm', 'wrapper-exit.json');
+    const checkout = createFakeCheckout('', recordPath, 'process.exit(3);');
+
+    const result = spawnSync('node', [checkout.wrapperPath, 'nav', 'https://example.com'], {
+      cwd: checkout.repoRoot,
+      encoding: 'utf-8',
+    });
+    fs.rmSync(recordPath, { force: true });
+
+    assert.strictEqual(result.status, 3, result.stderr);
+  });
+
+  test('dies of the same signal as the binary', { skip: process.platform === 'win32' }, () => {
+    const recordPath = path.join(repoRoot, 'npm', 'wrapper-signal.json');
+    const checkout = createFakeCheckout('', recordPath, "process.kill(process.pid, 'SIGTERM');");
+
+    const result = spawnSync('node', [checkout.wrapperPath, 'nav', 'https://example.com'], {
+      cwd: checkout.repoRoot,
+      encoding: 'utf-8',
+    });
+    fs.rmSync(recordPath, { force: true });
+
+    assert.strictEqual(result.signal, 'SIGTERM', `status ${result.status}: ${result.stderr}`);
   });
 });
