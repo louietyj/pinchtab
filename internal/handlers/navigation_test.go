@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http/httptest"
@@ -616,6 +617,44 @@ func TestHandleTab_AllowsValidURL(t *testing.T) {
 	}
 	if len(m.createTabURLs) == 0 {
 		t.Fatal("expected CreateTab to be called for valid URL")
+	}
+}
+
+func TestIsPageContentType(t *testing.T) {
+	for ct, want := range map[string]bool{
+		"":                      true,
+		"text/html":             true,
+		"text/plain":            true,
+		"application/xhtml+xml": true,
+		"application/json":      true,
+		"image/svg+xml":         true,
+		"application/pdf":       false,
+		"image/png":             false,
+		"video/mp4":             false,
+	} {
+		if got := isPageContentType(ct); got != want {
+			t.Errorf("isPageContentType(%q) = %v, want %v", ct, got, want)
+		}
+	}
+}
+
+func TestNavigateErrorWithHint_DownloadNavigation(t *testing.T) {
+	w := httptest.NewRecorder()
+	navigateErrorWithHint(w, 500, &bridge.DownloadNavigationError{MIMEType: "application/zip"}, "https://example.com/archive/main")
+	if w.Code != 502 {
+		t.Fatalf("status = %d, want 502", w.Code)
+	}
+	var body struct {
+		Code    string            `json:"code"`
+		Error   string            `json:"error"`
+		Details map[string]string `json:"details"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode %s: %v", w.Body.String(), err)
+	}
+	if body.Code != "nav_binary_aborted" || !strings.Contains(body.Error, "application/zip") ||
+		body.Details["remedy"] != `pinchtab download "https://example.com/archive/main" -o <path>` {
+		t.Fatalf("body = %s", w.Body.String())
 	}
 }
 

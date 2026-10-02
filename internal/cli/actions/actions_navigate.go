@@ -152,6 +152,22 @@ func autoSolveHint(result map[string]any) string {
 	return fmt.Sprintf("a %s challenge on this page was NOT solved. %s `nav --json` lists each solver's attempt.", challenge, next)
 }
 
+// fileHint reports a navigate that landed on a file shown in a viewer (a PDF, an
+// image): the tab displays it, but text and snap read nothing of its contents.
+func fileHint(result map[string]any) string {
+	raw, ok := result["file"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	contentType, _ := raw["contentType"].(string)
+	landed := landedURL(result)
+	if landed == "" || strings.Contains(landed, "'") {
+		landed = "<url>"
+	}
+	return fmt.Sprintf("this URL is a file (%s), not a web page: text and snap will not show what is in it. "+
+		"To save it: pinchtab download '%s' -o <path>", contentType, landed)
+}
+
 // pendingSolveCheck is the command the pending hint hands the caller. Waiting for the
 // challenge page's title to change returns as soon as the solve lands, capped at the
 // server's 30s wait; without a title that quotes safely it falls back to a short sleep.
@@ -181,6 +197,9 @@ func Navigate(client *http.Client, base, token string, url string, cmd *cobra.Co
 				raw["hint"] = hint
 			}
 		}
+		if raw, ok := result["file"].(map[string]any); ok {
+			raw["hint"] = fileHint(result)
+		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetEscapeHTML(false) // URLs keep their & as &
 		enc.SetIndent("", "  ")
@@ -209,6 +228,9 @@ func Navigate(client *http.Client, base, token string, url string, cmd *cobra.Co
 	}
 
 	if hint := autoSolveHint(result); hint != "" {
+		output.Hint(hint)
+	}
+	if hint := fileHint(result); hint != "" {
 		output.Hint(hint)
 	}
 

@@ -66,6 +66,22 @@ func TestAutoSolveHint(t *testing.T) {
 	}
 }
 
+func TestFileHint(t *testing.T) {
+	if got := fileHint(map[string]any{"url": "https://example.com/"}); got != "" {
+		t.Fatalf("hint for a page = %q, want none", got)
+	}
+	got := fileHint(map[string]any{"url": "https://example.com/a.pdf", "file": map[string]any{"contentType": "application/pdf"}})
+	for _, want := range []string{"(application/pdf)", "pinchtab download 'https://example.com/a.pdf' -o <path>"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("hint = %q, want it to contain %q", got, want)
+		}
+	}
+	got = fileHint(map[string]any{"url": "https://example.com/it's.pdf", "file": map[string]any{"contentType": "application/pdf"}})
+	if !strings.Contains(got, "pinchtab download '<url>' -o <path>") {
+		t.Fatalf("hint = %q, want a <url> slot for a URL that does not quote", got)
+	}
+}
+
 func TestNavigateTimeoutIsSentAndClampedToTheAPICeiling(t *testing.T) {
 	for _, tc := range []struct {
 		name  string

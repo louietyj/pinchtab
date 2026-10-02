@@ -3,7 +3,9 @@ package cdpops
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -49,6 +51,30 @@ func dispatchBackgroundNavigation(ctx context.Context, url string, replaceInitia
 }
 
 var ErrTooManyRedirects = fmt.Errorf("too many redirects")
+
+// ErrNavigationIsDownload: the URL answered with a file Chrome downloads rather
+// than renders (Content-Disposition: attachment, or a type it cannot display).
+var ErrNavigationIsDownload = errors.New("navigation became a download")
+
+type DownloadNavigationError struct {
+	MIMEType string
+}
+
+func (e *DownloadNavigationError) Error() string {
+	if e.MIMEType == "" {
+		return ErrNavigationIsDownload.Error()
+	}
+	return fmt.Sprintf("%s (%s)", ErrNavigationIsDownload, e.MIMEType)
+}
+
+func (e *DownloadNavigationError) Unwrap() error { return ErrNavigationIsDownload }
+
+// DocumentContentType is the shown document's MIME type: application/pdf for a PDF in the viewer.
+func DocumentContentType(ctx context.Context) (string, error) {
+	var contentType string
+	err := chromedp.Run(ctx, chromedp.Evaluate("document.contentType", &contentType))
+	return contentType, err
+}
 
 func NavigatePageWithRedirectLimit(ctx context.Context, url string, maxRedirects int) error {
 	replaceInitialBlank, _ := shouldReplaceInitialBlankNavigation(ctx)
@@ -170,6 +196,10 @@ type navigationLifecycleWaiter struct {
 	targetID       string
 	navigationSeen bool
 	lastEvent      string
+	docRequest     network.RequestID
+	docMIME        string
+	docAttachment  bool
+	downloadErr    error
 	ready          chan struct{}
 	readyOnce      sync.Once
 	cancel         context.CancelFunc
@@ -213,6 +243,25 @@ func (w *navigationLifecycleWaiter) onEvent(event any) {
 	defer w.mu.Unlock()
 
 	switch e := event.(type) {
+	case *network.EventResponseReceived:
+		if e.Type != network.ResourceTypeDocument || e.FrameID != w.mainFrame || e.Response == nil {
+			return
+		}
+		w.docRequest = e.RequestID
+		w.docMIME = e.Response.MimeType
+		w.docAttachment = isAttachment(e.Response.Headers)
+	case *network.EventLoadingFailed:
+		// A response dropped without ever committing went to Chrome's download
+		// manager, and no lifecycle event will follow. A dropped HTML response
+		// was superseded by another navigation instead.
+		if e.RequestID != w.docRequest || w.navigationSeen {
+			return
+		}
+		if !w.docAttachment && (w.docMIME == "text/html" || w.docMIME == "application/xhtml+xml") {
+			return
+		}
+		w.downloadErr = &DownloadNavigationError{MIMEType: w.docMIME}
+		w.markReady()
 	case *page.EventFrameNavigated:
 		if e.Frame == nil || e.Frame.ParentID != "" {
 			return
@@ -238,6 +287,16 @@ func (w *navigationLifecycleWaiter) onEvent(event any) {
 	}
 }
 
+func isAttachment(headers network.Headers) bool {
+	for name, value := range headers {
+		if strings.EqualFold(name, "Content-Disposition") {
+			v, _ := value.(string)
+			return strings.HasPrefix(strings.ToLower(strings.TrimSpace(v)), "attachment")
+		}
+	}
+	return false
+}
+
 func (w *navigationLifecycleWaiter) markReady() {
 	w.readyOnce.Do(func() { close(w.ready) })
 }
@@ -245,7 +304,9 @@ func (w *navigationLifecycleWaiter) markReady() {
 func (w *navigationLifecycleWaiter) wait(ctx context.Context) error {
 	select {
 	case <-w.ready:
-		return nil
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		return w.downloadErr
 	case <-ctx.Done():
 		w.mu.Lock()
 		mainFrame := w.mainFrame

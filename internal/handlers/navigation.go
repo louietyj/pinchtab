@@ -599,6 +599,11 @@ func (h *Handlers) runNavigate(w http.ResponseWriter, r *http.Request, ex navExe
 	if autoSolve != nil {
 		resp["autoSolve"] = autoSolve
 	}
+	// A PDF or image renders in the tab, but text and snap see only the viewer
+	// around it, never its contents.
+	if contentType, err := bridge.DocumentContentType(ex.ctx); err == nil && !isPageContentType(contentType) {
+		resp["file"] = map[string]any{"contentType": contentType}
+	}
 	httpx.JSON(w, 200, resp)
 }
 
@@ -715,11 +720,26 @@ func isNavigateAbortedOnBinary(err error, url string) bool {
 	return false
 }
 
+// isPageContentType reports whether a document of this type is a page that text
+// and snap can read, as opposed to a file shown in a viewer. Unknown counts as a page.
+func isPageContentType(contentType string) bool {
+	ct := strings.ToLower(contentType)
+	return ct == "" || strings.HasPrefix(ct, "text/") ||
+		strings.Contains(ct, "html") || strings.Contains(ct, "xml") || strings.Contains(ct, "json")
+}
+
 // The pair used to be inverted: the remedy held the bare verb "download" and the hint held
 // the command. The URL is known here, so the remedy is the whole command.
-var downloadInstead = remedy.Declare(`pinchtab download "<url>"`)
+var downloadInstead = remedy.Declare(`pinchtab download "<url>" -o <path>`)
 
 func navigateErrorWithHint(w http.ResponseWriter, code int, err error, url string) {
+	var dlErr *bridge.DownloadNavigationError
+	if errors.As(err, &dlErr) {
+		httpx.ErrorCode(w, 502, "nav_binary_aborted", fmt.Sprintf("navigate: %s", err.Error()), false,
+			remedy.Details("This URL is a file that the browser downloads rather than displays.",
+				downloadInstead.Fill(url)))
+		return
+	}
 	if isNavigateAbortedOnBinary(err, url) {
 		httpx.ErrorCode(w, 502, "nav_binary_aborted", fmt.Sprintf("navigate: %s", err.Error()), false,
 			remedy.Details("Chrome cannot render binary/compressed files, so this URL has to be downloaded instead.",

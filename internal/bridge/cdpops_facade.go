@@ -41,6 +41,12 @@ func WaitForTitle(ctx context.Context, timeout time.Duration) (string, error) {
 	return bridgecdpops.WaitForTitle(ctx, timeout)
 }
 
+type DownloadNavigationError = bridgecdpops.DownloadNavigationError
+
+func DocumentContentType(ctx context.Context) (string, error) {
+	return bridgecdpops.DocumentContentType(ctx)
+}
+
 func SetResourceBlocking(ctx context.Context, patterns []string) error {
 	return bridgecdpops.SetResourceBlocking(ctx, patterns)
 }
