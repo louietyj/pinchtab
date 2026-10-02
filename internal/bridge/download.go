@@ -50,6 +50,9 @@ func (b *Bridge) DownloadURL(ctx context.Context, dlURL string, opts DownloadOpt
 	var responseMIME string
 	var responseStatus int
 	var mainFrameID cdp.FrameID
+	// Read at the Fetch response stage: once a PDF reaches the viewer,
+	// network.GetResponseBody returns the viewer's embedder HTML instead.
+	var capturedBody []byte
 
 	noteBlocked := func(err error) {
 		mu.Lock()
@@ -92,6 +95,36 @@ func (b *Bridge) DownloadURL(ctx context.Context, dlURL string, opts DownloadOpt
 		}))
 	}()
 
+	captureMainResponse := func(e *fetch.EventRequestPaused) {
+		exec := cdp.WithExecutor(tCtx, chromedp.FromContext(tCtx).Target)
+		status := int(e.ResponseStatusCode)
+		if isMainRequest(e.NetworkID) && e.ResponseErrorReason == "" && (status < 300 || status >= 400) {
+			if opts.MaxBytes > 0 && opts.ParseContentLength != nil {
+				headers := make(map[string]interface{}, len(e.ResponseHeaders))
+				for _, h := range e.ResponseHeaders {
+					headers[h.Name] = h.Value
+				}
+				// Refuse here rather than in the ResponseReceived listener: a PDF
+				// that reaches the viewer hangs the tab's teardown past the deadline.
+				if contentLength, ok := opts.ParseContentLength(headers); ok && contentLength > int64(opts.MaxBytes) {
+					noteBlocked(fmt.Errorf("%w: received %d bytes, max %d", ErrDownloadTooLarge, contentLength, opts.MaxBytes))
+					select {
+					case done <- struct{}{}:
+					default:
+					}
+					_ = fetch.FailRequest(e.RequestID, network.ErrorReasonBlockedByClient).Do(exec)
+					return
+				}
+			}
+			if body, err := fetch.GetResponseBody(e.RequestID).Do(exec); err == nil {
+				mu.Lock()
+				capturedBody = body
+				mu.Unlock()
+			}
+		}
+		_ = fetch.ContinueRequest(e.RequestID).Do(exec)
+	}
+
 	chromedp.ListenTarget(tCtx, func(ev interface{}) {
 		switch e := ev.(type) {
 		case *fetch.EventAuthRequired:
@@ -103,6 +136,10 @@ func (b *Bridge) DownloadURL(ctx context.Context, dlURL string, opts DownloadOpt
 				_ = fetch.ContinueWithAuth(e.RequestID, resp).Do(cdp.WithExecutor(tCtx, chromedp.FromContext(tCtx).Target))
 			}()
 		case *fetch.EventRequestPaused:
+			if e.ResponseStatusCode != 0 || e.ResponseErrorReason != "" {
+				go captureMainResponse(e)
+				return
+			}
 			go func() {
 				reqID := e.RequestID
 				isRedirect := e.RedirectedRequestID != ""
@@ -117,7 +154,10 @@ func (b *Bridge) DownloadURL(ctx context.Context, dlURL string, opts DownloadOpt
 						return
 					}
 				}
-				_ = fetch.ContinueRequest(reqID).Do(cdp.WithExecutor(tCtx, chromedp.FromContext(tCtx).Target))
+				// Pause documents again at the response stage, where captureMainResponse reads the body.
+				_ = fetch.ContinueRequest(reqID).
+					WithInterceptResponse(e.ResourceType == network.ResourceTypeDocument).
+					Do(cdp.WithExecutor(tCtx, chromedp.FromContext(tCtx).Target))
 			}()
 		case *network.EventRequestWillBeSent:
 			if e.Type != network.ResourceTypeDocument {
@@ -230,6 +270,7 @@ func (b *Bridge) DownloadURL(ctx context.Context, dlURL string, opts DownloadOpt
 	reqID := requestID
 	respMIME := responseMIME
 	respStatus := responseStatus
+	body := capturedBody
 	mu.Unlock()
 
 	if respStatus >= 400 {
@@ -239,7 +280,17 @@ func (b *Bridge) DownloadURL(ctx context.Context, dlURL string, opts DownloadOpt
 		return nil, fmt.Errorf("download response was not captured")
 	}
 
-	var body []byte
+	if body != nil {
+		if opts.MaxBytes > 0 && len(body) > opts.MaxBytes {
+			return nil, fmt.Errorf("%w: received %d bytes, max %d", ErrDownloadTooLarge, len(body), opts.MaxBytes)
+		}
+		return &DownloadResult{
+			Body:       body,
+			MIMEType:   respMIME,
+			StatusCode: respStatus,
+		}, nil
+	}
+
 	if err := chromedp.Run(tCtx, chromedp.ActionFunc(func(ctx context.Context) error {
 		b, err := network.GetResponseBody(reqID).Do(ctx)
 		if err != nil {
