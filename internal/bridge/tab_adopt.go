@@ -164,3 +164,23 @@ func (tm *TabManager) adoptExistingTarget(targetID target.ID, enforceLimit bool)
 	tm.startTabPolicyWatcher(tabID, ctx)
 	return tabID, nil
 }
+
+// ReleaseTargets makes cancelling the tab contexts detach from their tabs
+// instead of closing them. chromedp closes the target behind any cancelled
+// non-first context, so tearing down a bridge attached to someone's own
+// browser would otherwise close every tab it touched, and the browser too.
+func (tm *TabManager) ReleaseTargets() {
+	if tm == nil {
+		return
+	}
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+	for _, entry := range tm.tabs {
+		if entry == nil || entry.Ctx == nil {
+			continue
+		}
+		if c := chromedp.FromContext(entry.Ctx); c != nil && c.Target != nil {
+			c.Target.TargetID = ""
+		}
+	}
+}

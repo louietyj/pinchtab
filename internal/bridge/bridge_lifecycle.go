@@ -339,9 +339,10 @@ func (b *Bridge) RestartBrowser(cfg *config.RuntimeConfig) error {
 	externalAttach := b.externalAttachMode()
 	if externalAttach {
 		// The title indicator and its new-document script live in the external
-		// page. Remove them while the target contexts are still usable; context
-		// cancellation below only releases PinchTab's side of the connection.
+		// page. Remove them while the target contexts are still usable.
 		b.clearAttachIndicators()
+		// Without this the cancellation below closes every tab PinchTab touched.
+		b.TabManager.ReleaseTargets()
 	}
 
 	if b.BrowserCancel != nil {
@@ -422,6 +423,8 @@ func (b *Bridge) RestartBrowser(cfg *config.RuntimeConfig) error {
 func (b *Bridge) Cleanup() {
 	if b != nil && b.externalAttachMode() {
 		b.clearAttachIndicators()
+		// Without this the cancellation below closes every tab PinchTab touched.
+		b.TabManager.ReleaseTargets()
 	}
 	// External attach: the browser is not owned by PinchTab. CDPAttachURL is
 	// the current bridge flag; RemoteCDPURL is the legacy/server alias. Use the
