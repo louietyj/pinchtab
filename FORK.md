@@ -1,7 +1,7 @@
 # louietyj/pinchtab fork
 
 This fork carries the captcha work behind the
-[headless-browser skill](https://github.com/louietyj/claude-skills/tree/main/headless-browser):
+[web-browser skill](https://github.com/louietyj/claude-skills/tree/main/web-browser):
 CapSolver and 2Captcha solvers, CapSolver Vision, AliExpress's punish challenges,
 captchas in child frames, and the tooling around them. Upstream ships the solver
 as a stub. What each part does, and the evidence for it, is in that skill's
