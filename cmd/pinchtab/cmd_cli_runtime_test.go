@@ -190,6 +190,37 @@ func TestRunCLIWithInjectsAgentIDHeaders(t *testing.T) {
 	}
 }
 
+func TestCLITransportAddsPinchtabHeaders(t *testing.T) {
+	t.Setenv("PINCHTAB_HEADERS", "CF-Access-Client-Id: id.access\nCF-Access-Client-Secret: secret")
+
+	var gotRequest *http.Request
+	client := &http.Client{
+		Transport: agentHeaderTransport{
+			base: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				gotRequest = req
+				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(http.NoBody), Request: req}, nil
+			}),
+		},
+	}
+	req, _ := http.NewRequest(http.MethodGet, "https://browser.example/health", nil)
+	if _, err := client.Do(req); err != nil {
+		t.Fatalf("client.Do() error = %v", err)
+	}
+	if got := gotRequest.Header.Get("Cf-Access-Client-Id"); got != "id.access" {
+		t.Errorf("Cf-Access-Client-Id = %q", got)
+	}
+	if got := gotRequest.Header.Get("Cf-Access-Client-Secret"); got != "secret" {
+		t.Errorf("Cf-Access-Client-Secret = %q", got)
+	}
+}
+
+// Probing this unreachable host would fail with "not running".
+func TestEnsureServerForCLISkipsRemoteServers(t *testing.T) {
+	if err := ensureServerForCLI(&config.RuntimeConfig{Port: "9867"}, "https://browser.example.invalid", "", "nav"); err != nil {
+		t.Fatalf("ensureServerForCLI(remote) = %v, want nil", err)
+	}
+}
+
 // TestPreflightBrowserBinary covers the fail-fast no-browser diagnosis that
 // replaces the bridge's opaque "instance not ready after 10s" 503 on the
 // documented `pinchtab nav` cold start.

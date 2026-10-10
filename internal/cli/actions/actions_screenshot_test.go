@@ -1,6 +1,11 @@
 package actions
 
 import (
+	"bytes"
+	"image"
+	"image/jpeg"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,6 +46,67 @@ func TestScreenshot(t *testing.T) {
 	}
 	if string(data) != "FAKEJPEGDATA" {
 		t.Errorf("unexpected content: %s", string(data))
+	}
+}
+
+// A 2000x1000 capture of a 1000x500 CSS viewport (devicePixelRatio 2): the
+// printed scale is to CSS pixels, not device pixels.
+func TestScreenshotFitsMaxPixelsAndReportsCSSScale(t *testing.T) {
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 2000, 1000)), nil); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-PinchTab-Viewport", "1000x500")
+		_, _ = w.Write(buf.Bytes())
+	}))
+	defer srv.Close()
+
+	outFile := filepath.Join(t.TempDir(), "shot.jpg")
+	cmd := &cobra.Command{}
+	cmd.Flags().String("output", outFile, "")
+	cmd.Flags().Int("max-pixels", 500_000, "")
+	cmd.Flags().Int("also-max-pixels", 125_000, "")
+	out := captureStdout(t, func() { Screenshot(srv.Client(), srv.URL, "", cmd) })
+
+	for path, want := range map[string][2]int{outFile: {1000, 500}, strings.TrimSuffix(outFile, ".jpg") + "-small.jpg": {500, 250}} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s not written: %v", path, err)
+		}
+		if w, h := imageSize(data); w != want[0] || h != want[1] {
+			t.Errorf("%s is %dx%d, want %dx%d", path, w, h, want[0], want[1])
+		}
+	}
+	for _, want := range []string{"1000x500, scale 1 ", "500x250, scale 0.5 "} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestScreenshotWithinMaxPixelsIsUntouched(t *testing.T) {
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 800, 600)), nil); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(buf.Bytes())
+	}))
+	defer srv.Close()
+
+	outFile := filepath.Join(t.TempDir(), "shot.jpg")
+	cmd := &cobra.Command{}
+	cmd.Flags().String("output", outFile, "")
+	cmd.Flags().Int("max-pixels", 1_000_000, "")
+	out := captureStdout(t, func() { Screenshot(srv.Client(), srv.URL, "", cmd) })
+
+	data, _ := os.ReadFile(outFile)
+	if !bytes.Equal(data, buf.Bytes()) {
+		t.Error("an image within the budget was re-encoded")
+	}
+	if !strings.Contains(out, "Image "+outFile+" 800x600\n") {
+		t.Errorf("without a viewport header the line should carry no scale:\n%s", out)
 	}
 }
 

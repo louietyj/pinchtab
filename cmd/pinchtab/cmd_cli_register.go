@@ -121,6 +121,8 @@ func configureBrowserFlags() {
 	screenshotCmd.Flags().StringP("selector", "s", "", "Element selector to capture (ref/CSS/XPath/text)")
 	screenshotCmd.Flags().String("scale", "", "Rescale the output image (e.g. 0.5 = half size, 0.25 = quarter). Default 1.")
 	screenshotCmd.Flags().Float64("also-scale", 0, "Also save a copy shrunk by this factor (0-1) beside the output, as <name>-scale-<f>.<ext>; one capture, shrunk locally")
+	screenshotCmd.Flags().Int("max-pixels", 0, "Shrink the image locally until it has at most this many pixels, and print its scale relative to CSS pixels")
+	screenshotCmd.Flags().Int("also-max-pixels", 0, "Also save a copy of at most this many pixels beside the output, as <name>-small.<ext>, with its scale")
 	screenshotCmd.Flags().Bool("annotate", false, "Overlay numbered ref boxes on interactive elements (or on --selector matches). Prints a [n] ref legend to stdout.")
 	screenshotCmd.Flags().String("format", "", "Image format: 'jpeg' or 'png' (default: inferred from -o .png, otherwise jpeg)")
 	screenshotCmd.Flags().Bool("beyond-viewport", false, "Capture the entire scrollable document, not just the visible viewport. Ignored when --selector is set.")

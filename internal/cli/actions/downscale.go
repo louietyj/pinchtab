@@ -2,11 +2,56 @@ package actions
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/draw"
 	"image/jpeg"
 	"image/png"
+	"math"
+	"net/http"
+	"strconv"
+	"strings"
 )
+
+// fitFactor returns the factor that brings an encoded image within maxPixels,
+// or 1 when it already fits or can't be decoded.
+func fitFactor(data []byte, maxPixels int) float64 {
+	w, h := imageSize(data)
+	if w == 0 || h == 0 || w*h <= maxPixels {
+		return 1
+	}
+	return math.Sqrt(float64(maxPixels) / float64(w*h))
+}
+
+func imageSize(data []byte) (int, int) {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return 0, 0
+	}
+	return cfg.Width, cfg.Height
+}
+
+// viewportCSSWidth reads the server's X-PinchTab-Viewport header ("<w>x<h>",
+// CSS pixels); 0 when absent.
+func viewportCSSWidth(h http.Header) float64 {
+	w, _, _ := strings.Cut(h.Get("X-PinchTab-Viewport"), "x")
+	v, err := strconv.ParseFloat(w, 64)
+	if err != nil {
+		return 0
+	}
+	return v
+}
+
+// printImageScale prints a saved image's size and, when the CSS viewport is
+// known, its image pixels per CSS pixel.
+func printImageScale(path string, data []byte, cssWidth float64) {
+	w, h := imageSize(data)
+	if cssWidth > 0 && w > 0 {
+		fmt.Printf("Image %s %dx%d, scale %.4g (css px = image px / scale)\n", path, w, h, float64(w)/cssWidth)
+		return
+	}
+	fmt.Printf("Image %s %dx%d\n", path, w, h)
+}
 
 // downscaleImage shrinks an encoded JPEG or PNG by factor (0-1), keeping its
 // format. Each output pixel averages the source pixels it covers, so text stays

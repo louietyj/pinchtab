@@ -19,6 +19,11 @@ type serverHealthFunc func(baseURL, token string) bool
 type serverProbeFunc func(baseURL, token string) server.HealthProbe
 
 func ensureServerForCLI(cfg *config.RuntimeConfig, baseURL, token, command string) error {
+	// A remote server can't be auto-started, so probing it only adds a round
+	// trip per command; the command's own request reports the same failure.
+	if !loopbackBase(baseURL) {
+		return nil
+	}
 	return ensureServerWithDaemonRecovery(
 		baseURL, token, command,
 		canAutoStartServerForCLI(cfg, baseURL),

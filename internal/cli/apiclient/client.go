@@ -90,10 +90,17 @@ func DoGet(client *http.Client, base, token, path string, params url.Values) map
 }
 
 func DoGetRaw(client *http.Client, base, token, path string, params url.Values) []byte {
-	r := request{method: "GET", url: buildURL(base, path, params)}
+	body, _ := DoGetRawWithHeaders(client, base, token, path, params)
+	return body
+}
+
+// DoGetRawWithHeaders is DoGetRaw that also returns the response headers.
+func DoGetRawWithHeaders(client *http.Client, base, token, path string, params url.Values) ([]byte, http.Header) {
+	var headers http.Header
+	r := request{method: "GET", url: buildURL(base, path, params), respHeaders: &headers}
 	status, body := mustRequest(client, token, r)
 	exitOnAPIError(r, status, body)
-	return body
+	return body, headers
 }
 
 // DoGetRawAndPrint fetches and prints the raw response body (for --snap flag),
@@ -204,7 +211,7 @@ func DoDeleteJSON(client *http.Client, base, token, path string, body map[string
 // ResolveInstanceBase fetches the named instance from the orchestrator and returns
 // a base URL pointing directly at that instance's API port.
 func ResolveInstanceBase(orchBase, token, instanceID, bind string) string {
-	c := &http.Client{Timeout: 10 * time.Second}
+	c := &http.Client{Timeout: 10 * time.Second, Transport: HeaderTransport{}}
 	body := DoGetRaw(c, orchBase, token, fmt.Sprintf("/instances/%s", instanceID), nil)
 
 	var inst struct {

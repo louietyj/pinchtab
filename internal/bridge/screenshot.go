@@ -67,6 +67,11 @@ func fetchViewportSize(ctx context.Context) (float64, float64) {
 	return dims[0], dims[1]
 }
 
+// ViewportSize returns the tab's viewport in CSS pixels, or (0, 0) on failure.
+func ViewportSize(ctx context.Context) (float64, float64) {
+	return fetchViewportSize(ctx)
+}
+
 // fetchDocumentSize returns the scrollable document dimensions in CSS pixels.
 // Used when beyond-viewport capture also needs clip.scale; the synthesized clip
 // must cover the document, not just the current viewport.

@@ -122,6 +122,13 @@ func (h *Handlers) HandleScreenshot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.raw {
+		// Lets a client that shrinks the image map its pixels back to CSS
+		// pixels, whatever the devicePixelRatio.
+		if clip == nil && !req.beyondViewport {
+			if vw, vh := bridge.ViewportSize(tCtx); vw > 0 && vh > 0 {
+				w.Header().Set(ViewportHeader, fmt.Sprintf("%gx%g", vw, vh))
+			}
+		}
 		writeRawImage(w, buf, imageContentType(req.format), "screenshot write")
 		return
 	}
@@ -131,6 +138,9 @@ func (h *Handlers) HandleScreenshot(w http.ResponseWriter, r *http.Request) {
 		"base64": base64.StdEncoding.EncodeToString(buf),
 	})
 }
+
+// ViewportHeader carries a raw viewport screenshot's CSS viewport, "<w>x<h>".
+const ViewportHeader = "X-PinchTab-Viewport"
 
 // statusError pairs an HTTP status with the error to serialize.
 type statusError struct {

@@ -151,7 +151,7 @@ func NetworkStream(client *http.Client, base, token string, cmd *cobra.Command) 
 	req.Header.Set("Accept", "text/event-stream")
 
 	// Use a client without timeout for streaming
-	streamClient := &http.Client{}
+	streamClient := &http.Client{Transport: apiclient.HeaderTransport{}}
 	resp, err := streamClient.Do(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error connecting to stream: %v\n", err)

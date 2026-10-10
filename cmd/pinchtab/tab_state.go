@@ -165,7 +165,7 @@ func (tabStateStore) probe(tabID string) tabProbeResult {
 		return tabProbeInconclusive
 	}
 
-	client := &http.Client{Timeout: 2 * time.Second}
+	client := &http.Client{Timeout: 2 * time.Second, Transport: apiclient.HeaderTransport{}}
 	req, err := http.NewRequest("GET", base+"/tabs/"+tabID+"/title", nil)
 	if err != nil {
 		return tabProbeInconclusive

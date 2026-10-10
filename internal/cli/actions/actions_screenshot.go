@@ -127,15 +127,45 @@ func Screenshot(client *http.Client, base, token string, cmd *cobra.Command) {
 	if autoNamed {
 		outFile = fmt.Sprintf("screenshot-%s%s", time.Now().Format("20060102-150405"), ext)
 	}
-	data := apiclient.DoGetRaw(client, base, token, "/screenshot", params)
+	data, headers := apiclient.DoGetRawWithHeaders(client, base, token, "/screenshot", params)
 	if data == nil {
 		return
+	}
+	original := data
+	var err error
+	maxPixels, _ := cmd.Flags().GetInt("max-pixels")
+	alsoMaxPixels, _ := cmd.Flags().GetInt("also-max-pixels")
+	if maxPixels > 0 {
+		if f := fitFactor(original, maxPixels); f < 1 {
+			if data, err = downscaleImage(original, f); err != nil {
+				cli.Fatal("Downscale failed: %v", err)
+			}
+		}
 	}
 	saved, err := writeOutputFile(outFile, autoNamed, data)
 	if err != nil {
 		cli.Fatal("Write failed: %v", err)
 	}
 	printSaved(saved, len(data))
+	cssWidth := viewportCSSWidth(headers)
+	if maxPixels > 0 || alsoMaxPixels > 0 {
+		printImageScale(saved, data, cssWidth)
+	}
+
+	if alsoMaxPixels > 0 {
+		small := original
+		if f := fitFactor(original, alsoMaxPixels); f < 1 {
+			if small, err = downscaleImage(original, f); err != nil {
+				cli.Fatal("Downscale failed: %v", err)
+			}
+		}
+		smallPath := strings.TrimSuffix(saved, ext) + "-small" + ext
+		if err := os.WriteFile(smallPath, small, 0o600); err != nil {
+			cli.Fatal("Write failed: %v", err)
+		}
+		printSaved(smallPath, len(small))
+		printImageScale(smallPath, small, cssWidth)
+	}
 
 	if f, _ := cmd.Flags().GetFloat64("also-scale"); f > 0 && f < 1 {
 		small, err := downscaleImage(data, f)
