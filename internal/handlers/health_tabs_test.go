@@ -170,6 +170,9 @@ func TestHandleTabs_Success(t *testing.T) {
 	if mockBridge.createTabCalled {
 		t.Fatal("tab listing must not create a new page")
 	}
+	if mockBridge.tabContextCalled {
+		t.Fatal("tab listing must not bind to a tab: with none tracked, that adopts the browser's first page")
+	}
 }
 
 func TestHandleTabs_EnsureBrowserFailureStopsBeforeEnumeration(t *testing.T) {
@@ -329,6 +332,11 @@ type MockBridge struct {
 	retryAfter          time.Duration
 	listTargetsCalled   bool
 	createTabCalled     bool
+	tabContextCalled    bool
+}
+
+func (m *MockBridge) CurrentTabID() string {
+	return m.currentTabID
 }
 
 func (m *MockBridge) ListTargets() ([]bridge.TabTarget, error) {
@@ -344,6 +352,7 @@ func (m *MockBridge) BrowserContext() context.Context {
 }
 
 func (m *MockBridge) TabContext(tabID string) (*bridge.TabHandle, string, error) {
+	m.tabContextCalled = true
 	if tabID == "" && m.currentTabID != "" {
 		return bridge.NewTabHandle(context.Background()), m.currentTabID, nil
 	}

@@ -13,6 +13,10 @@ type tabHandoffReader interface {
 	TabHandoffState(tabID string) (bridge.TabHandoffState, bool)
 }
 
+type currentTabReader interface {
+	CurrentTabID() string
+}
+
 func (h *Handlers) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	if h.Bridge == nil {
 		writeUnavailable(w, 503, "bridge_unavailable", "bridge not initialized")
@@ -161,9 +165,13 @@ func (h *Handlers) HandleTabs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Only to list the current tab first: tabContext would bind to a tab,
+	// adopting the first page in the browser when none is tracked yet.
 	currentTabID := ""
-	if _, resolvedID, err := h.tabContext(r, ""); err == nil {
-		currentTabID = resolvedID
+	if scope := currentTabScopeFromRequest(r); !scope.IsGlobal() {
+		currentTabID, _ = h.scopedCurrentTabForRequest(r)
+	} else if cr, ok := h.Bridge.(currentTabReader); ok {
+		currentTabID = cr.CurrentTabID()
 	}
 
 	tabs := make([]map[string]any, 0, len(targets))

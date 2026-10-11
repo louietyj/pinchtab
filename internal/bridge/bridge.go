@@ -273,6 +273,18 @@ func (b *Bridge) TabContext(tabID string) (*TabHandle, string, error) {
 	return NewTabHandle(ctx), resolved, nil
 }
 
+// CurrentTabID reports the tab TabContext("") would pick among tabs already
+// tracked, without adopting an untracked one.
+func (b *Bridge) CurrentTabID() string {
+	tm, err := b.tabManager()
+	if err != nil {
+		return ""
+	}
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+	return tm.selectCurrentTrackedTab()
+}
+
 func (b *Bridge) ListTargets() ([]TabTarget, error) {
 	tm, err := b.tabManager()
 	if err != nil {
