@@ -28,7 +28,31 @@ README under "Captcha solving"; this file is how the fork is worked on.
 
 - Run `go vet ./... && go test ./...` in the same `golang:1.26` container.
   The suite has failures that predate the fork's work, so compare failing test
-  names against a baseline rather than expecting green.
+  names against a baseline rather than expecting green. As of capsolver.32, on
+  this Windows checkout:
+  - In the container, 37 (counting subtests), in `cmd/pinchtab`,
+    `internal/{audit/report,config,devtools,doctor,mcp,profiles,server,testbrowser}`,
+    `pkg/pinchtabaudit` and `tests/e2e`:
+    - It runs as root, so tests expecting a permission failure get none:
+      `TestRecordConfigVersionAnnouncesItselfAndReportsAFailedWrite`,
+      `TestLoadingLeavesAReadOnlyConfigsModeAlone`,
+      `TestProfileRenameRollsBackMetadataWhenTheDirectoryRenameFails`,
+      `TestProfileDirCleanupToleratesAFailedRemoval`.
+    - `scripts/ci/detect-e2e-suites.sh` exits 2, and `git ls-files` exits 128
+      from a worktree: `TestEscalationFollowsProductPathsAndTestPaths` (13
+      subtests) and 3-4 of the `TestEvery*`/`TestTheWorkflow*` tests in
+      `e2e_escalation_test.go`, which ones depending on the checkout.
+    - No Chrome: `TestReportBrowsers_StatusReady`, `…StatusReadyGhostChrome`.
+    - Probably CRLF from `core.autocrlf`, not checked:
+      `TestRender{Markdown,HTML}Golden`, `TestScenarioVerdictSurvivesEveryWayAFileCanEnd`,
+      `TestOneScenarioDyingLeavesTheRestOfTheSuiteIntact`, `TestPublicSurfaceIsPinned`,
+      `TestAgentPreambleStaysWithinBudget`, `TestFatalStartupIsTheOnlyExitOneSite`,
+      `TestEveryDeclaredRemedyResolvesInTheCLI`,
+      `TestReaderDecodesAFileConfigShadowSoTheWalkChecksTheRightKeys`.
+  - On the Windows host (`go test` outside the container), also:
+    `TestQuarantineCorruptedProfile_WaitsForBrowserExit` (wants 0700 perms),
+    `TestEffectiveLaunchTargetFallsBackToDiscoveryWithoutTargets`,
+    `TestCurrentTabStore_GetBumpsRecency`.
 - With `core.autocrlf=true` on Windows, run gofmt on CR-stripped copies of the
   changed files; otherwise every file reads as unformatted.
 - Several tests enforce structure across the module and will name what they
