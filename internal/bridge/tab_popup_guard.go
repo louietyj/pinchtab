@@ -2,11 +2,9 @@ package bridge
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 
-	cdp "github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
 	internalurls "github.com/pinchtab/pinchtab/internal/urls"
@@ -22,13 +20,9 @@ func (tm *TabManager) StartBrowserGuards() {
 	}
 
 	tm.guardOnce.Do(func() {
-		if err := chromedp.Run(tm.browserCtx, chromedp.ActionFunc(func(ctx context.Context) error {
-			c := chromedp.FromContext(ctx)
-			if c == nil || c.Browser == nil {
-				return fmt.Errorf("no browser executor")
-			}
-			return target.SetDiscoverTargets(true).Do(cdp.WithExecutor(ctx, c.Browser))
-		})); err != nil {
+		if err := runOnBrowser(tm.browserCtx, func(ctx context.Context) error {
+			return target.SetDiscoverTargets(true).Do(ctx)
+		}); err != nil {
 			slog.Warn("browser popup guard unavailable", "err", err)
 			return
 		}

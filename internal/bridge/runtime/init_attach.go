@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chromedp/chromedp"
 	"github.com/gobwas/ws"
 	"github.com/pinchtab/pinchtab/internal/browsers"
 	"github.com/pinchtab/pinchtab/internal/config"
@@ -75,9 +74,7 @@ func attachExistingCDP(wsURL string) (context.Context, context.CancelFunc, conte
 	// browser is theirs, and rewriting its launch contract would be both
 	// surprising and likely break extensions, profile features, and
 	// already-open tabs.
-	if err := chromedp.Run(browserCtx, chromedp.ActionFunc(func(ctx context.Context) error {
-		return nil
-	})); err != nil {
+	if err := ConnectBrowser(browserCtx); err != nil {
 		browserCancel()
 		remoteAllocCancel()
 		return nil, nil, nil, nil, fmt.Errorf("failed to attach to CDP at %s: %w", internalurls.RedactForLog(wsURL), err)

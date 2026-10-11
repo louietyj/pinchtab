@@ -12,6 +12,8 @@ import (
 
 func (b *Bridge) GetCookies(ctx context.Context, urls []string) ([]CookieData, error) {
 	var cookies []*network.Cookie
+	ctx, cancel := b.pageContext(ctx)
+	defer cancel()
 	err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		var err error
 		cookies, err = network.GetCookies().WithURLs(urls).Do(ctx)

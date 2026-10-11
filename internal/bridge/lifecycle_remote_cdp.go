@@ -6,7 +6,6 @@ import (
 	"log/slog"
 
 	"github.com/chromedp/cdproto/target"
-	"github.com/chromedp/chromedp"
 	bridgeruntime "github.com/pinchtab/pinchtab/internal/bridge/runtime"
 	"github.com/pinchtab/pinchtab/internal/config"
 	internalurls "github.com/pinchtab/pinchtab/internal/urls"
@@ -44,11 +43,11 @@ func (b *Bridge) ensureRemoteCDPLocked(cfg *config.RuntimeConfig) error {
 
 func (b *Bridge) ensureAtLeastOnePageTarget(browserCtx context.Context) error {
 	var targets []*target.Info
-	err := chromedp.Run(browserCtx, chromedp.ActionFunc(func(ctx context.Context) error {
+	err := runOnBrowser(browserCtx, func(ctx context.Context) error {
 		var listErr error
 		targets, listErr = target.GetTargets().Do(ctx)
 		return listErr
-	}))
+	})
 	if err != nil {
 		return fmt.Errorf("list targets: %w", err)
 	}

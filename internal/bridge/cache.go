@@ -9,6 +9,8 @@ import (
 // ClearCache clears the browser's HTTP disk cache.
 // This affects all origins and does not require an active tab.
 func (b *Bridge) ClearCache(ctx context.Context) error {
+	ctx, cancel := b.pageContext(ctx)
+	defer cancel()
 	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return chromedp.FromContext(ctx).Target.Execute(ctx, "Network.clearBrowserCache", nil, nil)
 	}))
@@ -20,6 +22,8 @@ func (b *Bridge) CanClearCache(ctx context.Context) (bool, error) {
 	var result struct {
 		Result bool `json:"result"`
 	}
+	ctx, cancel := b.pageContext(ctx)
+	defer cancel()
 	err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 		return chromedp.FromContext(ctx).Target.Execute(ctx, "Network.canClearBrowserCache", nil, &result)
 	}))

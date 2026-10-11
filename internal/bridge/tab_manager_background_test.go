@@ -15,7 +15,80 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
+	bridgeruntime "github.com/pinchtab/pinchtab/internal/bridge/runtime"
 )
+
+// An attached browser's browserCtx has no page of its own; opening a tab must
+// not give it one first.
+func TestCreateTabOnAttachedBrowserOpensOnlyThatTab(t *testing.T) {
+	creates := make(chan struct{}, 4)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, _, _, err := ws.UpgradeHTTP(r, w)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		for {
+			payload, op, err := wsutil.ReadClientData(conn)
+			if err != nil {
+				return
+			}
+			if op != ws.OpText {
+				continue
+			}
+			var command struct {
+				ID        int64  `json:"id"`
+				Method    string `json:"method"`
+				SessionID string `json:"sessionId,omitempty"`
+			}
+			if json.Unmarshal(payload, &command) != nil {
+				return
+			}
+			result := `{}`
+			switch command.Method {
+			case "Target.createTarget":
+				creates <- struct{}{}
+				result = `{"targetId":"created-tab"}`
+			case "Target.attachToTarget":
+				result = `{"sessionId":"session-created"}`
+			case "Runtime.evaluate":
+				result = `{"result":{"type":"object","className":"Window"}}`
+			case "Page.getFrameTree":
+				result = `{"frameTree":{"frame":{"id":"frame-created","url":"about:blank"}}}`
+			}
+			response := fmt.Sprintf(`{"id":%d,"result":%s`, command.ID, result)
+			if command.SessionID != "" {
+				response += fmt.Sprintf(`,"sessionId":%q`, command.SessionID)
+			}
+			if wsutil.WriteServerMessage(conn, ws.OpText, []byte(response+`}`)) != nil {
+				return
+			}
+		}
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/devtools/browser/test"
+	allocCtx, allocCancel := chromedp.NewRemoteAllocator(ctx, wsURL, chromedp.NoModifyURL)
+	defer allocCancel()
+	browserCtx, browserCancel := chromedp.NewContext(allocCtx)
+	defer browserCancel()
+	if err := bridgeruntime.ConnectBrowser(browserCtx); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+
+	tm := NewTabManager(browserCtx, nil, nil, nil, nil)
+	_, _, tabCancel, err := tm.CreateTab("about:blank")
+	if err != nil {
+		t.Fatalf("CreateTab: %v", err)
+	}
+	defer tabCancel()
+
+	if n := len(creates); n != 1 {
+		t.Fatalf("Target.createTarget sent %d times, want 1 (the tab itself, no page for browserCtx)", n)
+	}
+}
 
 func TestCreateTabRequestsRenderedTargetWithoutWindowFocus(t *testing.T) {
 	created := make(chan json.RawMessage, 1)

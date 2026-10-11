@@ -161,7 +161,7 @@ func (b *Bridge) MonitorCrashes(handler CrashHandler) {
 		return
 	}
 
-	chromedp.ListenTarget(b.BrowserCtx, func(ev interface{}) {
+	onEvent := func(ev interface{}) {
 		switch e := ev.(type) {
 		case *inspector.EventTargetCrashed:
 			event := CrashEvent{
@@ -198,7 +198,19 @@ func (b *Bridge) MonitorCrashes(handler CrashHandler) {
 			}
 			slog.Debug("target destroyed", "targetId", e.TargetID)
 		}
-	})
+	}
+	if b.externalAttachMode() {
+		// An attached browser gives the bridge no page of its own to listen
+		// through, so take Target events from the browser session.
+		if err := runOnBrowser(b.BrowserCtx, func(ctx context.Context) error {
+			return target.SetDiscoverTargets(true).Do(ctx)
+		}); err != nil {
+			slog.Warn("crash monitoring: target discovery unavailable", "err", err)
+		}
+		chromedp.ListenBrowser(b.BrowserCtx, onEvent)
+	} else {
+		chromedp.ListenTarget(b.BrowserCtx, onEvent)
+	}
 
 	// Monitor browser context cancellation. A canceled context during
 	// draining is expected (deliberate shutdown); otherwise it indicates

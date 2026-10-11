@@ -129,6 +129,21 @@ func browserExecutorContext(ctx context.Context) (context.Context, error) {
 	return cdp.WithExecutor(ctx, c.Browser), nil
 }
 
+// runOnBrowser runs fn on the browser session, falling back to chromedp.Run
+// (which opens a tab) only for a context that has not connected yet.
+func runOnBrowser(ctx context.Context, fn func(context.Context) error) error {
+	if execCtx, err := browserExecutorContext(ctx); err == nil {
+		return fn(execCtx)
+	}
+	return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
+		execCtx, err := browserExecutorContext(ctx)
+		if err != nil {
+			return err
+		}
+		return fn(execCtx)
+	}))
+}
+
 func (tm *TabManager) CreateTab(url string) (string, context.Context, context.CancelFunc, error) {
 	return tm.createTab(url, "")
 }
@@ -179,17 +194,15 @@ func (tm *TabManager) createTab(url, browserContextID string) (string, context.C
 	// remains false, so no additional OS window is created.
 	var targetID target.ID
 	createCtx, createCancel := context.WithTimeout(tm.browserCtx, tabCreateTimeout)
-	if err := chromedp.Run(createCtx,
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			params := target.CreateTarget("about:blank").WithFocus(false)
-			if browserContextID != "" {
-				params = params.WithBrowserContextID(cdp.BrowserContextID(browserContextID))
-			}
-			var err error
-			targetID, err = params.Do(ctx)
-			return err
-		}),
-	); err != nil {
+	if err := runOnBrowser(createCtx, func(ctx context.Context) error {
+		params := target.CreateTarget("about:blank").WithFocus(false)
+		if browserContextID != "" {
+			params = params.WithBrowserContextID(cdp.BrowserContextID(browserContextID))
+		}
+		var err error
+		targetID, err = params.Do(ctx)
+		return err
+	}); err != nil {
 		createCancel()
 		if errors.Is(err, context.DeadlineExceeded) {
 			return "", nil, nil, fmt.Errorf("create tab: browser did not open a new tab within %s — it may be out of memory or overloaded (close tabs or restart the instance)", tabCreateTimeout)

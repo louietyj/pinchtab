@@ -51,6 +51,11 @@ func InitRemoteCDP(ctx context.Context, cfg *config.RuntimeConfig, cdpURL string
 	}
 
 	browserCtx, browserCancel := chromedp.NewContext(allocCtx)
+	if err := ConnectBrowser(browserCtx); err != nil {
+		browserCancel()
+		allocCancel()
+		return nil, nil, nil, nil, stealth.LaunchModeUninitialized, err
+	}
 	if ProxyAuthEnabled(cfg.Proxy) {
 		auditRemoteProxyAuthForward(normalized, cfg)
 		if err := EnableProxyAuth(browserCtx, cfg.Proxy, nil); err != nil {
