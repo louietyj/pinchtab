@@ -10,6 +10,9 @@ README under "Captcha solving"; this file is how the fork is worked on.
 ## Branch and releases
 
 - Work goes straight onto `capsolver-rebase`; the fork's `main` is upstream's.
+- Upstream comes in by `git merge upstream/main`, not a rebase, despite the
+  branch name: a rebase replays each conflict once per fork commit that touches
+  it. The first merge (capsolver.34) is tagged `pre-upstream-sync-2026-10` before it.
 - Releases are GitHub releases tagged `v0.15.2-capsolver.N`, installed from
   `releases/latest` so a release needs no skill re-upload:
   - `pinchtab-linux-amd64`, which the skill's `setup.sh` runs in the sandbox;
@@ -29,33 +32,29 @@ README under "Captcha solving"; this file is how the fork is worked on.
 
 - Run `go vet ./... && go test ./...` in the same `golang:1.26` container.
   The suite has failures that predate the fork's work, so compare failing test
-  names against a baseline rather than expecting green. As of capsolver.32, on
-  this Windows checkout:
-  - In the container, 37 (counting subtests), in `cmd/pinchtab`,
-    `internal/{audit/report,config,devtools,doctor,mcp,profiles,server,testbrowser}`,
-    `pkg/pinchtabaudit` and `tests/e2e`:
+  names against a baseline rather than expecting green. As of capsolver.34:
+  - Both places: `TestEveryDeclaredRemedyResolvesInTheCLI` (its command table
+    lacks `download -o`, which the real CLI has).
+  - In the container (a worktree checkout):
     - It runs as root, so tests expecting a permission failure get none:
       `TestRecordConfigVersionAnnouncesItselfAndReportsAFailedWrite`,
       `TestLoadingLeavesAReadOnlyConfigsModeAlone`,
       `TestProfileRenameRollsBackMetadataWhenTheDirectoryRenameFails`,
       `TestProfileDirCleanupToleratesAFailedRemoval`.
-    - `scripts/ci/detect-e2e-suites.sh` exits 2, and `git ls-files` exits 128
-      from a worktree: `TestEscalationFollowsProductPathsAndTestPaths` (13
-      subtests) and 3-4 of the `TestEvery*`/`TestTheWorkflow*` tests in
-      `e2e_escalation_test.go`, which ones depending on the checkout.
+    - `git ls-files` exits 128 from a worktree: `TestEveryAutomaticTriggerCanActuallyFire`,
+      `TestEveryEnrolledAreaIsCoveredByTheMap`, `TestEveryEscalationRuleMatchesATrackedPath`.
     - No Chrome: `TestReportBrowsers_StatusReady`, `…StatusReadyGhostChrome`.
-    - Probably CRLF from `core.autocrlf`, not checked:
-      `TestRender{Markdown,HTML}Golden`, `TestScenarioVerdictSurvivesEveryWayAFileCanEnd`,
-      `TestOneScenarioDyingLeavesTheRestOfTheSuiteIntact`, `TestPublicSurfaceIsPinned`,
-      `TestAgentPreambleStaysWithinBudget`, `TestFatalStartupIsTheOnlyExitOneSite`,
-      `TestEveryDeclaredRemedyResolvesInTheCLI`,
-      `TestReaderDecodesAFileConfigShadowSoTheWalkChecksTheRightKeys`.
-  - On the Windows host (`go test` outside the container), also:
-    `TestQuarantineCorruptedProfile_WaitsForBrowserExit` (wants 0700 perms),
-    `TestEffectiveLaunchTargetFallsBackToDiscoveryWithoutTargets`,
-    `TestCurrentTabStore_GetBumpsRecency`.
-- With `core.autocrlf=true` on Windows, run gofmt on CR-stripped copies of the
-  changed files; otherwise every file reads as unformatted.
+  - On the Windows host (`go test` outside the container):
+    `TestAnUnwritableStateDirectoryFallsBackToPrinting` and
+    `TestVocabStoreIsOneBoundedFilePerServer` (Windows permissions),
+    `TestSafeRecordPath_RejectsSymlink` (symlinks need a privilege), and
+    `TestDefaultConfigHint` (a real `%APPDATA%\pinchtab\config.json`).
+- Upstream's `.gitattributes` checks text out as LF, so a checkout made before it
+  needs `git rm -r --cached -q . && git reset --hard` once.
+- Upstream adds census tests that scan the module and name what they want: a new
+  route placed for the dialog guard, `X-PinchTab-*` names in `api/types`, each
+  `output.Hint`/`Advisory` site classified, capped reads classified, vocab
+  published by any handler that can re-epoch refs.
 - Several tests enforce structure across the module and will name what they
   want:
   - `ChallengeType` is produced only in `challenge_detection.go`.
