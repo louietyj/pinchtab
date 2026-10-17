@@ -10,13 +10,14 @@ README under "Captcha solving"; this file is how the fork is worked on.
 ## Branch and releases
 
 - Work goes straight onto `capsolver-rebase`; the fork's `main` is upstream's.
-- Releases are GitHub releases tagged `v0.15.2-capsolver.N`, with two assets,
-  both installed from `releases/latest` so a release needs no skill re-upload:
+- Releases are GitHub releases tagged `v0.15.2-capsolver.N`, installed from
+  `releases/latest` so a release needs no skill re-upload:
   - `pinchtab-linux-amd64`, which the skill's `setup.sh` runs in the sandbox;
   - `pinchtab-windows-amd64.exe`, the bridge the skill's Windows gatekeeper runs
     against Louie's Chrome (`pinchtab-windows`). The sandbox CLI and that bridge
-    must be the same build, so they always ship together.
-- `scripts/fork-release.sh <N> notes.md` builds both in Docker (the host is
+    must be the same build, so they always ship together;
+  - `pinchtab-linux-arm64` and `pinchtab-darwin-arm64`, for ARM hosts.
+- `scripts/fork-release.sh <N> notes.md` builds all four in Docker (the host is
   Windows), stamps `pinchtab --version` and `/health` with the tag, and publishes
   the release. Builds before capsolver.32 report `dev`.
 
