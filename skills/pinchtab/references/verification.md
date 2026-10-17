@@ -7,6 +7,8 @@ Read this reference when a normal `snap` or `text` result is insufficient, when 
 - `text` confirms success messages and navigation outcomes. It is Readability-filtered, so it can omit navigation, repeated headlines, short nodes, and collapsed lists. Use `text --full` when the expected marker is short or missing.
 - `{"clicked":true,"submitted":true}` means the browser event fired; it does not prove that the server accepted the action or that validation passed. Verify with `--snap-diff`, a fresh `snap`, or `text`.
 - Refs are stale after navigation or a significant DOM update. Fetch fresh refs rather than retrying an old one.
+- A stale ref is not always refused: after a navigation the server may "recover" it onto the closest match on the new page and still print `OK`. When a click reported `navigated`/`refsStale`, snap again before the next ref action; `--json` shows a `recovery` block when this happened. `409 vocab_superseded` means a newer snapshot replaced your refs — re-snapshot.
+- While a JavaScript dialog is open, every page command (`snap`, `text`, `click`, `nav`, …) fails immediately with `409 dialog_blocked` until you run `pinchtab dialog accept [text]` or `pinchtab dialog dismiss`.
 
 ## Frames, visibility, and selectors
 

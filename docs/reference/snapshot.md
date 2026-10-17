@@ -10,10 +10,10 @@ Selector scoping is explicit. `selector=...` only searches the current frame sco
 curl "http://localhost:9867/snapshot?filter=interactive"
 # CLI Alternative (defaults to compact text output)
 pinchtab snap -i
-# Output
-[e5] link "More information..."
+# Output: a "# <title> | <url> | <N> nodes" header line, then one node per line
+e5:link "More information..."
 
-# Use --full or --compact=false for JSON
+# --json (same as --compact=false) keeps the interactive filter; --full returns every node as JSON
 pinchtab snap --full
 ```
 
@@ -23,10 +23,11 @@ pinchtab snap --full
 |------|-------------|
 | `-i`, `--interactive` | Filter to interactive elements + headings (default: true) |
 | `-c`, `--compact` | Compact text output (default: true) |
+| `--json` | JSON output, keeping the interactive filter (same as `--compact=false`) |
 | `-d`, `--diff` | Show diff from previous snapshot |
-| `--full` | Full JSON output (shorthand for `--interactive=false --compact=false`) |
+| `--full` | Full JSON output (shorthand for `--interactive=false --json`) |
 | `--text` | Text output format |
-| `-s`, `--selector` | CSS selector to scope snapshot |
+| `-s`, `--selector` | Selector to scope the snapshot (also accepted as the positional `[selector]` argument) |
 | `--max-tokens` | Maximum token budget |
 | `--depth` | Tree depth limit |
 | `--tab` | Target specific tab |
@@ -46,13 +47,41 @@ pinchtab snap --max-tokens 2000         # Limit output size
 
 | Parameter | Description |
 |-----------|-------------|
+| `tabId` | Target tab (defaults to the current tab) |
 | `filter` | `interactive` for interactive + headings, `all` (default) for the whole tree |
 | `interactive` | Boolean alias for `filter`: `true` is `filter=interactive`, `false` is `filter=all`. Contradicting an explicit `filter` is a 400 |
 | `format` | `compact`, `text`, `yaml`, or default JSON. The CLI and the MCP tool both ask for `compact`; the HTTP default is unchanged |
 | `diff` | `true` for diff mode |
-| `selector` | CSS selector to scope |
-| `maxTokens` | Token budget limit |
-| `depth` | Tree depth limit |
+| `selector` | Unified selector (ref, CSS, XPath, text, …) to scope |
+| `maxTokens` | Token budget limit (positive integer; anything else is a 400) |
+| `depth` | Tree depth limit (`-1` = no limit; below `-1` is a 400) |
+| `noAnimations` | `true` disables animations once before capturing |
+| `output` | `file` writes the snapshot under the state dir's `snapshots/` and returns `{path, size, format, timestamp}` |
+| `path` | With `output=file`, a file path inside the state dir (anything outside is a 400) |
+
+`GET /tabs/{id}/snapshot` is the same handler with the tab in the path.
+
+Unknown query parameters are not rejected; they are echoed back as `ignoredParams` (JSON/YAML) or a `# ignored params:` comment line (compact/text) so a mistyped flag is visible.
+
+## Response
+
+The default JSON body carries `url`, `title`, `route`, `nodes`, `count` and `vocabularyToken`,
+plus `truncated`/`maxTokens` when the budget cut the tree and `hint` when a selector matched an
+element with no accessible nodes. `vocabularyToken` names the ref vocabulary this snapshot
+issued; every snapshot also sets it on the `X-PinchTab-Vocab` response header (with
+`X-PinchTab-Tab-Id`), whatever the format. Echo it as `vocab` on ref-based actions (the CLI does this for you):
+an action that targets a ref under a token other than the tab's current one is refused with
+`409 vocab_superseded` — re-snapshot and use the new refs.
+
+When a modal dialog is open in the page, the snapshot is scoped to the topmost dialog's
+subtree. If the topmost dialog changes twice while the snapshot is being taken, the request
+fails with `409` — retry after the page settles. A pending JavaScript dialog (alert,
+confirm, prompt) blocks the read with `409 dialog_blocked` until it is answered with
+`pinchtab dialog`.
+
+A tab whose document is `hidden` (a background tab) is rendered before the accessibility read:
+PinchTab enables focus emulation and waits for a painted frame (up to 1s), so content that
+only lays out when visible still appears in the tree.
 
 ## What a format costs, and what it carries
 
@@ -78,15 +107,40 @@ matching, so a `compact` snapshot leaves them exactly as capable as a JSON one.
 
 ## What `maxTokens` guarantees
 
-`maxTokens` is a ceiling, not a hint. The nodes returned are the longest prefix whose
-rendered output fits the budget in the format you asked for, so the response never exceeds
-what you asked for and stops one node short of it at worst. Measured across `compact`,
-`text`, `json` and `yaml` on a page of realistic interactive nodes, a budget that actually
-constrains the result delivers 87–100% of it.
+`maxTokens` is a ceiling, not a hint. The response never exceeds what you asked for, and
+nothing is left on the table: every node left out was too big for what remained. Measured
+across `compact`, `text`, `json` and `yaml` on a page of realistic interactive nodes, a
+budget that actually constrains the result delivers 87–100% of it.
+
+When the budget cannot fit the whole tree, it is spent on what the page can be **acted
+on** with before what it can be read with: interactive roles first, then headings, media
+and table cells, then everything else. Nodes are returned in document order, so the reply
+still reads like the page.
+
+This matters because document order is not value order. A page whose controls sit below
+its copy — a form under terms, a search box under a nav blurb, pagination under results —
+used to return a budget's worth of prose and no refs at all, which is a snapshot nothing
+can be done with. On a 71-node page with 9 controls at the end, budgets of 120, 200 and
+300 tokens each returned 0 of the 9; they now return all 9 in the same space.
+
+Refs are assigned after the budget is applied and cached for the tab, so every ref in a
+truncated snapshot resolves to the element it names — a truncated tree is fully
+actionable.
 
 The cost is measured, not modelled: each node is charged the bytes its own format emits —
 rendered for `compact` and `text`, marshalled for `json` and `yaml` — so a change to a
 formatter changes the budget with it. Tokens are estimated at four bytes each.
+
+For `compact` and `text` the ceiling covers the **whole reply**, not only the nodes in it.
+The header, the `# hint:` and `# ignored params:` lines and the untrusted-content wrapper
+are reserved before any node is allocated, so the budget is not spent twice. This matters
+because the header carries the page title and URL: on a page with an ordinary marketing
+title and a nested path it is around 45 tokens, which a budget of 100 cannot absorb
+silently. The framing is priced by building the string that gets written, so what is
+reserved and what is sent cannot drift apart.
+
+`json` and `yaml` budget the node array only; their envelope is a small fixed cost next to
+nodes that run to hundreds of bytes each.
 
 Formats are not interchangeable for a given budget. `yaml` is roughly three times the size
 of `json` for the same nodes, because the node struct carries JSON field tags and no YAML

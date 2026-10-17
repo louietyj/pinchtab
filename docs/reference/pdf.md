@@ -30,17 +30,32 @@ pinchtab pdf                        # Auto-generates filename: page-20260308-120
 | `--margin-*` | Margins (top, bottom, left, right) |
 | `--generate-tagged-pdf` | Generate tagged PDF |
 | `--generate-document-outline` | Generate document outline |
+| `--file-output` | Save server-side (`output=file`) instead of streaming bytes |
+| `--path` | Server-side output path (under the state directory) |
 | `--tab` | Target specific tab |
 
 ## API Parameters
 
+`GET /pdf` and `POST /pdf` read query parameters; `POST /tabs/{id}/pdf` also
+accepts them as JSON body fields.
+
 | Parameter | Description |
 |-----------|-------------|
-| `output` | `file` to save server-side |
-| `raw` | `true` for raw PDF bytes |
+| `output` | `file` to save server-side; response is `{path, size}` |
+| `path` | Server-side path for `output=file`; must stay inside the state directory (else `400`) |
+| `raw` | `true` for raw PDF bytes; otherwise the response is `{"format":"pdf","base64":"..."}` |
 | `landscape` | Landscape orientation |
-| `scale` | Page scale |
-| `paperWidth`, `paperHeight` | Paper dimensions |
+| `scale` | Page scale (default `1`) |
+| `paperWidth`, `paperHeight` | Paper dimensions in inches (default `8.5` x `11`) |
+| `marginTop`, `marginBottom`, `marginLeft`, `marginRight` | Margins in inches (default `0.4`) |
+| `pageRanges` | Pages to export, e.g. `1-3,5` |
+| `preferCSSPageSize`, `displayHeaderFooter`, `generateTaggedPDF`, `generateDocumentOutline` | Booleans |
+| `headerTemplate`, `footerTemplate` | HTML templates; a template containing `<script`, `javascript:` or an `on*=` handler is rejected with `400` |
+| `tabId` | Target a specific tab |
+
+With IDPI content scanning enabled, a page that trips the scanner returns `403`.
+
+MCP: `pinchtab_pdf` takes `tabId`, `landscape`, `scale`, `pageRanges` and returns the base64 PDF.
 
 ## Related Pages
 

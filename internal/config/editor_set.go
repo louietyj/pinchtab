@@ -495,21 +495,19 @@ func setTabPolicyField(tp *TabPolicyDefaults, field, value string) error {
 	return nil
 }
 
-// securityBoolFields is the set the shared boolean parse below is allowed to serve. It is
-// checked before the parse so an unknown field is refused as unknown.
-var securityBoolFields = map[string]bool{
-	"allowEvaluate":         true,
-	"allowClipboard":        true,
-	"allowMacro":            true,
-	"allowScreencast":       true,
-	"allowDownload":         true,
-	"allowCookies":          true,
-	"allowStateExport":      true,
-	"allowUpload":           true,
-	"allowNetworkIntercept": true,
-	"allowFileScheme":       true,
-	"enableActionGuards":    true,
-	"trustLoopbackProxy":    true,
+var securityBoolFields = map[string]func(*SecurityConfig) **bool{
+	"allowEvaluate":         func(s *SecurityConfig) **bool { return &s.AllowEvaluate },
+	"allowClipboard":        func(s *SecurityConfig) **bool { return &s.AllowClipboard },
+	"allowMacro":            func(s *SecurityConfig) **bool { return &s.AllowMacro },
+	"allowScreencast":       func(s *SecurityConfig) **bool { return &s.AllowScreencast },
+	"allowDownload":         func(s *SecurityConfig) **bool { return &s.AllowDownload },
+	"allowCookies":          func(s *SecurityConfig) **bool { return &s.AllowCookies },
+	"allowStateExport":      func(s *SecurityConfig) **bool { return &s.AllowStateExport },
+	"allowUpload":           func(s *SecurityConfig) **bool { return &s.AllowUpload },
+	"allowNetworkIntercept": func(s *SecurityConfig) **bool { return &s.AllowNetworkIntercept },
+	"allowMemory":           func(s *SecurityConfig) **bool { return &s.AllowMemory },
+	"allowFileScheme":       func(s *SecurityConfig) **bool { return &s.AllowFileScheme },
+	"trustLoopbackProxy":    func(s *SecurityConfig) **bool { return &s.TrustLoopbackProxy },
 }
 
 func setSecurityField(s *SecurityConfig, field, value string) error {
@@ -546,6 +544,13 @@ func setSecurityField(s *SecurityConfig, field, value string) error {
 			return fmt.Errorf("security.downloadMaxBytes must be a number: %w", err)
 		}
 		s.DownloadMaxBytes = &n
+		return nil
+	case "memorySnapshotMaxBytes":
+		n, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("security.memorySnapshotMaxBytes must be a number: %w", err)
+		}
+		s.MemorySnapshotMaxBytes = &n
 		return nil
 	case "uploadMaxRequestBytes":
 		n, err := strconv.Atoi(value)
@@ -588,46 +593,15 @@ func setSecurityField(s *SecurityConfig, field, value string) error {
 		return nil
 	}
 
-	// Everything left in this section is a boolean, so the parse can be shared — but only
-	// after the field is known. Parsing first made an unrecognised security field report a
-	// boolean complaint about its value, which hid the unknown-field refusal behind a
-	// message about the wrong thing.
-	if !securityBoolFields[field] {
+	slot, known := securityBoolFields[field]
+	if !known {
 		return fmt.Errorf("unknown field security.%s", field)
 	}
 	b, err := parseBool(value)
 	if err != nil {
 		return fmt.Errorf("security.%s: %w", field, err)
 	}
-
-	switch field {
-	case "allowEvaluate":
-		s.AllowEvaluate = &b
-	case "allowClipboard":
-		s.AllowClipboard = &b
-	case "allowMacro":
-		s.AllowMacro = &b
-	case "allowScreencast":
-		s.AllowScreencast = &b
-	case "allowDownload":
-		s.AllowDownload = &b
-	case "allowCookies":
-		s.AllowCookies = &b
-	case "allowStateExport":
-		s.AllowStateExport = &b
-	case "allowUpload":
-		s.AllowUpload = &b
-	case "allowNetworkIntercept":
-		s.AllowNetworkIntercept = &b
-	case "allowFileScheme":
-		s.AllowFileScheme = &b
-	case "enableActionGuards":
-		s.EnableActionGuards = &b
-	case "trustLoopbackProxy":
-		s.TrustLoopbackProxy = &b
-	default:
-		return fmt.Errorf("unknown field security.%s", field)
-	}
+	*slot(s) = &b
 	return nil
 }
 
@@ -747,7 +721,7 @@ func setAttachField(a *AttachConfig, field, value string) error {
 }
 
 func setIDPIField(s *SecurityConfig, field, value string) error {
-	i := &s.IDPI
+	i := s.ensureIDPI()
 	switch field {
 	case "enabled":
 		b, err := parseBool(value)

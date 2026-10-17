@@ -113,7 +113,7 @@ func (h *Handlers) HandleCapture(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	defer h.armAutoCloseIfEnabled(resolvedTabID)
+	defer h.armIdleLifecycle(resolvedTabID)
 	defer cancel()
 
 	opts := bridge.CaptureOpts{
@@ -140,7 +140,7 @@ func (h *Handlers) HandleCapture(w http.ResponseWriter, r *http.Request) {
 		opts.Image.BeyondViewport = false
 		nodeID, sErr := h.resolveSelectorNodeID(tCtx, resolvedTabID, selector)
 		if sErr != nil {
-			httpx.Error(w, 400, frameScopedSelectorError("selector", sErr))
+			respondSelectorFailure(w, frameScopedSelectorError("selector", sErr))
 			return
 		}
 		opts.ScopeBackendNodeID = nodeID
@@ -174,7 +174,7 @@ func (h *Handlers) HandleCapture(w http.ResponseWriter, r *http.Request) {
 
 	cache := bridge.EpochRefs(h.Bridge.GetRefCache(resolvedTabID), result.Nodes)
 	h.Bridge.SetRefCache(resolvedTabID, cache)
-	w.Header().Set(vocabHeader, cache.DomEpoch)
+	publishVocab(w, resolvedTabID, cache.DomEpoch)
 
 	imageInfo := map[string]any{
 		"format":           result.ImageFormat,

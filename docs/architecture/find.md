@@ -19,6 +19,7 @@ The implementation is designed to stay:
 accessibility snapshot
   -> DOM metadata enrichment
   -> element descriptors
+  -> IDPI scan of the candidate text (when enabled)
   -> lexical matcher
   -> embedding matcher
   -> combined score

@@ -12,11 +12,7 @@ import (
 
 func handleListTabs(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		body, code, err := c.Get(ctx, "/tabs", nil)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return resultFromBytes(body, code)
+		return toolResult(c.Get(ctx, "/tabs", nil))
 	}
 }
 
@@ -26,21 +22,58 @@ func handleCloseTab(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.
 		if tabID := optTrimmedString(r, "tabId"); tabID != "" {
 			payload["tabId"] = tabID
 		}
-		body, code, err := c.Post(ctx, "/close", payload)
+		return toolResult(c.Post(ctx, "/close", payload))
+	}
+}
+
+func tabRoutePath(tabID, verb string) string {
+	return "/tabs/" + url.PathEscape(tabID) + "/" + verb
+}
+
+func handleHandoff(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		tabID, err := r.RequireString("tabId")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		return resultFromBytes(body, code)
+		payload := map[string]any{}
+		if reason := optTrimmedString(r, "reason"); reason != "" {
+			payload["reason"] = reason
+		}
+		if timeoutMs, ok := optInt(r, "timeoutMs"); ok {
+			payload["timeoutMs"] = timeoutMs
+		}
+		return toolResult(c.Post(ctx, tabRoutePath(tabID, "handoff"), payload))
+	}
+}
+
+func handleResume(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		tabID, err := r.RequireString("tabId")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		payload := map[string]any{}
+		if status := optTrimmedString(r, "status"); status != "" {
+			payload["status"] = status
+		}
+		return toolResult(c.Post(ctx, tabRoutePath(tabID, "resume"), payload))
+	}
+}
+
+func handleHandoffStatus(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		tabID, err := r.RequireString("tabId")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return toolResult(c.Get(ctx, tabRoutePath(tabID, "handoff"), nil))
 	}
 }
 
 func handleHealth(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		body, code, err := c.Get(ctx, "/health", nil)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return resultFromBytes(body, code)
+		return toolResult(c.Get(ctx, "/health", nil))
 	}
 }
 
@@ -50,11 +83,7 @@ func handleCookies(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.C
 		if tabID := optString(r, "tabId"); tabID != "" {
 			q.Set("tabId", tabID)
 		}
-		body, code, err := c.Get(ctx, "/cookies", q)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return resultFromBytes(body, code)
+		return toolResult(c.Get(ctx, "/cookies", q))
 	}
 }
 
@@ -162,6 +191,7 @@ func handleConnectProfile(c *Client) func(context.Context, mcp.CallToolRequest) 
 
 		resp := map[string]any{
 			"profile": status.Name,
+			"exists":  status.Exists,
 			"running": status.Running,
 			"status":  status.Status,
 			"id":      status.ID,
@@ -169,6 +199,14 @@ func handleConnectProfile(c *Client) func(context.Context, mcp.CallToolRequest) 
 		}
 		if status.Error != "" {
 			resp["error"] = status.Error
+		}
+		if !status.Exists || status.Status == "missing" {
+			resp["status"] = "missing"
+			resp["message"] = status.Message
+			if status.Message == "" {
+				resp["message"] = fmt.Sprintf("Profile %q does not exist. Creating and authenticating a reusable profile is a human setup step.", status.Name)
+			}
+			return jsonResult(resp)
 		}
 		if status.Running && status.Port != "" {
 			resp["url"] = c.dashboardProfilesURL()

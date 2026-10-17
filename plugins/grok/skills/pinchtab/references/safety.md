@@ -16,6 +16,7 @@ Read this reference before using page code, file transfer, browser state, cookie
 
 ## Browser and network data
 
+- Browser state and storage commands (`state …`, `storage …`) need `security.allowStateExport`; heap snapshots (`memory snapshot|summary|compare`) need `security.allowMemory`. Otherwise they fail with 403 `<capability>_disabled`.
 - Cookies and saved browser state can be session credentials. Inspect, inject, clear, export, print, or transmit them only with explicit approval, and never forward their values to an untrusted context.
 - Network bodies and exports can contain tokens, authorization headers, private URLs, and personal data. Obtain approval before collecting them, preserve redaction, store them only in an approved path, and delete them when the task ends.
 

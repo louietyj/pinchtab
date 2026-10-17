@@ -52,7 +52,7 @@ func formatTabLifecycle(cfg *config.RuntimeConfig) string {
 	if policy == "" {
 		policy = "keep"
 	}
-	if policy == "close_idle" && cfg.TabCloseDelay > 0 {
+	if config.IdleTabLifecycle(policy) && cfg.TabCloseDelay > 0 {
 		return fmt.Sprintf("%s (%s)", policy, cfg.TabCloseDelay)
 	}
 	return policy

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Hydrated Issue List</title>
+  <style>
+    body { font-family: sans-serif; margin: 16px; }
+    .row { content-visibility: auto; contain-intrinsic-size: auto 64px; }
+    .row li { display: grid; padding: 8px; border-bottom: 1px solid #ddd; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Issues</h1>
+    <h2 id="list-title">Search results</h2>
+    <ul id="issue-list" role="list" aria-labelledby="list-title"></ul>
+  </main>
+  <script>
+    const issues = [
+      { id: 101, title: "Hydrated issue alpha" },
+      { id: 102, title: "Hydrated issue beta" },
+      { id: 103, title: "Hydrated issue gamma" }
+    ];
+    const list = document.getElementById("issue-list");
+    for (const issue of issues) {
+      const row = document.createElement("div");
+      row.className = "row";
+      const li = document.createElement("li");
+      li.setAttribute("role", "listitem");
+      const heading = document.createElement("h3");
+      const link = document.createElement("a");
+      link.href = "#issue-" + issue.id;
+      link.dataset.testid = "issue-pr-title-link";
+      link.textContent = issue.title;
+      heading.appendChild(link);
+      li.appendChild(heading);
+      row.appendChild(li);
+      list.appendChild(row);
+    }
+  </script>
+</body>
+</html>

@@ -1,6 +1,8 @@
 package mcp
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -172,5 +174,49 @@ func TestHandleNetworkUnroute_All(t *testing.T) {
 	text := resultText(t, r)
 	if !strings.Contains(text, "/tabs/t1/network/route") {
 		t.Errorf("expected /tabs/t1/network/route path, got %s", text)
+	}
+}
+
+func TestHandleNetworkRulesReportsWhatTheRouteReports(t *testing.T) {
+	const payload = `{"tabId":"t1","rules":[{"pattern":"api/users","action":"fulfill","body":"{\"ok\":true}"},{"pattern":"*.png","action":"abort"}]}`
+	var gotMethod, gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath = r.Method, r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(payload))
+	}))
+	defer srv.Close()
+
+	r := callTool(t, "pinchtab_network_rules", map[string]any{"tabId": "t1"}, srv)
+	if r.IsError {
+		t.Fatalf("listing rules answered an error: %s", resultText(t, r))
+	}
+	if gotMethod != http.MethodGet || gotPath != "/tabs/t1/network/route" {
+		t.Fatalf("listed via %s %s, want GET /tabs/t1/network/route", gotMethod, gotPath)
+	}
+	text := resultText(t, r)
+	for _, want := range []string{`"pattern":"api/users"`, `"action":"fulfill"`, `"pattern":"*.png"`, `"action":"abort"`} {
+		if !strings.Contains(text, want) {
+			t.Errorf("tool result %s does not carry %s", text, want)
+		}
+	}
+}
+
+func TestHandleNetworkRulesOnATabWithNoRulesIsASuccessAnsweringNone(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"tabId":"t1","rules":[]}`))
+	}))
+	defer srv.Close()
+
+	r := callTool(t, "pinchtab_network_rules", map[string]any{"tabId": "t1"}, srv)
+	if r.IsError {
+		t.Fatalf("an empty listing is a success, got error: %s", resultText(t, r))
+	}
+	if text := resultText(t, r); !strings.Contains(text, `"rules":[]`) {
+		t.Fatalf("an empty listing must say none explicitly, got %s", text)
+	}
+	if r := callTool(t, "pinchtab_network_rules", map[string]any{}, srv); !r.IsError {
+		t.Fatal("the tab is required, as it is on route and unroute")
 	}
 }

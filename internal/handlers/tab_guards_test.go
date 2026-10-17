@@ -103,6 +103,7 @@ var guardProbes = map[string]guardProbe{
 	"POST /dialog":                {body: `{"action":"accept"}`},
 	"POST /wait":                  {body: `{"selector":"#probe"}`},
 	"POST /find":                  {body: `{"query":"probe"}`},
+	"POST /extract":               {body: `{"schema":{"type":"object","properties":{"probe":{"type":"string"}}}}`},
 	"POST /evaluate":              {body: `{"expression":"1"}`},
 	"POST /upload":                {body: `{"selector":"#probe","paths":["probe.txt"]}`},
 	"POST /solve/{name}":          {wildcard: "cloudflare"},
@@ -153,6 +154,7 @@ func allCapabilities(t *testing.T, tmpDir string) *config.RuntimeConfig {
 		AllowNetworkIntercept: true,
 		AllowUpload:           true,
 		AllowStateExport:      true,
+		AllowMemory:           true,
 
 		DownloadAllowedDomains: []string{"example.com"},
 	}
@@ -482,5 +484,229 @@ func TestRootStorageMethodDispatchSplitsTheGuard(t *testing.T) {
 				t.Fatalf("%s /storage on a paused tab: refused=%v want %v (%d %s)", tc.method, refused, tc.wantRefuse, w.Code, w.Body.String())
 			}
 		})
+	}
+}
+
+func TestRootStorageRefusesADialogBlockedTabForEveryMethod(t *testing.T) {
+	cases := []struct {
+		method string
+		body   string
+	}{
+		{http.MethodGet, ""},
+		{http.MethodPost, `{"type":"local","key":"probe","value":"1"}`},
+		{http.MethodDelete, `{"type":"local","key":"probe"}`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.method, func(t *testing.T) {
+			b := &guardProbeBridge{currentURL: "https://allowed.example/", dialogs: pendingDialogManager()}
+			h := New(b, allCapabilities(t, t.TempDir()), nil, nil, nil)
+
+			req := httptest.NewRequest(tc.method, "/storage?tabId=tab1&type=local&key=probe", strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			h.HandleStorage(w, req)
+
+			var resp struct {
+				Code string `json:"code"`
+			}
+			_ = json.Unmarshal(w.Body.Bytes(), &resp)
+			if resp.Code != dialogBlockedCode {
+				t.Fatalf("%s /storage on a dialog-blocked tab answered %d %s, want %s", tc.method, w.Code, w.Body.String(), dialogBlockedCode)
+			}
+		})
+	}
+}
+
+func TestFixedDurationWaitRefusesADialogBlockedTab(t *testing.T) {
+	for _, target := range []string{"/wait", "/tabs/tab1/wait"} {
+		t.Run(target, func(t *testing.T) {
+			b := &guardProbeBridge{currentURL: "https://allowed.example/", dialogs: pendingDialogManager()}
+			h := New(b, allCapabilities(t, t.TempDir()), nil, nil, nil)
+			mux := http.NewServeMux()
+			h.RegisterRoutes(mux, nil)
+
+			req := httptest.NewRequest(http.MethodPost, target, strings.NewReader(`{"tabId":"tab1","ms":50}`))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, req)
+
+			var resp struct {
+				Code string `json:"code"`
+			}
+			_ = json.Unmarshal(w.Body.Bytes(), &resp)
+			if resp.Code != dialogBlockedCode {
+				t.Fatalf("POST %s {ms} on a dialog-blocked tab answered %d %s, want %s", target, w.Code, w.Body.String(), dialogBlockedCode)
+			}
+		})
+	}
+}
+
+func TestFixedDurationWaitStillSleepsWithoutAPendingDialog(t *testing.T) {
+	b := &guardProbeBridge{currentURL: "https://allowed.example/"}
+	h := New(b, allCapabilities(t, t.TempDir()), nil, nil, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/wait", strings.NewReader(`{"tabId":"tab1","ms":1}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.HandleWait(w, req)
+
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"waited":true`) {
+		t.Fatalf("POST /wait {ms} without a dialog answered %d %s, want 200 waited", w.Code, w.Body.String())
+	}
+}
+
+var mustDeclareDialogGuard = []string{
+	"POST /navigate", "POST /back", "POST /forward", "POST /reload",
+	"GET /snapshot", "GET /screenshot", "GET /annotate", "GET /capture", "GET /text", "GET /title", "GET /url", "GET /html", "GET /styles",
+	"GET /value", "GET /attr", "GET /count", "GET /box", "GET /visible", "GET /enabled", "GET /checked",
+	"GET /pdf", "POST /pdf", "GET /timing", "GET /a11y/audit", "GET /memory", "POST /memory/snapshot",
+	"POST /action", "POST /actions", "POST /macro", "POST /wait", "POST /find", "POST /extract", "POST /evaluate",
+	"POST /upload", "POST /solve", "POST /solve/{name}", "POST /vision", "GET /download",
+	"POST /emulation/viewport", "POST /emulation/geolocation", "POST /emulation/offline",
+	"POST /emulation/headers", "POST /emulation/credentials", "POST /emulation/media",
+	"POST /fingerprint/rotate",
+	"GET /storage", "POST /storage", "DELETE /storage",
+	"GET /state", "POST /state/save", "POST /state/load",
+}
+
+var dialogGuardAllowReasons = map[string]bool{
+	"dialog":       true,
+	"frame":        true,
+	"tabs":         true,
+	"handoff":      true,
+	"own-tab":      true,
+	"browser-side": true,
+	"buffer":       true,
+	"server-side":  true,
+	"screencast":   true,
+}
+
+var dialogGuardAllowList = map[string]string{
+	"POST /dialog":     "dialog",
+	"GET /frame":       "frame",
+	"POST /frame":      "frame",
+	"POST /tab":        "tabs",
+	"POST /close":      "tabs",
+	"POST /lock":       "tabs",
+	"POST /unlock":     "tabs",
+	"POST /handoff":    "handoff",
+	"POST /resume":     "handoff",
+	"GET /handoff":     "handoff",
+	"POST /audit/page": "own-tab",
+	"POST /audit":      "own-tab",
+	"POST /scrape":     "own-tab",
+	"GET /cookies":     "browser-side",
+	"POST /cookies":    "browser-side",
+	"DELETE /cookies":  "browser-side",
+	"GET /metrics":     "browser-side",
+	"GET /memory/snapshot/{snapshotId}/summary": "server-side",
+	"GET /memory/compare":                       "server-side",
+	"GET /network/route":                        "browser-side",
+	"POST /network/route":                       "browser-side",
+	"DELETE /network/route":                     "browser-side",
+	"POST /cache/clear":                         "browser-side",
+	"GET /cache/status":                         "browser-side",
+	"GET /stealth/status":                       "browser-side",
+	"GET /solvers":                              "browser-side",
+	"GET /config/autosolver":                    "browser-side",
+	"GET /screencast/tabs":                      "browser-side",
+	"GET /record/status":                        "browser-side",
+	"GET /state/list":                           "browser-side",
+	"GET /state/show":                           "browser-side",
+	"DELETE /state":                             "browser-side",
+	"POST /state/clean":                         "browser-side",
+	"GET /network":                              "buffer",
+	"GET /network/stream":                       "buffer",
+	"GET /network/export":                       "buffer",
+	"GET /network/export/stream":                "buffer",
+	"GET /network/{requestId}":                  "buffer",
+	"POST /network/clear":                       "buffer",
+	"GET /console":                              "buffer",
+	"POST /console/clear":                       "buffer",
+	"GET /errors":                               "buffer",
+	"POST /errors/clear":                        "buffer",
+	"GET /clipboard/read":                       "server-side",
+	"POST /clipboard/write":                     "server-side",
+	"POST /clipboard/copy":                      "server-side",
+	"GET /clipboard/paste":                      "server-side",
+	"GET /screencast":                           "screencast",
+	"POST /record/start":                        "screencast",
+	"POST /record/stop":                         "screencast",
+}
+
+func TestEveryBindingIsPlacedForTheDialogGuard(t *testing.T) {
+	must := map[string]bool{}
+	for _, route := range mustDeclareDialogGuard {
+		must[route] = true
+		if _, listed := dialogGuardAllowList[route]; listed {
+			t.Errorf("%s is both in the must-declare set and the allow-list", route)
+		}
+	}
+	seen := map[string]bool{}
+	for _, b := range (*Handlers)(nil).bridgeBindings() {
+		seen[b.pattern] = true
+		declared := b.guards&guardDialogBlocked != 0
+		reason, allowed := dialogGuardAllowList[b.pattern]
+		switch {
+		case must[b.pattern] && !declared:
+			t.Errorf("%s drives the page through CDP but does not declare guardDialogBlocked", b.pattern)
+		case allowed && declared:
+			t.Errorf("%s declares guardDialogBlocked but is allow-listed (%s); move it to the must-declare set", b.pattern, reason)
+		case allowed && !dialogGuardAllowReasons[reason]:
+			t.Errorf("%s is allow-listed with %q, which places nothing; give it one of the reasons in dialogGuardAllowReasons or move it to the must-declare set", b.pattern, reason)
+		case !must[b.pattern] && !allowed:
+			t.Errorf("%s is in neither the must-declare set nor the allow-list; place it with a one-word reason", b.pattern)
+		}
+	}
+	for route := range must {
+		if !seen[route] {
+			t.Errorf("must-declare route %s has no binding", route)
+		}
+	}
+	for route := range dialogGuardAllowList {
+		if !seen[route] {
+			t.Errorf("allow-listed route %s has no binding", route)
+		}
+	}
+}
+
+type dialogMidBatchBridge struct {
+	mockBridge
+	dialogs *bridge.DialogManager
+}
+
+func (b *dialogMidBatchBridge) GetDialogManager() *bridge.DialogManager { return b.dialogs }
+
+func (b *dialogMidBatchBridge) ExecuteAction(context.Context, string, bridge.ActionRequest) (map[string]any, error) {
+	b.dialogs.SetPending("tab1", &bridge.DialogState{Type: "alert", Message: "opened by step 1"})
+	return map[string]any{"ok": true}, nil
+}
+
+func TestActionsBatchStopsOnADialogOpenedMidRun(t *testing.T) {
+	b := &dialogMidBatchBridge{dialogs: bridge.NewDialogManager()}
+	h := New(b, &config.RuntimeConfig{ActionTimeout: time.Second}, nil, nil, nil)
+	body := `{"actions":[{"kind":"press","key":"Enter"},{"kind":"press","key":"Enter"},{"kind":"press","key":"Enter"}]}`
+	req := httptest.NewRequest("POST", "/actions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.HandleActions(w, req)
+
+	var resp struct {
+		Results []actionResult `json:"results"`
+		Total   int            `json:"total"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v\n%s", err, w.Body.String())
+	}
+	if w.Code != http.StatusOK || len(resp.Results) != 2 || resp.Total != 3 {
+		t.Fatalf("status=%d results=%d total=%d, want 200 with the run stopped after the second step\n%s", w.Code, len(resp.Results), resp.Total, w.Body.String())
+	}
+	if !resp.Results[0].Success {
+		t.Errorf("step 1 should have run: %+v", resp.Results[0])
+	}
+	second := resp.Results[1]
+	if second.Success || second.Code != dialogBlockedCode || second.Details["remedy"] == nil || !strings.Contains(second.Error, "opened by step 1") {
+		t.Errorf("step 2 = %+v, want a failed step carrying %s with the remedy", second, dialogBlockedCode)
 	}
 }

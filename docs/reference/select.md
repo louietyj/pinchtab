@@ -42,6 +42,8 @@ pinchtab select e12 "Kingdom"
 
 Prefer the canonical option value or full visible text when disambiguation matters.
 
+The API reads `value`, falling back to `text`. When nothing matches, the action answers `422 option_not_found`; `details.available` lists the options as `{value, text}` and `details.hint` renders them.
+
 Selector lookup is limited to current frame scope (default: `main`). Use [`/frame`](./frame.md) before iframe selects.
 
 ## Related Pages

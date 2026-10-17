@@ -291,7 +291,9 @@ func TestMarkAccessedUpdatesCurrentTabAndLastUsed(t *testing.T) {
 	tm.tabs["tab2"] = &TabEntry{Ctx: context.Background(), CreatedAt: oldTime, LastUsed: oldTime}
 	tm.currentTab = "tab1"
 
-	tm.markAccessed("tab2")
+	if err := tm.markAccessed("tab2"); err != nil {
+		t.Fatal(err)
+	}
 
 	if tm.currentTab != "tab2" {
 		t.Fatalf("currentTab = %q, want tab2", tm.currentTab)

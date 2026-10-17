@@ -3,6 +3,7 @@ package mcp
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -368,6 +369,107 @@ func TestHandleGetText(t *testing.T) {
 	if !strings.Contains(text, "/text") {
 		t.Errorf("expected /text, got %s", text)
 	}
+}
+
+func TestHandleGetTextModeMarkdown(t *testing.T) {
+	srv := mockPinchTab()
+	defer srv.Close()
+
+	r := callTool(t, "pinchtab_get_text", map[string]any{
+		"mode": "markdown",
+	}, srv)
+
+	if got := getTextQueryValue(t, r, "mode"); got != "markdown" {
+		t.Errorf("outbound query mode = %q, want markdown", got)
+	}
+}
+
+func TestHandleGetTextRawMapsToModeRaw(t *testing.T) {
+	srv := mockPinchTab()
+	defer srv.Close()
+
+	r := callTool(t, "pinchtab_get_text", map[string]any{
+		"raw": true,
+	}, srv)
+
+	if got := getTextQueryValue(t, r, "mode"); got != "raw" {
+		t.Errorf("outbound query mode = %q, want raw for raw:true", got)
+	}
+}
+
+func TestHandleGetTextModeSupersedesRaw(t *testing.T) {
+	srv := mockPinchTab()
+	defer srv.Close()
+
+	r := callTool(t, "pinchtab_get_text", map[string]any{
+		"mode": "markdown",
+		"raw":  true,
+	}, srv)
+
+	if got := getTextQueryValue(t, r, "mode"); got != "markdown" {
+		t.Errorf("outbound query mode = %q, want markdown; mode must win over raw when both are set", got)
+	}
+}
+
+// The outbound-query tests above prove pinchtab_get_text SENDS mode=markdown;
+// this proves it RETURNS the Markdown the server produces — the coverage the
+// query tests cannot give, since they never read a response body. It drives the
+// tool against a server that answers /text with Markdown structures when (and only
+// when) mode=markdown, and asserts a heading, link, list and table survive into
+// the tool result. The default read gets plain text, so the mode is what changes
+// the shape rather than the fixture.
+func TestHandleGetTextModeMarkdownReturnsMarkdownBody(t *testing.T) {
+	const markdownBody = "# Markdown Fixture\n\nA paragraph with an [inline link](https://example.com/link).\n\n- one\n- two\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n"
+	const plainBody = "Markdown Fixture A paragraph with an inline link one two A B 1 2"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body := map[string]any{"url": "http://fixtures/markdown.html", "title": "Markdown Fixture"}
+		if r.URL.Query().Get("mode") == "markdown" {
+			body["extraction"] = "markdown"
+			body["text"] = markdownBody
+		} else {
+			body["extraction"] = "readability"
+			body["text"] = plainBody
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		_ = json.NewEncoder(w).Encode(body)
+	}))
+	defer srv.Close()
+
+	got := resultJSON(t, callTool(t, "pinchtab_get_text", map[string]any{"mode": "markdown"}, srv))
+	if got["extraction"] != "markdown" {
+		t.Errorf("extraction = %v, want markdown", got["extraction"])
+	}
+	text, _ := got["text"].(string)
+	for _, want := range []string{"# ", "](", "- ", "|"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("markdown tool result lost the %q structure:\n%s", want, text)
+		}
+	}
+
+	// The same tool without mode returns plain text, so the Markdown above is the
+	// mode's doing and not the server answering markdown to everything.
+	plain := resultJSON(t, callTool(t, "pinchtab_get_text", map[string]any{}, srv))
+	if pt, _ := plain["text"].(string); strings.Contains(pt, "](") {
+		t.Errorf("default get_text should not carry Markdown link syntax:\n%s", pt)
+	}
+}
+
+// getTextQueryValue reads the first value the mock recorded for a query key. The
+// mock echoes r.URL.Query() (a map of string→[]string) into resp["query"].
+func getTextQueryValue(t *testing.T, r *mcp.CallToolResult, key string) string {
+	t.Helper()
+	query, ok := resultJSON(t, r)["query"].(map[string]any)
+	if !ok {
+		t.Fatalf("result carried no query object: %s", resultText(t, r))
+	}
+	values, ok := query[key].([]any)
+	if !ok || len(values) == 0 {
+		return ""
+	}
+	s, _ := values[0].(string)
+	return s
 }
 
 func TestHandleGetTextFormat(t *testing.T) {
@@ -886,5 +988,77 @@ func TestSnapAndBrowserTogetherRouteBothRequestsToTheNamedInstance(t *testing.T)
 				t.Errorf("the snapshot went to browser %q while %s went to cloak: the tool would answer with another instance's page as the result of this navigation", got, tc.path)
 			}
 		})
+	}
+}
+
+// pinchtab_navigate must forward newTab so an MCP agent can OPEN a tab, not just
+// manage existing ones. The server here models the /navigate newTab contract (a
+// new tab on newTab:true, otherwise reuse) and /tabs, so the test drives the real
+// tools end to end: list_tabs before, navigate {newTab:true}, list_tabs after,
+// and asserts the count went up by one and a tabId came back. A plain navigate is
+// the control — it must reuse the current tab and leave the count unchanged.
+func TestHandleNavigateNewTabOpensATab(t *testing.T) {
+	var tabs []string
+	nextID := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/navigate":
+			raw, _ := io.ReadAll(r.Body)
+			var body map[string]any
+			_ = json.Unmarshal(raw, &body)
+			newTab, _ := body["newTab"].(bool)
+			var id string
+			if newTab || len(tabs) == 0 {
+				nextID++
+				id = fmt.Sprintf("tab-%d", nextID)
+				tabs = append(tabs, id)
+			} else {
+				id = tabs[len(tabs)-1]
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"tabId": id, "url": body["url"], "newTab": newTab})
+		case "/tabs":
+			out := make([]map[string]any, len(tabs))
+			for i, id := range tabs {
+				out[i] = map[string]any{"id": id}
+			}
+			_ = json.NewEncoder(w).Encode(out)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	countTabs := func() int {
+		var arr []map[string]any
+		if err := json.Unmarshal([]byte(resultText(t, callTool(t, "pinchtab_list_tabs", nil, srv))), &arr); err != nil {
+			t.Fatalf("list_tabs is not a JSON array: %v", err)
+		}
+		return len(arr)
+	}
+
+	// Seed the current tab with a plain navigate, then count.
+	_ = callTool(t, "pinchtab_navigate", map[string]any{"url": "https://example.com/a"}, srv)
+	before := countTabs()
+
+	r := callTool(t, "pinchtab_navigate", map[string]any{"url": "https://example.com/b", "newTab": true}, srv)
+	if r.IsError {
+		t.Fatalf("navigate newTab returned error: %s", resultText(t, r))
+	}
+	res := resultJSON(t, r)
+	if id, _ := res["tabId"].(string); id == "" {
+		t.Errorf("newTab navigate returned no tabId to target the new tab: %v", res)
+	}
+	if res["newTab"] != true {
+		t.Errorf("the MCP handler did not forward newTab; the server saw newTab=%v", res["newTab"])
+	}
+	if after := countTabs(); after != before+1 {
+		t.Fatalf("newTab did not open a tab: count %d -> %d", before, after)
+	}
+
+	// Control: a plain navigate reuses the current tab, so the count is unchanged.
+	countAfterNewTab := countTabs()
+	_ = callTool(t, "pinchtab_navigate", map[string]any{"url": "https://example.com/c"}, srv)
+	if reuse := countTabs(); reuse != countAfterNewTab {
+		t.Fatalf("a plain navigate changed the tab count: %d -> %d", countAfterNewTab, reuse)
 	}
 }

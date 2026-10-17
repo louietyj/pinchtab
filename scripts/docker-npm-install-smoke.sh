@@ -101,7 +101,9 @@ echo "Packaging npm wrapper (working tree) against release v${VERSION} in ${NODE
 # rebuilds from a pristine state via `npm ci`. The repo layout is preserved (npm/
 # alongside skills/) because prepack's stage-skills.js copies the SKILL source
 # from the repo-root skills/ dir two levels above npm/scripts.
-tar -C "${ROOT}" \
+COPYFILE_DISABLE=1 tar -C "${ROOT}" \
+  --no-xattrs \
+  --exclude='._*' \
   --exclude='npm/node_modules' \
   --exclude='npm/dist' \
   --exclude='npm/pinchtab-*.tgz' \

@@ -9,10 +9,12 @@ The **server** is the main PinchTab process.
 Start it with:
 
 ```bash
-pinchtab
-# or explicitly
 pinchtab server
+# or run it in the background
+pinchtab daemon install
 ```
+
+Bare `pinchtab` does not start a server: it prints whether one is running, the security posture, and next steps (and runs the security setup on first use).
 
 What the server does:
 
@@ -20,6 +22,9 @@ What the server does:
 - manages profiles and instances
 - proxies tab-scoped requests to the correct managed instance
 - can expose shorthand routes such as `/navigate`, `/snapshot`, and `/action`
+
+The HTTP API requires the server token. The `curl` examples on this page omit it for brevity;
+add `-H "Authorization: Bearer $PINCHTAB_TOKEN"` after `export PINCHTAB_TOKEN=$(pinchtab config token --stdout)`.
 
 Important clarification:
 
@@ -193,8 +198,14 @@ curl -X POST http://localhost:9867/close \
 By default, tabs use the `keep` lifecycle policy and are not auto-closed after
 reads or actions. Set `instanceDefaults.tabPolicy.lifecycle` to `close_idle` to
 auto-close a tab after an authorized `/text`, `/snapshot`, or `/action` request
-finishes. `instanceDefaults.tabPolicy.closeDelaySec` adjusts the idle delay
-when `close_idle` is enabled.
+finishes. Set it to `freeze_idle` to freeze a tab that no request has touched
+for the idle delay instead: its timers and JavaScript stop, while its DOM,
+session and URL survive. Every request on the tab restarts that clock and
+unfreezes the tab before running, and a tab is never frozen while a request on
+it is still running (a screencast stream counts), while it is paused for
+handoff, or while it holds network interception rules.
+`instanceDefaults.tabPolicy.closeDelaySec` adjusts the idle delay when
+`close_idle` or `freeze_idle` is enabled.
 
 ### Are tabs persistent?
 
@@ -207,6 +218,11 @@ For managed instances started by the server:
 - profiles persist, but open tabs do not
 
 That means the persistent part is the **profile state**, not the tab list.
+
+A tab opened under an agent session ends with it. When the session is revoked, expires or
+is pruned, each instance closes the tabs that session created, as long as no other caller
+has used them since. It keeps a tab that is paused for human handoff or locked, and logs
+the tab id.
 
 ## Element references
 
@@ -260,7 +276,7 @@ These route to the "current" or first running instance.
 
 For most users, this is the right sequence:
 
-1. start the server with `pinchtab`
+1. start the server with `pinchtab server` (or `pinchtab daemon install`)
 2. create a profile if you need persistence
 3. start an instance from that profile
 4. open one or more tabs in that instance

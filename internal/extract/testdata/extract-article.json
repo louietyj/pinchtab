@@ -1,0 +1,110 @@
+{
+  "url": "http://fixtures/extract-article.html",
+  "title": "The Rise of Model-Free Extraction",
+  "nodes": [
+    {
+      "ref": "e0",
+      "role": "RootWebArea",
+      "name": "The Rise of Model-Free Extraction",
+      "depth": 0,
+      "nodeId": 5,
+      "frameId": "8C30EFBA27DBCAB352EFD24BF56BBBCC",
+      "frameUrl": "http://fixtures/extract-article.html"
+    },
+    {
+      "ref": "e1",
+      "role": "article",
+      "name": "Story",
+      "depth": 3,
+      "label": "Story",
+      "text": "The Rise of Model-Free Extraction Jane Doe 2026-09-12 Agents have long needed a step between finding one element and scraping a whole page. A schema-driven extractor fills that gap without a model.",
+      "tag": "article",
+      "nodeId": 12,
+      "frameId": "8C30EFBA27DBCAB352EFD24BF56BBBCC",
+      "frameUrl": "http://fixtures/extract-article.html"
+    },
+    {
+      "ref": "e2",
+      "role": "heading",
+      "name": "The Rise of Model-Free Extraction",
+      "depth": 4,
+      "text": "The Rise of Model-Free Extraction",
+      "tag": "h1",
+      "nodeId": 13,
+      "frameId": "8C30EFBA27DBCAB352EFD24BF56BBBCC",
+      "frameUrl": "http://fixtures/extract-article.html"
+    },
+    {
+      "ref": "e3",
+      "role": "StaticText",
+      "name": "The Rise of Model-Free Extraction",
+      "depth": 5,
+      "nodeId": 17,
+      "frameId": "8C30EFBA27DBCAB352EFD24BF56BBBCC",
+      "frameUrl": "http://fixtures/extract-article.html"
+    },
+    {
+      "ref": "e4",
+      "role": "paragraph",
+      "name": "Author",
+      "depth": 4,
+      "label": "Author",
+      "text": "Jane Doe",
+      "tag": "p",
+      "nodeId": 14,
+      "frameId": "8C30EFBA27DBCAB352EFD24BF56BBBCC",
+      "frameUrl": "http://fixtures/extract-article.html"
+    },
+    {
+      "ref": "e5",
+      "role": "StaticText",
+      "name": "Jane Doe",
+      "depth": 5,
+      "nodeId": 18,
+      "frameId": "8C30EFBA27DBCAB352EFD24BF56BBBCC",
+      "frameUrl": "http://fixtures/extract-article.html"
+    },
+    {
+      "ref": "e6",
+      "role": "paragraph",
+      "name": "Date published",
+      "depth": 4,
+      "label": "Date published",
+      "text": "2026-09-12",
+      "tag": "p",
+      "nodeId": 15,
+      "frameId": "8C30EFBA27DBCAB352EFD24BF56BBBCC",
+      "frameUrl": "http://fixtures/extract-article.html"
+    },
+    {
+      "ref": "e7",
+      "role": "StaticText",
+      "name": "2026-09-12",
+      "depth": 5,
+      "nodeId": 19,
+      "frameId": "8C30EFBA27DBCAB352EFD24BF56BBBCC",
+      "frameUrl": "http://fixtures/extract-article.html"
+    },
+    {
+      "ref": "e8",
+      "role": "paragraph",
+      "name": "Body",
+      "depth": 4,
+      "label": "Body",
+      "text": "Agents have long needed a step between finding one element and scraping a whole page. A schema-driven extractor fills that gap without a model.",
+      "tag": "p",
+      "nodeId": 16,
+      "frameId": "8C30EFBA27DBCAB352EFD24BF56BBBCC",
+      "frameUrl": "http://fixtures/extract-article.html"
+    },
+    {
+      "ref": "e9",
+      "role": "StaticText",
+      "name": "Agents have long needed a step between finding one element and scraping a whole page. A schema-driven extractor fills that gap without a model.",
+      "depth": 5,
+      "nodeId": 20,
+      "frameId": "8C30EFBA27DBCAB352EFD24BF56BBBCC",
+      "frameUrl": "http://fixtures/extract-article.html"
+    }
+  ]
+}

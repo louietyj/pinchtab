@@ -59,7 +59,7 @@ func sleepFor(ctx context.Context, value string) (*mcp.CallToolResult, error) {
 }
 
 func callWaitEndpoint(ctx context.Context, c *Client, r mcp.CallToolRequest, payload map[string]any) (*mcp.CallToolResult, error) {
-	if timeout, ok := optFloat(r, "timeout"); ok {
+	if timeout, ok := firstFloat(r, "timeoutMs", "timeout"); ok {
 		payload["timeout"] = int(timeout)
 	}
 	if state := optString(r, "state"); state != "" {
@@ -68,9 +68,5 @@ func callWaitEndpoint(ctx context.Context, c *Client, r mcp.CallToolRequest, pay
 	if tabID := optString(r, "tabId"); tabID != "" {
 		payload["tabId"] = tabID
 	}
-	body, code, err := c.Post(ctx, routedPath(r, "/wait"), payload)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	return resultFromBytes(body, code)
+	return toolResult(c.Post(ctx, routedPath(r, "/wait"), payload))
 }

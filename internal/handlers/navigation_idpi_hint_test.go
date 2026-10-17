@@ -17,14 +17,20 @@ func TestIDPIAllowlistRemedy(t *testing.T) {
 	if !strings.Contains(line, "security.allowedDomains") {
 		t.Errorf("remedy should name the allowlist config key; got %q", line)
 	}
-	if !strings.Contains(line, "server restart") {
-		t.Errorf("remedy should remind the user to restart; got %q", line)
+	// The remedy is the mode-neutral config write only: `pinchtab server restart`
+	// would destroy a bridge answering this gate, so the restart guidance moved to
+	// the hint (checked below).
+	if strings.Contains(line, "server restart") {
+		t.Errorf("remedy must not name `server restart`, which destroys a bridge; got %q", line)
 	}
 	if strings.ContainsRune(line, '…') {
 		t.Errorf("remedy must not contain the … placeholder; got %q", line)
 	}
 	if !strings.Contains(line, "config get security.allowedDomains") {
 		t.Errorf("remedy should append to existing domains via config get; got %q", line)
+	}
+	if hint, _ := idpiRefusedURLDetails("https://example.com/some/path")["hint"].(string); !strings.Contains(strings.ToLower(hint), "restart pinchtab") {
+		t.Errorf("refused-URL hint should remind the user to restart PinchTab; got %q", hint)
 	}
 
 	// A hostless target cannot be allowlisted, so it gets no remedy rather than
@@ -42,7 +48,10 @@ func TestIDPIScannerHint(t *testing.T) {
 	if !strings.Contains(hint, "strictMode") {
 		t.Errorf("scanner hint should point at strictMode; got %q", hint)
 	}
-	if !strings.Contains(hint, "server restart") {
-		t.Errorf("scanner hint should remind the user to restart; got %q", hint)
+	if strings.Contains(hint, "server restart") {
+		t.Errorf("scanner hint must not name `server restart`, which destroys a bridge; got %q", hint)
+	}
+	if !strings.Contains(strings.ToLower(hint), "restart pinchtab") {
+		t.Errorf("scanner hint should remind the user to restart PinchTab; got %q", hint)
 	}
 }

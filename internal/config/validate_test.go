@@ -1,7 +1,10 @@
 package config
 
 import (
+	"errors"
+	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -13,6 +16,7 @@ import (
 	_ "github.com/pinchtab/pinchtab/internal/browsers/chrome"
 	_ "github.com/pinchtab/pinchtab/internal/browsers/cloak"
 	_ "github.com/pinchtab/pinchtab/internal/browsers/ghostchrome"
+	"github.com/pinchtab/pinchtab/internal/session"
 )
 
 func TestValidateFileConfig_Valid(t *testing.T) {
@@ -965,7 +969,7 @@ func TestValidateFileConfig_IDPIPassthrough(t *testing.T) {
 	fc := &FileConfig{
 		Security: SecurityConfig{
 			AllowedDomains: []string{""}, // invalid
-			IDPI: IDPIConfig{
+			IDPI: &IDPIConfig{
 				Enabled:        true,
 				CustomPatterns: []string{"  "}, // invalid
 			},
@@ -1026,6 +1030,7 @@ func TestValidateFileConfig_TabPolicyBlock(t *testing.T) {
 		{"all empty", TabPolicyDefaults{}, false},
 		{"valid lifecycle", TabPolicyDefaults{Lifecycle: "close_idle"}, false},
 		{"keep lifecycle", TabPolicyDefaults{Lifecycle: "keep"}, false},
+		{"freeze lifecycle", TabPolicyDefaults{Lifecycle: "freeze_idle"}, false},
 		{"valid eviction", TabPolicyDefaults{Eviction: "reject"}, false},
 		{"bad lifecycle", TabPolicyDefaults{Lifecycle: "burn"}, true},
 		{"bad eviction", TabPolicyDefaults{Eviction: "drop"}, true},
@@ -1309,5 +1314,176 @@ func TestTheIgnoredKeyTextsInstructOnlyWhatTheProductCanDo(t *testing.T) {
 	fc := DefaultFileConfig()
 	if err := SetConfigValue(&fc, "server.stateDir", t.TempDir()); err != nil {
 		t.Errorf("the refusal names server.stateDir but config set rejects it: %v", err)
+	}
+}
+
+// mode used to be accepted whatever it said and read by nothing, so
+// `config set sessions.agent.mode nonsense` succeeded and changed nothing.
+// "required" is refused separately from a typo because it is not a typo: it names
+// a posture this server does not enforce, and accepting it leaves an operator
+// believing they have session-only auth.
+func TestValidateFileConfig_AgentSessionMode(t *testing.T) {
+	for _, tt := range []struct {
+		mode     string
+		wantErr  bool
+		wantSays string
+	}{
+		{"", false, ""},
+		{"off", false, ""},
+		{"preferred", false, ""},
+		{"required", true, "not implemented"},
+		{"nonsense", true, "invalid value"},
+		{"prefered", true, "invalid value"},
+		// Case and surrounding space are read the way every other enum in this
+		// file is read, so a capitalisation slip in an auth switch means what the
+		// operator wrote instead of being refused as a typo.
+		{"Off", false, ""},
+		{"OFF", false, ""},
+		{" off ", false, ""},
+		{" Preferred ", false, ""},
+	} {
+		fc := &FileConfig{Sessions: SessionsFileConfig{Agent: AgentSessionFileConfig{Mode: tt.mode}}}
+		errs := ValidateFileConfig(fc)
+
+		if hasErr := len(errs) > 0; hasErr != tt.wantErr {
+			t.Errorf("mode=%q: got error=%v (%v), want error=%v", tt.mode, hasErr, errs, tt.wantErr)
+			continue
+		}
+		if !tt.wantErr {
+			continue
+		}
+		message := errs[0].Error()
+		if !strings.Contains(message, "sessions.agent.mode") {
+			t.Errorf("mode=%q: refusal %q does not name the field", tt.mode, message)
+		}
+		if !strings.Contains(message, tt.wantSays) {
+			t.Errorf("mode=%q: refusal %q does not say %q", tt.mode, message, tt.wantSays)
+		}
+		var ve ValidationError
+		if !errors.As(errs[0], &ve) || !ve.FatalAtLoad {
+			t.Errorf("mode=%q: the refusal does not declare itself fatal at load, so a server would warn and then pick a posture on the operator's behalf", tt.mode)
+		}
+	}
+}
+
+// The two readers of ModeServes answer at different points — the live store and the
+// raw file value the restart-reason comparison comes from — so they are asserted
+// together. A fold applied at only one of them would disagree for "Off", and the
+// disagreement is invisible from either side alone.
+func TestBothModeConsumersAgreeOnEveryValue(t *testing.T) {
+	enabled := true
+	for _, tt := range []struct {
+		mode string
+		want bool
+	}{
+		{"", true},
+		{"preferred", true},
+		{" Preferred ", true},
+		{"off", false},
+		{"Off", false},
+		{"OFF", false},
+		{" off ", false},
+		{"required", false},
+		{"prefered", false},
+	} {
+		fromFile := SessionsFileConfig{Agent: AgentSessionFileConfig{Enabled: &enabled, Mode: tt.mode}}.AgentEnabled()
+		fromStore := session.NewStore(session.Config{Enabled: true, Mode: tt.mode}).Enabled()
+		if fromFile != tt.want || fromStore != tt.want {
+			t.Errorf("mode=%q: file config says %v, the live store says %v, want %v — one predicate, two readers, and a value the validator refuses must never serve",
+				tt.mode, fromFile, fromStore, tt.want)
+		}
+	}
+}
+
+// The claim the previous card published to operators and the load path did not keep:
+// a config the server cannot interpret stops it, rather than warning and then reading
+// the value as the default. Driven through a real file and a real load, because the
+// validator's return value was already correct while the outcome was not.
+func TestAModeTheServerCannotInterpretStopsTheLoad(t *testing.T) {
+	for _, tt := range []struct {
+		mode      string
+		wantFatal bool
+	}{
+		{"required", true},
+		{"nonsense", true},
+		{"Off", false},
+		{"preferred", false},
+	} {
+		path := filepath.Join(t.TempDir(), "config.json")
+		body := fmt.Sprintf(`{"server":{"port":"9867"},"sessions":{"agent":{"mode":%q}}}`, tt.mode)
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PINCHTAB_CONFIG", path)
+
+		cfg, _, err := LoadConfig()
+		if !tt.wantFatal {
+			if err != nil {
+				t.Errorf("mode=%q refused the load: %v", tt.mode, err)
+			}
+			continue
+		}
+		if err == nil {
+			t.Errorf("mode=%q loaded and the server would run with agent sessions %v; a posture it cannot interpret must not be chosen on the operator's behalf",
+				tt.mode, cfg.Sessions.Agent.Enabled)
+			continue
+		}
+		if !strings.Contains(err.Error(), "sessions.agent.mode") {
+			t.Errorf("mode=%q: the fatal error %q does not name the field to fix", tt.mode, err)
+		}
+	}
+}
+
+// A fatal load must not lock the operator out of the command that repairs it. The
+// editor reads and writes the file directly and never builds a RuntimeConfig, so
+// `config set sessions.agent.mode off` works on a config the server refuses to
+// start on — pinned here because routing the editor through the runtime load would
+// be an invisible change that leaves a hand edit as the only way out.
+func TestTheEditorStillRepairsAConfigTheLoadRefuses(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"server":{"port":"9867"},"sessions":{"agent":{"mode":"required"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PINCHTAB_CONFIG", path)
+
+	if _, _, err := LoadConfig(); err == nil {
+		t.Fatal("the load accepted the unusable mode, so this test is not standing on the state it is about")
+	}
+
+	fc, loadedPath, err := LoadFileConfig()
+	if err != nil {
+		t.Fatalf("the editor cannot even read the file it must repair: %v", err)
+	}
+	if err := SetConfigValue(fc, "sessions.agent.mode", session.ModeOff); err != nil {
+		t.Fatalf("the editor refused the repair: %v", err)
+	}
+	if err := SaveFileConfig(fc, loadedPath); err != nil {
+		t.Fatalf("the editor could not save the repair: %v", err)
+	}
+	if _, _, err := LoadConfig(); err != nil {
+		t.Fatalf("the repaired config still refuses to load: %v", err)
+	}
+}
+
+// The predicate the whole card turns on, at the file-config layer: mode off and
+// enabled false must answer the same, or the restart-reason comparison built on
+// this misses the transition through the other field.
+func TestAgentEnabledFoldsBothFields(t *testing.T) {
+	enabled, disabled := true, false
+	for _, tt := range []struct {
+		name string
+		fc   SessionsFileConfig
+		want bool
+	}{
+		{"absent keys", SessionsFileConfig{}, true},
+		{"enabled true", SessionsFileConfig{Agent: AgentSessionFileConfig{Enabled: &enabled}}, true},
+		{"enabled false", SessionsFileConfig{Agent: AgentSessionFileConfig{Enabled: &disabled}}, false},
+		{"mode off", SessionsFileConfig{Agent: AgentSessionFileConfig{Mode: "off"}}, false},
+		{"enabled true, mode off", SessionsFileConfig{Agent: AgentSessionFileConfig{Enabled: &enabled, Mode: "off"}}, false},
+		{"mode preferred", SessionsFileConfig{Agent: AgentSessionFileConfig{Mode: "preferred"}}, true},
+	} {
+		if got := tt.fc.AgentEnabled(); got != tt.want {
+			t.Errorf("%s: AgentEnabled() = %v, want %v", tt.name, got, tt.want)
+		}
 	}
 }

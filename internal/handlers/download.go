@@ -45,7 +45,7 @@ func (h *Handlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 	}
 	validator := newDownloadURLGuard(allowed)
 	if err := validator.Validate(dlURL); err != nil {
-		httpx.Error(w, 400, fmt.Errorf("unsafe URL: %w", err))
+		writeDownloadGuardError(w, fmt.Errorf("unsafe URL: %w", err), maxDownloadBytes)
 		return
 	}
 
@@ -117,12 +117,12 @@ func (h *Handlers) enforceDownloadTabPolicy(w http.ResponseWriter, r *http.Reque
 		httpx.ErrorCode(w, http.StatusLocked, "tab_locked", err.Error(), false, nil)
 		return false
 	}
-	currentURL, ok := h.applyTabGuards(w, r, ctx, resolvedTabID, guardDomainPolicy|guardHandoffPause)
+	currentURL, ok := h.applyTabGuards(w, r, ctx, resolvedTabID, guardDialogBlocked|guardDomainPolicy|guardHandoffPause)
 	if !ok {
 		return false
 	}
 	if currentURL == "" {
-		if provider, ok := h.Bridge.(tabPolicyStateProvider); ok {
+		if provider, ok := bridgeAs[tabPolicyStateProvider](h.Bridge); ok {
 			if state, ok := provider.GetTabPolicyState(resolvedTabID); ok && state.CurrentURL != "" {
 				currentURL = state.CurrentURL
 			}
@@ -269,23 +269,13 @@ func (h *Handlers) writeDownloadResponse(w http.ResponseWriter, body []byte, mim
 
 // @Endpoint GET /tabs/{id}/download
 func (h *Handlers) HandleTabDownload(w http.ResponseWriter, r *http.Request) {
-	tabID := r.PathValue("id")
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
+	tabID, ok := requirePathTabID(w, r)
+	if !ok {
 		return
 	}
 	if _, _, err := h.tabContext(r, tabID); err != nil {
 		WriteTabContextError(w, err, 404)
 		return
 	}
-
-	q := r.URL.Query()
-	q.Set("tabId", tabID)
-
-	req := r.Clone(r.Context())
-	u := *r.URL
-	u.RawQuery = q.Encode()
-	req.URL = &u
-
-	h.HandleDownload(w, req)
+	h.HandleDownload(w, cloneWithTabIDQuery(r, tabID))
 }

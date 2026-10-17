@@ -2,6 +2,8 @@ package actions
 
 import (
 	"encoding/json"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -283,7 +285,7 @@ func TestPressWithSnapDiffFetchesSnapshot(t *testing.T) {
 	if m.requests[2].Path != "/snapshot" {
 		t.Fatalf("snapshot path = %q, want /snapshot", m.requests[2].Path)
 	}
-	if m.requests[2].Query != "filter=interactive&format=compact&diff=true" {
+	if m.requests[2].Query != (url.Values{"filter": {"interactive"}, "format": {"compact"}, "diff": {"true"}}).Encode() {
 		t.Fatalf("snapshot query = %q", m.requests[2].Query)
 	}
 }
@@ -1012,5 +1014,76 @@ func TestScrollPositionalWinsOverThePixelFlagsWithoutCobrasArgsHook(t *testing.T
 				}
 			}
 		})
+	}
+}
+
+// The repro from the card: clicking an ordinary link. It used to print an error and
+// exit 1 after the click had already worked; it now prints where the tab landed and
+// exits 0. captureStdout would not see an exit, so the assertion is on the output —
+// output.Error is the only path that exits, and reaching this branch means it did not.
+func TestPrintActionResultANavigatingClickReportsWhereItLanded(t *testing.T) {
+	navigated := map[string]any{
+		"success": true,
+		"result": map[string]any{
+			"clicked":     true,
+			"navigated":   true,
+			"url":         "https://www.iana.org/help/example-domains",
+			"previousUrl": "https://example.com/",
+			"refsStale":   true,
+		},
+	}
+
+	out := captureStdout(t, func() { printActionResult("click", navigated) })
+	if !strings.Contains(out, "https://www.iana.org/help/example-domains") {
+		t.Errorf("stdout = %q; the caller cannot see where the click landed", out)
+	}
+
+	hint := captureStderr(t, func() { printActionResult("click", navigated) })
+	if !strings.Contains(hint, "snap") {
+		t.Errorf("stderr = %q; nothing tells the caller its refs are dead", hint)
+	}
+}
+
+// A click that did not move the page keeps the plain answer: the landed-URL line is
+// the navigation report, not decoration on every click.
+func TestPrintActionResultAClickThatDidNotNavigateStaysPlain(t *testing.T) {
+	got := captureStdout(t, func() {
+		printActionResult("click", map[string]any{
+			"success": true,
+			"result":  map[string]any{"clicked": true},
+		})
+	})
+	if strings.Contains(got, "navigated") {
+		t.Errorf("output = %q; a click that moved nothing reported a navigation", got)
+	}
+}
+
+// A submit that redirects keeps its own post-state headline — that says more than
+// "it moved" — and reports the landing underneath it. The landing used to be absent
+// from this form entirely.
+func TestPrintActionResultASubmitThatNavigatedKeepsItsPostStateAndSaysWhereItLanded(t *testing.T) {
+	navigatedSubmit := map[string]any{
+		"success": true,
+		"result": map[string]any{
+			"clicked":     true,
+			"postState":   map[string]any{"status": "succeeded", "signal": "url_changed"},
+			"navigated":   true,
+			"url":         "https://shop.example.com/order/confirmed",
+			"previousUrl": "https://shop.example.com/checkout",
+			"refsStale":   true,
+		},
+	}
+
+	out := captureStdout(t, func() { printActionResult("click", navigatedSubmit) })
+	if !strings.Contains(out, "SUCCEEDED url_changed") {
+		t.Errorf("stdout = %q; the submit lost its observed post-state signal", out)
+	}
+	if !strings.Contains(out, "https://shop.example.com/order/confirmed") {
+		t.Errorf("stdout = %q; the submit does not say where it landed", out)
+	}
+
+	hint := captureStderr(t, func() { printActionResult("click", navigatedSubmit) })
+	if !strings.Contains(hint, "snap") {
+		t.Errorf("stderr = %q; nothing tells the caller its refs are dead", hint)
 	}
 }

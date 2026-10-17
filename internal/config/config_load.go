@@ -2,39 +2,31 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/pinchtab/pinchtab/internal/autosolver"
 	"github.com/pinchtab/pinchtab/internal/browsers"
 )
 
-var configHintOnce sync.Once
-
-// EmitDefaultConfigHint prints a one-time hint to stderr when PINCHTAB_CONFIG
-// points somewhere other than the default config path AND a default config
-// already exists at that path. The hint is best-effort UX nudge for users
-// who may not realize they're running against a custom config.
-//
-// Scoped to specific commands (health, config) and once-per-process via
-// sync.Once so scripted callers and unrelated CLI commands stay quiet.
-func EmitDefaultConfigHint() {
-	configHintOnce.Do(func() {
-		defaultConfigPath := filepath.Join(userConfigDir(), "config.json")
-		configPath := envOr("PINCHTAB_CONFIG", defaultConfigPath)
-		if configPath == defaultConfigPath {
-			return
-		}
-		if _, err := os.Stat(defaultConfigPath); err != nil {
-			return
-		}
-		fmt.Fprintf(os.Stderr, "HINT: default config exists at %s — you can edit it directly instead of using PINCHTAB_CONFIG\n", defaultConfigPath)
-	})
+// DefaultConfigHint returns the advisory shown when PINCHTAB_CONFIG points
+// somewhere other than the default config path AND a default config already
+// exists there, or "" when it does not apply. It only computes the text; the
+// caller routes it through output.Advisory, which owns suppression and dedupe.
+func DefaultConfigHint() string {
+	defaultConfigPath := filepath.Join(userConfigDir(), "config.json")
+	if envOr("PINCHTAB_CONFIG", defaultConfigPath) == defaultConfigPath {
+		return ""
+	}
+	if _, err := os.Stat(defaultConfigPath); err != nil {
+		return ""
+	}
+	return fmt.Sprintf("default config exists at %s — you can edit it directly instead of using PINCHTAB_CONFIG", defaultConfigPath)
 }
 
 // parsedConfigFile is the side-effect-free result of resolving + reading +
@@ -202,17 +194,18 @@ func LoadConfig() (*RuntimeConfig, []LoadDiagnostic, error) {
 		AllowDownload:             false,
 		AllowCookies:              false,
 		AllowNetworkIntercept:     false,
+		AllowMemory:               false,
 		AllowFileScheme:           false,
 		RetainNetworkBodies:       false,
 		RetainNetworkBodyMaxBytes: 256 * 1024,
-		AllowedDomains:            append([]string(nil), defaultLocalAllowedDomains...),
+		AllowedDomains:            nil,
 		DownloadAllowedDomains:    nil,
 		DownloadMaxBytes:          DefaultDownloadMaxBytes,
+		MemorySnapshotMaxBytes:    DefaultMemorySnapshotMaxBytes,
 		AllowUpload:               false,
 		AllowClipboard:            false,
 		AllowStateExport:          false,
 		StateEncryptionKey:        "",
-		EnableActionGuards:        true,
 		UploadMaxRequestBytes:     DefaultUploadMaxRequestBytes,
 		UploadMaxFiles:            DefaultUploadMaxFiles,
 		UploadMaxFileBytes:        DefaultUploadMaxFileBytes,
@@ -262,14 +255,6 @@ func LoadConfig() (*RuntimeConfig, []LoadDiagnostic, error) {
 		AttachAllowHosts:   []string{"127.0.0.1", "localhost", "::1"},
 		AttachAllowSchemes: []string{"ws", "wss", "http", "https"},
 
-		IDPI: IDPIConfig{
-			Enabled:        true,
-			StrictMode:     true,
-			ScanContent:    true,
-			WrapContent:    true,
-			ScanTimeoutSec: 5,
-		},
-
 		Observability: ObservabilityConfig{
 			Activity: ActivityConfig{
 				Enabled:        true,
@@ -281,7 +266,7 @@ func LoadConfig() (*RuntimeConfig, []LoadDiagnostic, error) {
 
 		Sessions: SessionsRuntimeConfig{
 			Agent: AgentSessionRuntimeConfig{
-				Enabled:     true,
+				Enabled:     DefaultAgentSessionsEnabled,
 				Mode:        "preferred",
 				IdleTimeout: 30 * time.Minute,
 				MaxLifetime: 24 * time.Hour,
@@ -336,6 +321,9 @@ func LoadConfig() (*RuntimeConfig, []LoadDiagnostic, error) {
 	for _, e := range res.ValidationErrs {
 		diags = append(diags, LoadDiagnostic{slog.LevelWarn, "config validation error", []any{"path", res.Path, "error", e}})
 	}
+	if err := fatalValidationError(res.ValidationErrs); err != nil {
+		return cfg, diags, err
+	}
 	// Reported at load like the rest, but from the non-gating list: the file says
 	// something inert, which is worth knowing and is nobody's blocker.
 	for _, advisory := range res.Advisories {
@@ -349,6 +337,20 @@ func LoadConfig() (*RuntimeConfig, []LoadDiagnostic, error) {
 	}
 
 	return cfg, diags, nil
+}
+
+// fatalValidationError returns the first validation error that must stop the load.
+// The class is declared by the error itself (ValidationError.FatalAtLoad), never
+// inferred here from a field name or a message, so adding a member is a decision
+// taken where the rule is written.
+func fatalValidationError(errs []error) error {
+	for _, e := range errs {
+		var ve ValidationError
+		if errors.As(e, &ve) && ve.FatalAtLoad {
+			return fmt.Errorf("config cannot be loaded: %w", e)
+		}
+	}
+	return nil
 }
 
 // ConfigFileStatus reports on-disk config state without invoking Load (used by `pinchtab doctor`).
@@ -458,12 +460,18 @@ func applySecurityConfig(cfg *RuntimeConfig, s SecurityConfig) {
 	if s.AllowNetworkIntercept != nil {
 		cfg.AllowNetworkIntercept = *s.AllowNetworkIntercept
 	}
+	if s.AllowMemory != nil {
+		cfg.AllowMemory = *s.AllowMemory
+	}
 	if s.AllowFileScheme != nil {
 		cfg.AllowFileScheme = *s.AllowFileScheme
 	}
 	cfg.DownloadAllowedDomains = append([]string(nil), s.DownloadAllowedDomains...)
 	if s.DownloadMaxBytes != nil {
 		cfg.DownloadMaxBytes = clampPositiveLimit(*s.DownloadMaxBytes, DefaultDownloadMaxBytes, MaxDownloadMaxBytes)
+	}
+	if s.MemorySnapshotMaxBytes != nil {
+		cfg.MemorySnapshotMaxBytes = clampPositiveLimit(*s.MemorySnapshotMaxBytes, DefaultMemorySnapshotMaxBytes, MaxMemorySnapshotMaxBytes)
 	}
 	if s.AllowUpload != nil {
 		cfg.AllowUpload = *s.AllowUpload
@@ -476,9 +484,6 @@ func applySecurityConfig(cfg *RuntimeConfig, s SecurityConfig) {
 	}
 	if s.StateEncryptionKey != nil {
 		cfg.StateEncryptionKey = *s.StateEncryptionKey
-	}
-	if s.EnableActionGuards != nil {
-		cfg.EnableActionGuards = *s.EnableActionGuards
 	}
 	if s.UploadMaxRequestBytes != nil {
 		cfg.UploadMaxRequestBytes = clampPositiveLimit(*s.UploadMaxRequestBytes, DefaultUploadMaxRequestBytes, MaxUploadMaxRequestBytes)
@@ -500,7 +505,9 @@ func applySecurityConfig(cfg *RuntimeConfig, s SecurityConfig) {
 	if s.TrustLoopbackProxy != nil {
 		cfg.TrustLoopbackProxy = *s.TrustLoopbackProxy
 	}
-	cfg.IDPI = s.IDPI
+	if s.IDPI != nil {
+		cfg.IDPI = *s.IDPI
+	}
 	cfg.AllowedDomains = effectiveSecurityAllowedDomains(s)
 	if s.Attach.Enabled != nil {
 		cfg.AttachEnabled = *s.Attach.Enabled
@@ -718,7 +725,7 @@ func applyInstanceDefaultsConfig(cfg *RuntimeConfig, d *InstanceDefaultsConfig) 
 			cfg.TabRestore = *tp.Restore
 		}
 	}
-	if cfg.TabLifecyclePolicy == "close_idle" && cfg.TabCloseDelay < time.Second {
+	if IdleTabLifecycle(cfg.TabLifecyclePolicy) && cfg.TabCloseDelay < time.Second {
 		cfg.TabCloseDelay = time.Second
 	}
 	if d.DialogAutoAccept != nil {

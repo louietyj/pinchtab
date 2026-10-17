@@ -12,6 +12,11 @@ pinchtab server restart                 # Stop + restart in background (applies 
 pinchtab bridge                         # Start the bridge-only runtime
 pinchtab bridge --log-level debug       # Bridge threshold (same precedence as server)
 pinchtab mcp                            # Start the MCP stdio server
+pinchtab dashboard                      # Open the dashboard in your browser (--no-open prints the URL)
+pinchtab session create --agent-id <id> # Create an agent session (--grant limits it to capability groups)
+pinchtab session list                   # List agent sessions
+pinchtab session info                   # Show the current agent session
+pinchtab session revoke <session-id>    # Revoke an agent session
 pinchtab daemon                         # Show daemon status
 pinchtab daemon install                 # Install as a background service
 pinchtab daemon start                   # Start the background service
@@ -78,7 +83,7 @@ pinchtab nav <url> --block-images       # Block images for this navigation
 pinchtab nav <url> --block-ads          # Block ads for this navigation
 pinchtab nav <url> --snap               # Navigate and output interactive snapshot
 pinchtab nav <url> --text               # Navigate and output page text
-pinchtab nav <url> --print-tab-id       # Print only the tab ID, whatever stdout is
+pinchtab nav <url> --print-tab-id       # Print only the tab ID, whatever stdout is (with --snap/--text the tab ID goes to stderr)
 pinchtab back                           # Go back in the active tab
 pinchtab back --tab <id>                # Go back in a specific tab
 pinchtab forward                        # Go forward in the active tab
@@ -107,6 +112,7 @@ pinchtab tab                            # List tabs
 pinchtab tab <id>                       # Focus a tab by ID or 1-based index
 pinchtab nav <url> --new-tab            # Open a new tab and navigate it
 pinchtab tab close <id>                 # Close a tab
+pinchtab close <id>                     # Same as tab close
 ```
 
 Use top-level commands with `--tab` for tab-scoped work:
@@ -137,6 +143,8 @@ Most element commands accept a unified selector:
 
 Positional wrappers index the candidates in **document order** for every selector kind, so `nth:0:` is the first match in the page and `nth:1:` always comes after it. A bare `text:` selector is the one form that does not index: it picks the most control-like match among the smallest ones, so `text:Save` prefers a `<button>` over a `<div>` carrying the same label — which means `text:X` and `first:text:X` can resolve to different elements. A wrapper only ever chooses among the matches a bare selector would find; it never changes which matches exist.
 
+`text:` prefers an **exact label over containment**. On a page offering both `Save` and `Save and exit`, `text:Save` is the button labelled exactly `Save`, wherever either sits in the document. For a bare `text:` the exact label only breaks ties between equally control-like matches: a heading reading `Sign in` does not take the click from a `Sign in with Google` button, and a label inside a control counts as that control. Positional wrappers index the exact matches when there are any, and all containing matches otherwise, which is what lets `text:Sign` reach `Sign in with Google`. This is the same ladder [`select`](./reference/select.md) uses for option text. Prefer the full label when controls share a prefix — `Delete` and `Delete all` are one typo apart in effect.
+
 Selector prefixes are case-insensitive, so `CSS:#login` and `css:#login` mean the same thing. Only the prefix is case-folded; the value after it is passed through unchanged.
 
 Structured forms such as `role:`, `label:`, and `testid:` are matched by the semantic engine against enriched snapshot descriptors. CSS, XPath, refs, the existing `text:` action selector, and bare CSS/text wrappers remain browser-side selector resolution.
@@ -163,6 +171,7 @@ pinchtab mouse down [selector]          # Press a mouse button
 pinchtab mouse up [selector]            # Release a mouse button
 pinchtab mouse wheel [dy|selector]      # Dispatch wheel deltas
 pinchtab drag <from> <to>               # Drag between targets (selector/ref or x,y)
+pinchtab drag <selector> --drag-x <n> --drag-y <n>  # Drag by a pixel offset
 pinchtab focus [selector]               # Focus an element
 pinchtab scroll <selector|pixels>       # Scroll an element or the page
 pinchtab scroll down --snap             # Scroll and output snapshot
@@ -197,13 +206,52 @@ pinchtab snap --text                    # Text output
 pinchtab text                           # Extract readable text
 pinchtab text --full                    # Full page innerText
 pinchtab text --raw                     # Raw extraction
+pinchtab text --markdown                 # Markdown (preserves links, tables)
+pinchtab text --markdown --output page.md # Write Markdown to a file (one-line confirmation)
 pinchtab text --frame <frameId>         # Read text from one iframe
+pinchtab html [selector]                # Document or element HTML (--max-chars, --frame)
+pinchtab styles [selector]              # Computed styles (root element when omitted; --prop for one)
+pinchtab title                          # Current tab title
+pinchtab url                            # Current tab URL
+pinchtab value <ref>                    # Current value of a form element
+pinchtab attr <ref> <name>              # Value of one HTML attribute
+pinchtab box <ref>                      # Bounding box of an element
+pinchtab checked <ref>                  # Whether an element is checked
+pinchtab enabled <ref>                  # Whether an element is enabled
+pinchtab visible <ref>                  # Whether an element is rendered
+pinchtab count <selector>               # Count elements matching a CSS selector
 pinchtab find <query>                   # Semantic element search
 pinchtab find --threshold <0-1>         # Minimum similarity score
 pinchtab find --explain                 # Include score breakdown
 pinchtab find --ref-only                # Print only the best ref
+pinchtab extract --schema <file>        # Schema-typed data as JSON (see reference/extract.md)
+pinchtab extract --schema -             # Read the schema from stdin
+pinchtab extract --schema <file> --fields   # + field<TAB>ref<TAB>confidence table
+pinchtab extract --schema <file> --scope role:table --max-items 5  # Confine and cap
 pinchtab eval <expression>              # Evaluate JavaScript
+pinchtab a11y audit                     # Accessibility score + findings (native engine)
+pinchtab a11y audit --axe               # Run axe-core in the page (industry rule ids)
+pinchtab a11y audit --axe --tags wcag2a,wcag2aa   # axe: filter by WCAG tags
+pinchtab a11y audit --axe --rules image-alt,label # axe: run only these rule ids
+pinchtab a11y audit --axe --json        # Full JSON envelope with per-node refs
+pinchtab memory                         # JS heap usage and DOM counters for the tab
+pinchtab memory --gc --json             # Collect garbage first, raw JSON
+pinchtab memory snapshot                # V8 heap snapshot to a server-side file (security.allowMemory)
+pinchtab memory snapshot --out app.heapsnapshot  # Also copy it to a local path
+pinchtab memory summary <id> --top 5    # Top constructors and duplicate strings of a snapshot
+pinchtab memory compare <a> <b> --top 5 # Constructor growth from snapshot a to snapshot b
+pinchtab memory compare <a> <b> --retained  # Also retained sizes from b's dominator tree
 ```
+
+`pinchtab memory snapshot`, `summary` and `compare` need
+`security.allowMemory`, because a heap snapshot holds every string on the page.
+See [reference/memory.md](reference/memory.md).
+
+`pinchtab a11y audit --axe` runs the vendored axe-core engine (see
+[reference/a11y.md](reference/a11y.md)) in the page's isolated world, so page
+script cannot tamper with the result. Each violation node that maps to a
+snapshot ref carries it, so a failing element can be actioned directly with
+`pinchtab click` and the other element commands.
 
 `pinchtab eval` is intentionally not frame-scoped. Current `pinchtab frame`
 state affects selector-based commands such as `snap`, `click`, `fill`, and
@@ -251,13 +299,16 @@ pinchtab wait --url <glob>              # Wait for URL match (glob: **, *, ?)
 pinchtab wait --load <state>            # state: ready-state | content-loaded | network-idle
                                         #   ready-state    → document.readyState === 'complete'
                                         #   content-loaded → readyState in {interactive, complete}
-                                        #   network-idle   → 0 in-flight requests for 500ms (override with --idle-for)
+                                        #   network-idle   → 0 in-flight requests for 500ms (HTTP `idleFor` overrides; no CLI flag)
 pinchtab wait --fn <expression>         # Wait for JS to become truthy
-pinchtab wait ... --timeout <ms>        # Override timeout (default 10000, max 30000)
+pinchtab wait ... --timeout-ms <ms>     # Override timeout in ms (default 10000, max 30000); --timeout is a deprecated alias
 pinchtab network                        # List captured network requests
 pinchtab network <requestId>            # Show one request in detail
 pinchtab network --stream               # Stream network entries
 pinchtab network --clear                # Clear captured network data
+pinchtab network route <url> --abort    # Block matching requests (--body '<json>' fulfills instead)
+pinchtab network unroute [url]          # Remove one interception rule, or all of them
+pinchtab network rules                  # List interception rules
 # HAR / NDJSON export is available over HTTP (no dedicated CLI subcommand):
 #   curl http://127.0.0.1:9867/network/export                 → HAR 1.2 archive
 #   curl http://127.0.0.1:9867/network/export?format=ndjson   → NDJSON (one entry per line)
@@ -285,6 +336,8 @@ pinchtab tab handoff <tabId> --reason captcha --timeout-ms 120000
 pinchtab tab handoff-status <tabId>
 pinchtab tab resume <tabId> --status completed
 ```
+
+`pinchtab handoff`, `pinchtab handoff-status` and `pinchtab resume` are top-level spellings of the same three commands.
 
 API equivalents:
 
@@ -338,6 +391,57 @@ pinchtab record stop                    # Stop recording and save
 pinchtab record status                  # Check recording status
 ```
 
+## Storage And State
+
+The key or state name is the first argument. `--key` / `--name` are accepted as the same
+value for existing scripts; passing both the argument and the flag is refused.
+
+```bash
+pinchtab storage get                    # Both localStorage and sessionStorage for the tab's origin
+pinchtab storage get --type local       # One store
+pinchtab storage get <key>              # A single item (same as --key <key>)
+pinchtab storage set <key> <value>      # Write an item (localStorage unless --type session)
+pinchtab storage delete <key>           # Remove one key (same as --key <key>); a key is required
+pinchtab storage clear                  # Wipe localStorage (--type session for sessionStorage)
+pinchtab storage clear --all            # Wipe both stores
+pinchtab state                          # Current browser state for the tab
+pinchtab state list                     # List saved state files
+pinchtab state save [name]              # Save cookies and storage (name auto-generated if omitted)
+pinchtab state save <name> --encrypt    # Save encrypted (needs security.stateEncryptionKey)
+pinchtab state load <name>              # Restore a saved state; <name> may be a prefix (newest match)
+pinchtab state show <name>              # Print a saved state file
+pinchtab state delete <name>            # Delete a saved state file
+pinchtab state clean --older-than <h>   # Remove state files older than <h> hours (default 24)
+pinchtab cookies get                    # Cookies for the tab's current page (--name, --url)
+pinchtab cookies set <name> <value>     # Set a cookie (--domain, --path, --secure, --http-only, --same-site)
+pinchtab cookies clear                  # Clear ALL browser cookies, every origin
+```
+
+`storage delete` never wipes a store: a bare `pinchtab storage delete` is refused and names
+`storage clear`, the one wipe verb. Every storage verb takes `--tab <id>`, as do `state`,
+`state save` and `state load`. The `state` family requires `security.allowStateExport`.
+
+## Emulation
+
+```bash
+pinchtab set viewport <w> <h>           # Viewport size (--dpr, --mobile)
+pinchtab set geo <lat> <lon>            # Geolocation (--accuracy)
+pinchtab set media <feature> <value>    # CSS media feature, e.g. prefers-color-scheme dark
+pinchtab set offline <true|false>       # Toggle offline mode
+pinchtab set headers '<json>'           # Extra HTTP headers ({} clears them)
+pinchtab set credentials <user> <pass>  # HTTP auth credentials
+```
+
+## Site Audit, Compare, And Scrape
+
+```bash
+pinchtab audit <url>                    # Browser-enriched page audit (see audit.md)
+pinchtab compare <live-url> <staging-url>  # Visual + data diff of two site versions
+pinchtab scrape <url>                   # HTTP crawl, browser-render only thin pages (see scrape.md)
+```
+
+See [audit.md](audit.md) and [scrape.md](scrape.md) for flags and report shapes.
+
 ## Instances, Profiles, And Activity
 
 ```bash
@@ -348,9 +452,11 @@ pinchtab instance start --mode headed
 pinchtab instance start --port <n>
 pinchtab instance start --extension /path/to/ext
 pinchtab instance stop <id>             # Stop an instance
+pinchtab instance restart <id>          # Soft-restart an instance's browser process
 pinchtab instance logs <id>             # Show instance logs
-pinchtab instance navigate <id> <url>   # Open a tab in an instance and navigate it
+pinchtab instance navigate <id> <url>   # Open a tab in an instance already on <url> (one step)
 pinchtab profiles                       # List profiles
+pinchtab profiles create <name>         # Create a profile for human setup and login
 pinchtab profiles prune                 # List reclaimable quarantined profiles (removes nothing)
 pinchtab profiles prune --confirm       # Remove them and report the disk freed
 pinchtab profiles prune --profile <dir> # Reclaim just one quarantined directory
@@ -413,12 +519,17 @@ pinchtab config token                   # Copy server.token to the clipboard wit
 pinchtab config token --stdout          # Print server.token to stdout (headless hosts, $(...) capture)
 pinchtab config path                    # Print config file path
 pinchtab config validate                # Validate the current config file
+pinchtab config schema                  # Print the config JSON Schema URL (--print for the schema)
 pinchtab config get <path>              # Read one file-config value
 pinchtab config set <path> <val>        # Set one file-config value
 pinchtab config patch <json>            # Merge JSON into the config file
 pinchtab security                       # Interactive security overview
 pinchtab security up                    # Apply stricter defaults
 pinchtab security down                  # Apply documented guards-down preset
+pinchtab doctor                         # Read-only install and browser checks (--json, --check <name>)
+pinchtab doctor browsers                # Configured and known browsers with availability
+pinchtab doctor browser [name]          # Browser availability, or checks for one target
+pinchtab version                        # Print the PinchTab version
 ```
 
 ## Global Flags
@@ -444,6 +555,7 @@ Commands with `--tab` currently include:
 - `capture`
 - `pdf`
 - `find`
+- `extract`
 - `text`
 - `click`
 - `dblclick`
@@ -472,6 +584,13 @@ Commands with `--tab` currently include:
 - `dialog dismiss`
 - `console`
 - `errors`
+- `frame`, `html`, `styles`, `title`, `url`
+- `value`, `attr`, `box`, `checked`, `enabled`, `visible`, `count`
+- `drag`, `download`, `upload`, `annotate`
+- `a11y audit`, `memory`, `memory snapshot`, `record start`
+- `network route`, `network unroute`, `network rules`
+- `cookies get`, `cookies set`, `set` (every subcommand)
+- `storage` (every subcommand), `state`, `state save`, `state load`
 
 ## Output Format
 
@@ -488,4 +607,4 @@ pinchtab network --json                 # JSON: {"entries":[...],"count":5}
 
 **For scripts and automation**: Always use `--json` when piping output or parsing programmatically. Human-readable formats may change between versions and are not guaranteed to be stable. The JSON schema is the stable contract.
 
-Commands with `--json` include: `tab`, `frame`, `network`, `click`, `type`, `scroll`, `nav`, `back`, `forward`, `reload`, `wait`, `find`, `eval`, and most action commands.
+Commands with `--json` include: `tab`, `frame`, `network`, `click`, `type`, `scroll`, `nav`, `back`, `forward`, `reload`, `wait`, `find`, `extract`, `eval`, and most action commands.

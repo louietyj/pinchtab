@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -65,9 +64,8 @@ func (h *Handlers) HandleNetworkRouteList(w http.ResponseWriter, r *http.Request
 //
 // @Endpoint POST /tabs/{id}/network/route
 func (h *Handlers) HandleTabNetworkRoute(w http.ResponseWriter, r *http.Request) {
-	tabID := r.PathValue("id")
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
+	tabID, ok := requirePathTabID(w, r)
+	if !ok {
 		return
 	}
 	h.handleNetworkRouteFor(w, r, tabID)
@@ -77,9 +75,8 @@ func (h *Handlers) HandleTabNetworkRoute(w http.ResponseWriter, r *http.Request)
 //
 // @Endpoint DELETE /tabs/{id}/network/route
 func (h *Handlers) HandleTabNetworkUnroute(w http.ResponseWriter, r *http.Request) {
-	tabID := r.PathValue("id")
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
+	tabID, ok := requirePathTabID(w, r)
+	if !ok {
 		return
 	}
 	h.handleNetworkUnrouteFor(w, r, tabID)
@@ -89,9 +86,8 @@ func (h *Handlers) HandleTabNetworkUnroute(w http.ResponseWriter, r *http.Reques
 //
 // @Endpoint GET /tabs/{id}/network/route
 func (h *Handlers) HandleTabNetworkRouteList(w http.ResponseWriter, r *http.Request) {
-	tabID := r.PathValue("id")
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
+	tabID, ok := requirePathTabID(w, r)
+	if !ok {
 		return
 	}
 	h.handleNetworkRouteListFor(w, r, tabID)
@@ -192,12 +188,11 @@ func (h *Handlers) handleNetworkUnrouteFor(w http.ResponseWriter, r *http.Reques
 	}
 
 	pattern := r.URL.Query().Get("pattern")
-	if pattern == "" && r.ContentLength > 0 {
+	if pattern == "" {
 		var body struct {
 			Pattern string `json:"pattern"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			httpx.Error(w, 400, fmt.Errorf("decode body: %w", err))
+		if !decodeOptionalJSON(w, r, &body) {
 			return
 		}
 		pattern = body.Pattern
@@ -205,10 +200,6 @@ func (h *Handlers) handleNetworkUnrouteFor(w http.ResponseWriter, r *http.Reques
 
 	removed, err := h.Bridge.RemoveRouteRule(resolvedID, pattern)
 	if err != nil {
-		if errors.Is(err, bridge.ErrTabNotRouted) {
-			WriteTabContextError(w, err, 404)
-			return
-		}
 		httpx.Error(w, 500, err)
 		return
 	}
@@ -230,9 +221,6 @@ func (h *Handlers) handleNetworkRouteListFor(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		httpx.Error(w, 500, err)
 		return
-	}
-	if rules == nil {
-		rules = []bridge.RouteRule{}
 	}
 	httpx.JSON(w, 200, map[string]any{
 		"tabId": resolvedID,

@@ -2,19 +2,18 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/pinchtab/pinchtab/internal/activity"
+	"github.com/pinchtab/pinchtab/internal/api/types"
 	"github.com/pinchtab/pinchtab/internal/authn"
 	"github.com/pinchtab/pinchtab/internal/bridge"
 	_ "github.com/pinchtab/pinchtab/internal/browsers/all"
@@ -49,7 +48,7 @@ func fatalStartup(stage string, err error) {
 }
 
 func startupFatalHints(err error) []string {
-	if !errors.Is(err, syscall.EADDRINUSE) {
+	if !isAddrInUse(err) {
 		return nil
 	}
 	return []string{
@@ -87,18 +86,14 @@ func RunDashboard(cfg *config.RuntimeConfig, version string) {
 			RateBucketHosts: MetricInt(snapshot["rateBucketHosts"]),
 		}
 	})
-	configAPI := dashboard.NewConfigAPI(cfg, orch, profMgr, orch, dash, version, startedAt)
+	live := orch.LiveConfig()
+	configAPI := dashboard.NewConfigAPI(live, orch, profMgr, orch, dash, version, startedAt)
 	sessions := browsersession.NewManager(dashboard.BrowserSessionConfig(cfg))
 	configAPI.SetSessionManager(sessions)
-	authAPI := dashboard.NewAuthAPI(cfg, sessions)
+	authAPI := dashboard.NewAuthAPI(live, sessions)
 
-	sessionStore := session.NewStore(session.Config{
-		Enabled:     cfg.Sessions.Agent.Enabled,
-		Mode:        cfg.Sessions.Agent.Mode,
-		IdleTimeout: cfg.Sessions.Agent.IdleTimeout,
-		MaxLifetime: cfg.Sessions.Agent.MaxLifetime,
-		PersistPath: filepath.Join(cfg.StateDir, "sessions.json"),
-	})
+	sessionStore := session.NewStore(dashboard.AgentSessionConfig(cfg, dashboard.AgentSessionStatePath(cfg)))
+	configAPI.SetAgentSessionStore(sessionStore)
 	var sessionAPI *dashboard.SessionAPI
 	if sessionStore.Enabled() {
 		sessionAPI = dashboard.NewSessionAPI(sessionStore, cfg.BrowsersAvailable)
@@ -167,7 +162,7 @@ func RunDashboard(cfg *config.RuntimeConfig, version string) {
 		// Without this the family is a bare mux 404, indistinguishable from a typo and
 		// from bridge mode — which is what made the CLI print a config remedy at users
 		// for whom no config could work.
-		RegisterSessionsDisabled(mux)
+		RegisterSessionsDisabled(mux, sessionStore.DisabledBy())
 	}
 
 	syncCtx, syncCancel := context.WithCancel(context.Background())
@@ -281,24 +276,24 @@ func RunDashboard(cfg *config.RuntimeConfig, version string) {
 	if cfg.Scheduler.Enabled {
 		schedCfg := scheduler.ConfigFromRuntime(cfg.Scheduler)
 
-		resolver := &scheduler.ManagerResolver{Mgr: orch.InstanceManager()}
-		sched = scheduler.New(schedCfg, resolver)
+		sched = scheduler.New(schedCfg, orch, liveActivity)
 		sched.RegisterHandlers(mux)
 		slog.Info("scheduler enabled (on-demand)", "strategy", schedCfg.Strategy, "workers", schedCfg.WorkerCount)
 	}
 
 	mux.HandleFunc("GET /health", configAPI.HandleHealth)
 	registerFrontDoorMetrics(mux)
+	registerFrontDoorOpenAPI(mux, live)
 	mux.HandleFunc("GET /health/background", func(w http.ResponseWriter, r *http.Request) {
 		httpx.JSON(w, http.StatusOK, map[string]string{
 			"status":  "ok",
-			"mode":    "dashboard",
+			"mode":    types.ModeDashboard,
 			"version": version,
 			"marker":  cfg.BackgroundMarker,
 		})
 	})
 
-	handler := FrontDoorHandler(cfg, liveActivity, sessions, sessionStore, mux)
+	handler := FrontDoorHandler(live, liveActivity, sessions, sessionStore, notFoundEnvelope(mux))
 	if cfg.VerboseBanner {
 		cli.LogSecurityWarnings(cfg)
 	}
@@ -320,6 +315,7 @@ func RunDashboard(cfg *config.RuntimeConfig, version string) {
 	maintenanceCtx, maintenanceCancel := context.WithCancel(context.Background())
 	go orch.RunMaintenance(maintenanceCtx)
 	go sessionStore.RunMaintenance(maintenanceCtx)
+	go sessions.RunMaintenance(maintenanceCtx)
 
 	shutdownOnce := &sync.Once{}
 	doShutdown := func() {

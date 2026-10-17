@@ -1,36 +1,34 @@
 # CLI Overview
 
-`pinchtab` has two normal usage styles:
-
-- interactive menu mode
-- direct command mode
-
-Use the menu when you want a guided local control surface. Use direct commands when you want shell history, scripts, or remote targeting with `--server`.
+`pinchtab` is driven by direct commands. Running it with no subcommand prints a
+status summary and next-step hints.
 
 When you target a remote server with `--server`, the CLI is exercising the same privileged control plane as the dashboard and HTTP API. Do not use it as an access path for untrusted users or untrusted systems. For deployment guidance, see [Security](../guides/security.md).
 
-## Interactive Menu
+## Bare `pinchtab`
 
-Running `pinchtab` with no subcommand in an interactive terminal opens the menu. It does not immediately start the server.
-
-Typical flow:
+Running `pinchtab` with no subcommand does not start the server. When the config file
+is new or its `configVersion` is older than this build, it first runs the security
+setup (generating `server.token` if missing; the prompts only appear in an interactive
+terminal). It then prints the server state, where logs go, `allowedDomains`, IDPI
+state, and suggested next commands, for example:
 
 ```text
-listen    running  127.0.0.1:9867
-str,plc   simple,fcfs
-daemon    ok
-security  [■■■■■■■■■■]  LOCKED
+PinchTab dev
 
-Main Menu
-  1. Start server
-  2. Daemon
-  3. Start bridge
-  4. Start MCP server
-  5. Config
-  6. Security
-  7. Help
-  8. Exit
+  server               protected listener
+  logs                 stdout/stderr of the terminal running `pinchtab server`
+  allowedDomains       a.com, b.com
+  idpi                 enabled
+
+Next steps:
+  pinchtab config token --stdout               # print the API token (capture with $(...))
+  pinchtab health --json                       # retry health with the current token
+  pinchtab config show                         # inspect configured port and token
 ```
+
+Advisory hints about a steady state you may have chosen print once per run; set
+`PINCHTAB_HINTS=off` to silence them.
 
 ## Direct Commands
 
@@ -63,7 +61,8 @@ CLI requests carry agent identity over the `X-Agent-Id` request header.
 
 - `--agent-id <value>` sets the header explicitly for that command
 - `PINCHTAB_AGENT_ID` sets the default agent ID for the current shell or script
-- if neither is set, the CLI uses `cli`
+- if neither is set, the CLI sends no `X-Agent-Id`; a request authenticated with an
+  agent session (`PINCHTAB_SESSION`) is attributed to that session's agent ID
 
 That agent ID is what appears as `agentId` in `/api/activity`, the Agents page, and scheduler-driven activity.
 
@@ -102,7 +101,8 @@ exit=1
 ```
 
 Two commands take an argument rather than a subcommand and are unaffected: `pinchtab tab
-<id>` focuses a tab, and `pinchtab network <filter>` filters the network log. An unknown
+<id>` focuses a tab, and `pinchtab network <requestId>` inspects one captured request (filters use
+`--filter`, `--method`, `--status`, `--type`). An unknown
 value there is data the server rejects, not a typo the CLI can catch.
 
 ## Core Commands
@@ -115,9 +115,10 @@ value there is data the server rejects, not a typo the CLI can catch.
 | `pinchtab bridge` | Start the single-instance bridge runtime |
 | `pinchtab mcp` | Start the stdio MCP server |
 | `pinchtab daemon` | Show daemon status and manage the background service |
-| `pinchtab config` | Open the interactive config overview/editor |
-| `pinchtab security` | Open the interactive security overview |
+| `pinchtab config` | Print the config overview (read-only) |
+| `pinchtab security` | Print the runtime security posture |
 | `pinchtab completion <shell>` | Generate shell completion scripts |
+| `pinchtab version` | Print the PinchTab version (same as `--version`) |
 
 ### Server Flags
 
@@ -127,9 +128,15 @@ pinchtab server [flags]
 
 | Flag | Short | Purpose |
 | --- | --- | --- |
-| `--yolo` | `-y` | Apply guards down preset (enables evaluate, macro, download, cookies) |
-| `--headed` | `-H` | Start browser instances in headed (visible) mode |
+| `--yolo` | `-y` | Apply the guards-down preset for this run only; the config file is unchanged (every capability gate except state export on, attach on, IDPI off) |
+| `--headed` | `-H` | Start the default instance in headed (visible) mode |
 | `--extension <path>` | `-e` | Load browser extension (repeatable) |
+| `--browser <name>` | | `chrome`, `cloak`, or `ghost-chrome` (overrides config) |
+| `--bind <addr>` | | HTTP bind address (overrides `server.bind`) |
+| `--port <port>` | | HTTP port (overrides `server.port`) |
+| `--log-level <level>` | | `debug`, `info` (default), `warn`, or `error` |
+| `--verbose` | `-v` | Full startup banner; logs at debug only when neither `--log-level` nor `server.logLevel` is set |
+| `--background` | `-b` | Spawn the server detached and print JSON with pid/url/token |
 
 Examples:
 
@@ -165,11 +172,12 @@ Common commands:
 | `pinchtab fill <selector> <text>` | Fill directly |
 | `pinchtab text` | Extract page text (`--full`, `--raw`, `--frame <frameId>`) |
 | `pinchtab find <query>` | Semantic element search |
+| `pinchtab extract --schema <file\|->` | Schema-typed JSON from the page (`--scope`, `--max-items`, `--fields`, `--explain`) |
 | `pinchtab screenshot` | Save a screenshot (`-s/--selector` captures a specific element, `--scale <f>` rescales the bitmap, `--beyond-viewport` captures the full scrollable document) |
 | `pinchtab capture` | Paired screenshot + accessibility snapshot from the same DOM epoch (`--scale`, `--beyond-viewport`, `--require-pair`, `--with-bounds`) |
 | `pinchtab pdf` | Export the page as PDF |
 | `pinchtab network` | Inspect captured network requests |
-| `pinchtab wait ...` | Wait for selector, text, URL, JS, or time |
+| `pinchtab wait ...` | Wait for selector, text, URL, network idle, JS, or time |
 | `pinchtab console` | Show browser console logs |
 | `pinchtab errors` | Show browser error logs |
 
@@ -230,7 +238,7 @@ pinchtab pdf --tab <id> -o page.pdf
 
 ## Config From The CLI
 
-`pinchtab config` shows:
+`pinchtab config` prints a read-only overview:
 
 - `multiInstance.strategy`
 - `multiInstance.allocationPolicy`
@@ -238,15 +246,15 @@ pinchtab pdf --tab <id> -o page.pdf
 - `instanceDefaults.tabEvictionPolicy`
 - `instanceDefaults.tabPolicy.lifecycle`
 - the active config file path
-- the dashboard URL when the server is running
 - the masked server token
-- a `Copy token` action
+- the dashboard URL when the server is running
+- hints for `config get/set/show`, `config token` and `pinchtab security`
 
 For file schema details and `config get/set/patch`, see [Config](./config.md).
 
 ## Security From The CLI
 
-`pinchtab security` is the interactive security screen.
+`pinchtab security` prints the runtime security posture and recommended defaults.
 
 Direct subcommands:
 

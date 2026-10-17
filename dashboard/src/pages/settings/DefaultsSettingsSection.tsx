@@ -142,7 +142,7 @@ export function DefaultsSettingsSection({
       </SettingRow>
       <SettingRow
         label="Tab lifecycle"
-        description="Optionally auto-close idle tabs after a /text, /snapshot, or /action response. The timer resets on each subsequent request and is cancelled by /navigate."
+        description="Close idle closes a tab after a /text, /snapshot, or /action response once the delay passes; /navigate cancels it. Freeze idle freezes any tab no request has touched for the delay and unfreezes it on its next request."
       >
         <Select
           value={backendConfig.instanceDefaults.tabPolicy?.lifecycle ?? "keep"}
@@ -159,11 +159,12 @@ export function DefaultsSettingsSection({
         >
           <option value="keep">Keep (never auto-close)</option>
           <option value="close_idle">Close idle</option>
+          <option value="freeze_idle">Freeze idle</option>
         </Select>
       </SettingRow>
       <SettingRow
         label="Auto-close delay"
-        description="Seconds of idleness before an auto-close fires. Only applies when lifecycle is 'Close idle'."
+        description="Seconds of idleness before an idle tab is closed or frozen. Only applies when lifecycle is 'Close idle' or 'Freeze idle'."
       >
         <input
           type="number"
@@ -178,8 +179,8 @@ export function DefaultsSettingsSection({
             })
           }
           disabled={
-            (backendConfig.instanceDefaults.tabPolicy?.lifecycle ?? "keep") !==
-            "close_idle"
+            (backendConfig.instanceDefaults.tabPolicy?.lifecycle ?? "keep") ===
+            "keep"
           }
           className={fieldClass}
         />

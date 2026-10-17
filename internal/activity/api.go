@@ -86,7 +86,6 @@ func convertRoute(r *browserops.RouteMetadata) *apiTypes.RouteMetadata {
 func filterFromRequest(r *http.Request) (Filter, error) {
 	q := r.URL.Query()
 	filter := Filter{
-		Source:      strings.TrimSpace(q.Get("source")),
 		RequestID:   strings.TrimSpace(q.Get("requestId")),
 		SessionID:   strings.TrimSpace(q.Get("sessionId")),
 		AgentID:     strings.TrimSpace(q.Get("agentId")),
@@ -96,6 +95,9 @@ func filterFromRequest(r *http.Request) (Filter, error) {
 		TabID:       strings.TrimSpace(q.Get("tabId")),
 		Action:      strings.TrimSpace(q.Get("action")),
 		PathPrefix:  strings.TrimSpace(q.Get("pathPrefix")),
+	}
+	if source := strings.TrimSpace(q.Get("source")); source != "" {
+		filter.Sources = []string{source}
 	}
 
 	if limit := strings.TrimSpace(q.Get("limit")); limit != "" {

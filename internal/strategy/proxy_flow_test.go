@@ -9,7 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/pinchtab/pinchtab/internal/activity"
 	"github.com/pinchtab/pinchtab/internal/config"
+	"github.com/pinchtab/pinchtab/internal/handlers"
 	"github.com/pinchtab/pinchtab/internal/orchestrator"
 	"github.com/pinchtab/pinchtab/internal/strategy"
 )
@@ -111,5 +113,46 @@ func TestProxyTabsToFirst_UnknownBrowser_ReturnsResolveError(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestProxyTabsToFirst_DropsIncludeTransientBeforeTheInstanceHop(t *testing.T) {
+	queries := make(chan string, 8)
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/tabs" && r.Header.Get(activity.HeaderPTSource) != activity.SourceOrchestrator {
+			queries <- r.URL.RawQuery
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"tabs":[]}`)
+	}))
+	defer backend.Close()
+
+	orch := orchestrator.NewOrchestratorWithRunner(t.TempDir(), proxyFlowRunner{})
+	orch.ApplyRuntimeConfig(&config.RuntimeConfig{
+		AttachEnabled:      true,
+		AttachAllowHosts:   []string{"127.0.0.1"},
+		AttachAllowSchemes: []string{"http"},
+	})
+	if _, _, err := orch.AttachBridge("default", backend.URL, ""); err != nil {
+		t.Fatalf("AttachBridge: %v", err)
+	}
+
+	cases := []struct {
+		query string
+		want  string
+	}{
+		{query: "?" + handlers.IncludeTransientTabsQuery + "=1", want: ""},
+		{query: "?" + handlers.IncludeTransientTabsQuery + "=1&other=2", want: "other=2"},
+		{query: "?other=2", want: "other=2"},
+	}
+	for _, tc := range cases {
+		rec := httptest.NewRecorder()
+		strategy.ProxyTabsToFirst(orch, rec, httptest.NewRequest(http.MethodGet, "/tabs"+tc.query, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d, want 200: %s", tc.query, rec.Code, rec.Body.String())
+		}
+		if got := <-queries; got != tc.want {
+			t.Fatalf("%s: instance saw query %q, want %q", tc.query, got, tc.want)
+		}
 	}
 }

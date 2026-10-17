@@ -575,6 +575,14 @@ func actionArgs(tool string, extra map[string]any) map[string]any {
 	return args
 }
 
+func targetedActionArgs(tool string, extra map[string]any) map[string]any {
+	args := actionArgs(tool, extra)
+	if _, declared := schemaPropertiesOnce()[tool]["selector"]; declared {
+		args["selector"] = "#a"
+	}
+	return args
+}
+
 // nodeId was read before the switch on kind, so all nine tools forwarded it, but
 // only click, hover and focus declared it. On the other six that meant no
 // discovery and — because validateTypedArgs keys its type map per tool — no
@@ -583,7 +591,7 @@ func TestEveryActionToolAcceptsAndValidatesNodeID(t *testing.T) {
 	for _, tc := range actionToolTargets {
 		t.Run(tc.tool, func(t *testing.T) {
 			srv, _ := upstreamRecorder(t)
-			result := callTool(t, tc.tool, actionArgs(tc.tool, map[string]any{"selector": "#a", "nodeId": float64(42)}), srv)
+			result := callTool(t, tc.tool, targetedActionArgs(tc.tool, map[string]any{"nodeId": float64(42)}), srv)
 			if result.IsError {
 				t.Fatalf("a valid nodeId was rejected: %s", resultText(t, result))
 			}
@@ -593,7 +601,7 @@ func TestEveryActionToolAcceptsAndValidatesNodeID(t *testing.T) {
 			}
 
 			srv2, paths := upstreamRecorder(t)
-			malformed := callTool(t, tc.tool, actionArgs(tc.tool, map[string]any{"selector": "#a", "nodeId": "abc"}), srv2)
+			malformed := callTool(t, tc.tool, targetedActionArgs(tc.tool, map[string]any{"nodeId": "abc"}), srv2)
 			if !malformed.IsError {
 				t.Fatalf("nodeId \"abc\" was accepted and silently dropped; upstream saw %v", *paths)
 			}
@@ -644,20 +652,29 @@ func TestNodeIDAloneSatisfiesTheTargetRequirement(t *testing.T) {
 // x/y had the same shape as nodeId — read before the switch, so forwarded for all
 // nine kinds with hasXY set — but the opposite correct answer: the bridge honours
 // coordinates only for the pointer kinds, so the fix is to stop reading it
-// elsewhere rather than to declare it everywhere.
+// elsewhere rather than to declare it everywhere. A tool that does not declare
+// them refuses them by name instead of dropping them.
 func TestCoordinatesReachTheWireOnlyForTheToolsThatDeclareThem(t *testing.T) {
 	for _, tc := range actionToolTargets {
 		t.Run(tc.tool, func(t *testing.T) {
 			_, declared := schemaArgTypesOnce()[tc.tool]["x"]
-			srv, _ := upstreamRecorder(t)
-			result := callTool(t, tc.tool, actionArgs(tc.tool, map[string]any{"selector": "#a", "x": float64(11), "y": float64(22)}), srv)
+			srv, paths := upstreamRecorder(t)
+			result := callTool(t, tc.tool, targetedActionArgs(tc.tool, map[string]any{"x": float64(11), "y": float64(22)}), srv)
+			if !declared {
+				if !result.IsError || !strings.Contains(resultText(t, result), `unknown argument "x"`) {
+					t.Fatalf("%s does not declare x/y but did not refuse them by name: %s", tc.tool, resultText(t, result))
+				}
+				if len(*paths) != 0 {
+					t.Errorf("refused coordinates still reached upstream: %v", *paths)
+				}
+				return
+			}
 			if result.IsError {
 				t.Fatalf("coordinates were rejected: %s", resultText(t, result))
 			}
 			body, _ := resultJSON(t, result)["body"].(map[string]any)
-			_, forwarded := body["hasXY"]
-			if declared != forwarded {
-				t.Errorf("%s declares x/y = %v but forwards them = %v (body %v)", tc.tool, declared, forwarded, body)
+			if _, forwarded := body["hasXY"]; !forwarded {
+				t.Errorf("%s declares x/y but does not forward them (body %v)", tc.tool, body)
 			}
 		})
 	}

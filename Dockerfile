@@ -19,7 +19,7 @@ RUN go mod download
 COPY . .
 COPY --from=dashboard /build/dist/ internal/dashboard/dashboard/
 RUN mv internal/dashboard/dashboard/index.html internal/dashboard/dashboard/dashboard.html
-RUN go build -ldflags="-s -w" -o pinchtab ./cmd/pinchtab
+RUN --mount=type=cache,target=/root/.cache/go-build go build -ldflags="-s -w" -o pinchtab ./cmd/pinchtab
 
 # Stage 3: Minimal runtime image with Chromium.
 # Only the compiled binary and entrypoint script are copied in.

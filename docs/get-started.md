@@ -36,13 +36,13 @@ pinchtab --version
 **Requires:** Docker
 
 ```bash
-docker run -d -p 127.0.0.1:9867:9867 pinchtab/pinchtab
-curl http://localhost:9867/health
+docker run -d --name pinchtab -p 127.0.0.1:9867:9867 pinchtab/pinchtab
+docker exec pinchtab pinchtab health
 ```
 
 ### Option 4: build from source
 
-**Requires:** Go 1.25+, Git, Chrome/Chromium
+**Requires:** Go 1.26+, Git, Chrome/Chromium
 
 ```bash
 git clone https://github.com/pinchtab/pinchtab.git
@@ -92,18 +92,25 @@ The normal flow is:
 
 ```bash
 pinchtab server
-# Response
-🦀 PinchTab port=9867
-dashboard ready url=http://localhost:9867
+# Response (log lines)
+time=... level=INFO msg=orchestration strategy=always-on allocation=fcfs
+time=... level=INFO msg="dashboard started" port=9867
 ```
 
 The server runs on `http://127.0.0.1:9867`.
 You can open the dashboard at `http://127.0.0.1:9867` or `http://127.0.0.1:9867/dashboard`.
 
+The HTTP API requires the server token (`server.token`, generated on first run). Export it once for the `curl` examples below:
+
+```bash
+export PINCHTAB_TOKEN=$(pinchtab config token --stdout)
+```
+
 ### Step 2: start your first instance
 
 ```bash
 curl -s -X POST http://127.0.0.1:9867/instances/start \
+  -H "Authorization: Bearer $PINCHTAB_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"mode":"headless"}' | jq .
 # CLI Alternative
@@ -112,7 +119,7 @@ pinchtab instance start
 {
   "id": "inst_0a89a5bb",
   "profileId": "prof_278be873",
-  "profileName": "instance-1741400000000000000",
+  "profileName": "instance-1741400000000000000-9f3c2a1b",
   "port": "9868",
   "mode": "headless",
   "headless": true,
@@ -124,6 +131,7 @@ pinchtab instance start
 
 ```bash
 curl -s -X POST http://127.0.0.1:9867/navigate \
+  -H "Authorization: Bearer $PINCHTAB_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"url":"https://github.com/pinchtab/pinchtab"}' | jq .
 # CLI Alternative
@@ -139,7 +147,7 @@ pinchtab nav https://github.com/pinchtab/pinchtab
 ### Step 4: inspect the page
 
 ```bash
-curl -s "http://127.0.0.1:9867/snapshot?filter=interactive" | jq .
+curl -s -H "Authorization: Bearer $PINCHTAB_TOKEN" "http://127.0.0.1:9867/snapshot?filter=interactive" | jq .
 # CLI Alternative
 pinchtab snap -i -c
 # Response
@@ -160,7 +168,7 @@ You now have a working PinchTab server, a running browser instance, and a naviga
 ### Connection refused
 
 ```bash
-curl http://localhost:9867/health
+pinchtab health
 ```
 
 If that fails, start the server:

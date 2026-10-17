@@ -43,6 +43,8 @@
     "allowUpload": true,
     "allowClipboard": true,
     "allowStateExport": true,
+    "allowMemory": true,
+    "allowMacro": true,
     "allowedDomains": [
       "localhost",
       "127.0.0.1",

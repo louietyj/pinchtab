@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -58,10 +59,24 @@ type Event struct {
 	Ref         string                    `json:"ref,omitempty"`
 	Code        string                    `json:"code,omitempty"`
 	Error       string                    `json:"error,omitempty"`
+	// Steps is present only for a multi-step run (/actions, /macro), where the
+	// request's own status says nothing about how the steps went: the envelope
+	// answers 200 whatever happened inside it. The zeros inside are meaningful,
+	// so the whole block is a pointer rather than three omitempty ints.
+	Steps *StepCounts `json:"steps,omitempty"`
+}
+
+// StepCounts is how a multi-step run reports itself to the activity feed: the
+// counts the response body already carries, recorded so a reader of the feed can
+// see a run that failed entirely without re-fetching anything.
+type StepCounts struct {
+	Total      int `json:"total"`
+	Successful int `json:"successful"`
+	Failed     int `json:"failed"`
 }
 
 type Filter struct {
-	Source      string
+	Sources     []string
 	RequestID   string
 	SessionID   string
 	AgentID     string
@@ -317,8 +332,14 @@ func (s *Store) Record(evt Event) error {
 	}
 	evt.URL = sanitizeActivityURL(evt.URL)
 
+	// Retention is housekeeping, and housekeeping must not cost the event. A
+	// failing prune — an unreadable directory, a file another process holds —
+	// used to abort Record before the append, so a sweep that could not run threw
+	// away an observation the append would have stored perfectly well. It is also
+	// throttled: lastPruneTime advances whether or not the sweep succeeded, so
+	// exactly one event per hour was lost to a fault that had nothing to do with it.
 	if err := s.maybePrune(evt.Timestamp); err != nil {
-		return err
+		slog.Warn("activity: retention sweep failed; the event is still recorded", "err", err)
 	}
 
 	// Marshal and append outside the lock: the only shared mutable state is the
@@ -431,19 +452,19 @@ func clampQueryLimit(limit int) int {
 
 func (s *Store) shouldRecordSource(source string) bool {
 	switch normalizeSourceName(source) {
-	case "client":
+	case SourceClient:
 		return true
-	case "dashboard":
+	case SourceDashboard:
 		return s.events.Dashboard
-	case "server":
+	case SourceServer:
 		return s.events.Server
-	case "bridge":
+	case SourceBridge:
 		return s.events.Bridge
-	case "orchestrator":
+	case SourceOrchestrator:
 		return s.events.Orchestrator
-	case "scheduler":
+	case SourceScheduler:
 		return s.events.Scheduler
-	case "mcp":
+	case SourceMCP:
 		return s.events.MCP
 	default:
 		return s.events.Other
@@ -463,11 +484,7 @@ func (noopRecorder) Query(Filter) ([]Event, error) {
 }
 
 func (f Filter) matches(evt Event) bool {
-	// Compare normalized names: the source is stored verbatim from the client
-	// header but the per-source file is named with the normalized form, so
-	// matching raw here would discard events from the very file queryFiles
-	// selected for this source.
-	if f.Source != "" && normalizeSourceName(evt.Source) != normalizeSourceName(f.Source) {
+	if len(f.Sources) > 0 && !matchesAnySource(evt.Source, f.Sources) {
 		return false
 	}
 	if f.RequestID != "" && evt.RequestID != f.RequestID {
@@ -504,6 +521,16 @@ func (f Filter) matches(evt Event) bool {
 		return false
 	}
 	return true
+}
+
+func matchesAnySource(source string, want []string) bool {
+	normalized := normalizeSourceName(source)
+	for _, w := range want {
+		if normalizeSourceName(w) == normalized {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Store) filePathFor(ts time.Time) string {
@@ -564,7 +591,7 @@ func (s *Store) queryFiles(filter Filter) []string {
 		files = append(files, legacyPath)
 	}
 
-	source := normalizeSourceName(filter.Source)
+	wantSources := normalizedSources(filter.Sources)
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -573,7 +600,7 @@ func (s *Store) queryFiles(filter Filter) []string {
 		if !isActivityLogFile(name) {
 			continue
 		}
-		if source != "" && !isSourceLogFile(name, source) {
+		if len(wantSources) > 0 && !matchesAnySourceLogFile(name, wantSources) {
 			continue
 		}
 		if day, ok := activityLogDay(name); ok && !dayInRange(day, sinceDay, untilDay) {
@@ -648,7 +675,7 @@ func appendJSONL(path string, line []byte) error {
 
 func shouldWritePrimaryLog(source string) bool {
 	switch normalizeSourceName(source) {
-	case "", "server", "bridge":
+	case "", SourceServer, SourceBridge:
 		return true
 	default:
 		return false
@@ -680,6 +707,33 @@ func normalizeSourceName(source string) string {
 
 func isActivityLogFile(name string) bool {
 	return name != "events.jsonl" && strings.HasPrefix(name, "events-") && strings.HasSuffix(name, ".jsonl")
+}
+
+// normalizedSources normalizes a filter's requested sources, dropping any that
+// normalize to empty. A nil result means "no source narrowing".
+func normalizedSources(sources []string) []string {
+	if len(sources) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(sources))
+	for _, s := range sources {
+		if n := normalizeSourceName(s); n != "" {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// matchesAnySourceLogFile reports whether name is the per-source log of any of
+// the already-normalized sources, so the file walk opens only the requested
+// sources' logs instead of every source's log in the retention window.
+func matchesAnySourceLogFile(name string, normalizedSources []string) bool {
+	for _, s := range normalizedSources {
+		if isSourceLogFile(name, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // isSourceLogFile anchors on the trailing day so a query for "mcp" does not

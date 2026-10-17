@@ -61,17 +61,37 @@ func Forward(w http.ResponseWriter, r *http.Request, targetURL *url.URL, opts Op
 		return
 	}
 
+	// The hook gets its OWN url. Handing it targetURL made the two the same
+	// object, so a hook that touched req.URL edited the value AllowedURL had
+	// already approved — and the caller's, which it does not own. Re-gating an
+	// aliased url is also unable to see the change: the orchestrator's gate asks
+	// whether the url is same-origin with targetURL, and an alias always is.
+	routedURL := *targetURL
+
 	proxyReq := r.Clone(r.Context())
-	proxyReq.URL = targetURL
-	proxyReq.Host = targetURL.Host
+	proxyReq.URL = &routedURL
+	proxyReq.Host = routedURL.Host
 	proxyReq.Header = r.Header.Clone()
 	activity.PropagateHeaders(r.Context(), proxyReq)
+	hostBeforeRewrite := proxyReq.Host
+	inboundBody := &inboundRequestBody{ReadCloser: proxyReq.Body}
+	if proxyReq.Body != nil {
+		proxyReq.Body = inboundBody
+	}
 	if opts.RewriteRequest != nil {
 		opts.RewriteRequest(proxyReq)
 	}
 
+	// A rewrite that moved the target has to pass the same gate the original did,
+	// or the hook is a way around it. Only re-asked when the target actually
+	// changed, so the common path costs nothing.
+	if opts.AllowedURL != nil && proxyReq.URL.String() != targetURL.String() && !opts.AllowedURL(proxyReq.URL) {
+		httpx.Error(w, 400, fmt.Errorf("invalid proxy target"))
+		return
+	}
+
 	if isWebSocketUpgrade(proxyReq) {
-		ProxyWebSocket(w, proxyReq, targetURL.String())
+		ProxyWebSocket(w, proxyReq, proxyReq.URL.String())
 		return
 	}
 
@@ -80,10 +100,32 @@ func Forward(w http.ResponseWriter, r *http.Request, targetURL *url.URL, opts Op
 		client = DefaultClient
 	}
 
-	outReq, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL.String(), r.Body)
+	// Built from proxyReq, not from r: RewriteRequest is handed a whole
+	// *http.Request and the WebSocket path below honours the whole of it, so
+	// re-deriving the method, target and body from the original request made a
+	// hook that rewrote any of them work over WebSocket and be silently ignored
+	// over HTTP. Nothing in the module rewrites more than headers today, so this
+	// changes no traffic — it makes the hook's own signature true before someone
+	// takes it at its word.
+	//
+	// proxyReq cannot be sent as-is: it is a server request and carries
+	// RequestURI, which a client request may not set.
+	outReq, err := http.NewRequestWithContext(r.Context(), proxyReq.Method, proxyReq.URL.String(), proxyReq.Body)
 	if err != nil {
 		httpx.Error(w, 502, fmt.Errorf("proxy error: %w", err))
 		return
+	}
+	// Only a rewrite propagates a Host. Left alone, the transport derives the
+	// Host header from the URL as before, which spells a default port the way
+	// the wire expects rather than the way targetURL.Host holds it.
+	if body, unchanged := proxyReq.Body.(*inboundRequestBody); unchanged && body == inboundBody {
+		outReq.ContentLength = proxyReq.ContentLength
+		if proxyReq.ContentLength == 0 {
+			outReq.Body = http.NoBody
+		}
+	}
+	if proxyReq.Host != hostBeforeRewrite {
+		outReq.Host = proxyReq.Host
 	}
 	copyRequestHeaders(outReq.Header, proxyReq.Header)
 	httpx.ForwardRequestID(outReq.Header, proxyReq.Header)
@@ -155,16 +197,17 @@ func HTTP(w http.ResponseWriter, r *http.Request, targetURL string) {
 	Forward(w, r, parsed, Options{})
 }
 
-// enrichActivityFromHeaders extracts tab ID from upstream response headers
-// and enriches the activity event. This works for all response sizes,
-// unlike body-based enrichment which is limited to small JSON responses.
 // recordProxiedFailureReason carries the reason across the hop: the instance's error
 // producer stamped these headers on the response it serialised, so reading them here
 // keeps the reason coming from the producer — never from re-parsing the body.
+// The status is deliberately NOT consulted. A multi-step run answers 200 with its
+// failures in the body and publishes the reason beside it, so a status gate here
+// dropped exactly that case and left the front door's counter, failures.recent, log
+// level and activity record unmoved for a batch in which every step failed. The
+// header being present is the whole condition, and it is a stronger one: only a
+// producer that called RecordFailureReason stamps it, so ordinary 200 traffic
+// records nothing and cannot be counted as a failure.
 func recordProxiedFailureReason(w http.ResponseWriter, resp *http.Response) {
-	if resp.StatusCode < 400 {
-		return
-	}
 	code := strings.TrimSpace(resp.Header.Get(httpx.FailureCodeHeader))
 	if code == "" {
 		return
@@ -172,6 +215,9 @@ func recordProxiedFailureReason(w http.ResponseWriter, resp *http.Response) {
 	httpx.RecordFailureReason(w, code, resp.Header.Get(httpx.FailureMessageHeader))
 }
 
+// enrichActivityFromHeaders extracts the tab id from upstream response headers and
+// enriches the activity event. It works for all response sizes, unlike body-based
+// enrichment, which is limited to small JSON responses.
 func enrichActivityFromHeaders(origReq *http.Request, respHeaders http.Header) {
 	tabID := strings.TrimSpace(respHeaders.Get(activity.HeaderPTTabID))
 	if tabID != "" {
@@ -200,4 +246,8 @@ func copyRequestHeaders(dst, src http.Header) {
 			dst.Add(k, v)
 		}
 	}
+}
+
+type inboundRequestBody struct {
+	io.ReadCloser
 }

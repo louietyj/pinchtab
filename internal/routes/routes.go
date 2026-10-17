@@ -4,6 +4,8 @@
 // the generated /openapi.json response.
 package routes
 
+import "sort"
+
 import "fmt"
 
 // Capability gates an endpoint behind a security config flag.
@@ -19,6 +21,7 @@ const (
 	CapUpload           Capability = "upload"
 	CapStateExport      Capability = "stateExport"
 	CapNetworkIntercept Capability = "networkIntercept"
+	CapMemory           Capability = "memory"
 )
 
 // CapabilityMeta is the single source of truth for a capability gate's
@@ -43,6 +46,18 @@ var capabilityMeta = map[Capability]CapabilityMeta{
 	CapUpload:           {CapUpload, "upload", "security.allowUpload", "upload_disabled"},
 	CapStateExport:      {CapStateExport, "stateExport", "security.allowStateExport", "state_export_disabled"},
 	CapNetworkIntercept: {CapNetworkIntercept, "networkIntercept", "security.allowNetworkIntercept", "network_intercept_disabled"},
+	CapMemory:           {CapMemory, "memory", "security.allowMemory", "memory_disabled"},
+}
+
+// Capabilities lists every gated capability, ordered by label so a reporter
+// derived from the table answers deterministically.
+func Capabilities() []Capability {
+	caps := make([]Capability, 0, len(capabilityMeta))
+	for cap := range capabilityMeta {
+		caps = append(caps, cap)
+	}
+	sort.Slice(caps, func(i, j int) bool { return capabilityMeta[caps[i]].Label < capabilityMeta[caps[j]].Label })
+	return caps
 }
 
 // Meta returns the gate metadata for a capability. The second result is false
@@ -119,6 +134,7 @@ var coreEndpoints = []Endpoint{
 	{"POST", "/dialog", "Handle dialog", CapNone, true},
 	{"POST", "/wait", "Wait for condition", CapNone, true},
 	{"POST", "/find", "Find elements", CapNone, true},
+	{"POST", "/extract", "Extract schema-typed data from the page", CapNone, true},
 
 	{"POST", "/tab", "Create or focus tab", CapNone, false},
 	{"POST", "/close", "Close tab", CapNone, true},
@@ -135,6 +151,10 @@ var coreEndpoints = []Endpoint{
 
 	{"GET", "/metrics", "Runtime metrics", CapNone, true},
 	{"GET", "/timing", "Page timing and Core Web Vitals", CapNone, true},
+	{"GET", "/memory", "JavaScript heap usage and DOM counters", CapNone, true},
+	{"POST", "/memory/snapshot", "Take a V8 heap snapshot to a server-side file", CapMemory, true},
+	{"GET", "/memory/snapshot/{snapshotId}/summary", "Summarize a saved heap snapshot", CapMemory, false},
+	{"GET", "/memory/compare", "Compare two saved heap snapshots by constructor growth", CapMemory, false},
 	{"GET", "/a11y/audit", "Accessibility findings and score", CapNone, true},
 	{"POST", "/audit/page", "Audit a single page with browser enrichment", CapNone, false},
 	{"POST", "/audit", "Run a multi-page site audit", CapNone, false},

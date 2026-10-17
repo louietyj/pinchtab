@@ -68,6 +68,12 @@ function formatUptime(startTime: string): string {
   return `${days}d ${hrs % 24}h`;
 }
 
+function formatCrashTime(time: string): string {
+  const at = new Date(time);
+  if (Number.isNaN(at.getTime())) return time;
+  return at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 function countUniqueDomains(tabs: InstanceTab[]): number {
   const domains = new Set<string>();
   for (const tab of tabs) {
@@ -81,11 +87,6 @@ function countUniqueDomains(tabs: InstanceTab[]): number {
 }
 
 export default function InstanceStats({ instance, metrics, tabs }: Props) {
-  const heapPct =
-    metrics && metrics.jsHeapTotalMB > 0
-      ? (metrics.jsHeapUsedMB / metrics.jsHeapTotalMB) * 100
-      : null;
-
   const uniqueDomains = countUniqueDomains(tabs);
 
   return (
@@ -96,6 +97,17 @@ export default function InstanceStats({ instance, metrics, tabs }: Props) {
             <StatItem label="Status" value={instance.status} />
             <StatItem label="Uptime" value={formatUptime(instance.startTime)} />
             <StatItem label="Port" value={instance.port} />
+            {instance.crashes && instance.crashes.total > 0 && (
+              <StatItem
+                label="Crashes"
+                value={fmt(instance.crashes.total)}
+                sub={
+                  instance.crashes.recent.length > 0
+                    ? `last: ${instance.crashes.recent[instance.crashes.recent.length - 1].reason} at ${formatCrashTime(instance.crashes.recent[instance.crashes.recent.length - 1].time)} · tabs open before it were lost`
+                    : "tabs open before it were lost"
+                }
+              />
+            )}
           </>
         )}
       </StatGroup>
@@ -103,27 +115,47 @@ export default function InstanceStats({ instance, metrics, tabs }: Props) {
       <StatGroup title="Browsing">
         <StatItem label="Tabs" value={fmt(tabs.length)} />
         <StatItem label="Domains" value={fmt(uniqueDomains)} />
-        {metrics && (
-          <>
-            <StatItem label="Documents" value={fmt(metrics.documents)} />
-            <StatItem label="Frames" value={fmt(metrics.frames)} />
-          </>
-        )}
       </StatGroup>
 
       {metrics && (
         <StatGroup title="Resources">
           <StatItem
-            label="Heap"
-            value={`${fmt(metrics.jsHeapUsedMB, 1)} MB`}
-            sub={
-              heapPct !== null
-                ? `${fmt(heapPct, 0)}% of ${fmt(metrics.jsHeapTotalMB, 1)} MB`
-                : undefined
-            }
+            label="Memory"
+            value={`${fmt(metrics.memoryMB, 1)} MB`}
+            sub="RSS across the browser process tree"
           />
-          <StatItem label="DOM Nodes" value={fmt(metrics.nodes)} />
-          <StatItem label="Listeners" value={fmt(metrics.listeners)} />
+          <StatItem label="Renderers" value={fmt(metrics.renderers)} />
+        </StatGroup>
+      )}
+
+      {metrics && (metrics.page || metrics.unreadableTargets > 0) && (
+        <StatGroup title="Pages">
+          {metrics.page && (
+            <>
+              <StatItem
+                label="JS heap"
+                value={`${fmt(metrics.page.jsHeapUsedMB, 1)} / ${fmt(metrics.page.jsHeapTotalMB, 1)} MB`}
+                sub={`used / total, summed over ${fmt(metrics.page.targets)} tab${metrics.page.targets === 1 ? "" : "s"}`}
+              />
+              <StatItem label="DOM nodes" value={fmt(metrics.page.nodes)} />
+              <StatItem
+                label="Listeners"
+                value={fmt(metrics.page.jsEventListeners)}
+              />
+              <StatItem
+                label="Frames"
+                value={fmt(metrics.page.frames)}
+                sub={`${fmt(metrics.page.documents)} documents`}
+              />
+            </>
+          )}
+          {metrics.unreadableTargets > 0 && (
+            <StatItem
+              label="Unreadable"
+              value={fmt(metrics.unreadableTargets)}
+              sub="tabs that did not answer; not counted"
+            />
+          )}
         </StatGroup>
       )}
     </div>

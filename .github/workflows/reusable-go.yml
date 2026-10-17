@@ -6,12 +6,33 @@ on:
       ref:
         required: true
         type: string
+      windows_tests:
+        required: false
+        type: boolean
+        default: false
 
 
 permissions:
   contents: read
 
 jobs:
+  windows-test:
+    name: Test (windows)
+    if: inputs.windows_tests
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test -count=1 ./...
+
   build:
     name: Build & Vet
     runs-on: ubuntu-latest
@@ -97,7 +118,7 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
 
@@ -110,7 +131,7 @@ jobs:
           ./scripts/build-dashboard.sh
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.10.1
 

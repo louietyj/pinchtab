@@ -21,23 +21,55 @@ import (
 
 // Session represents a durable, revocable authenticated session.
 type Session struct {
-	ID          string        `json:"id"`
-	AgentID     string        `json:"agentId"`
-	Label       string        `json:"label,omitempty"`
-	Browser     string        `json:"browser,omitempty"`
-	TokenHash   [32]byte      `json:"-"`
-	CreatedAt   time.Time     `json:"createdAt"`
-	LastSeenAt  time.Time     `json:"lastSeenAt"`
-	ExpiresAt   time.Time     `json:"expiresAt,omitempty"`
-	IdleTimeout time.Duration `json:"-"`
-	Status      string        `json:"status"`
-	Grants      []string      `json:"grants,omitempty"`
+	ID         string    `json:"id"`
+	AgentID    string    `json:"agentId"`
+	Label      string    `json:"label,omitempty"`
+	Browser    string    `json:"browser,omitempty"`
+	TokenHash  [32]byte  `json:"-"`
+	CreatedAt  time.Time `json:"createdAt"`
+	LastSeenAt time.Time `json:"lastSeenAt"`
+	ExpiresAt  time.Time `json:"expiresAt,omitempty"`
+	Status     string    `json:"status"`
+	Grants     []string  `json:"grants,omitempty"`
+}
+
+// The auth modes sessions.agent.mode may name. ModeRequired is vocabulary, not
+// behaviour: it is refused by config validation, because accepting it would
+// promise session-only auth that the bearer token and the dashboard cookie still
+// bypass. This package owns the set so the validator and the predicate cannot
+// hold two copies of it.
+const (
+	ModeOff       = "off"
+	ModePreferred = "preferred"
+	ModeRequired  = "required"
+)
+
+// NormalizeMode is the canonical reading of a sessions.agent.mode value: case
+// folded and trimmed, the way this codebase reads every other config enum. The
+// validator and the predicate both go through it so the accepted set is spelled
+// once, and so "Off" means off rather than being a typo that leaves an auth
+// mechanism on.
+func NormalizeMode(mode string) string {
+	return strings.ToLower(strings.TrimSpace(mode))
+}
+
+// ModeServes reports whether a mode value leaves agent sessions serving. It is an
+// allowlist, not a denylist: an empty value is the default (ModePreferred) and
+// nothing else serves, so a value the validator refuses can never be read as
+// "preferred" by a process that started anyway.
+func ModeServes(mode string) bool {
+	switch NormalizeMode(mode) {
+	case "", ModePreferred:
+		return true
+	default:
+		return false
+	}
 }
 
 // Config controls store behavior.
 type Config struct {
 	Enabled     bool
-	Mode        string // "off", "preferred", "required"
+	Mode        string
 	IdleTimeout time.Duration
 	MaxLifetime time.Duration
 	PersistPath string
@@ -161,7 +193,7 @@ func (s *Store) applyConfig(cfg Config) {
 		cfg.MaxLifetime = DefaultMaxLifetime
 	}
 	if cfg.Mode == "" {
-		cfg.Mode = "preferred"
+		cfg.Mode = ModePreferred
 	}
 	s.cfg = cfg
 }
@@ -184,28 +216,36 @@ func (s *Store) Create(agentID, label, browser string) (sessionID, sessionToken 
 
 	now := s.now()
 	session := &Session{
-		ID:          id,
-		AgentID:     strings.TrimSpace(agentID),
-		Label:       strings.TrimSpace(label),
-		Browser:     strings.TrimSpace(browser),
-		TokenHash:   hashToken(token),
-		CreatedAt:   now,
-		LastSeenAt:  now,
-		ExpiresAt:   now.Add(s.cfg.MaxLifetime),
-		IdleTimeout: s.cfg.IdleTimeout,
-		Status:      StatusActive,
+		ID:         id,
+		AgentID:    strings.TrimSpace(agentID),
+		Label:      strings.TrimSpace(label),
+		Browser:    strings.TrimSpace(browser),
+		TokenHash:  hashToken(token),
+		CreatedAt:  now,
+		LastSeenAt: now,
+		Status:     StatusActive,
 	}
 
-	s.mu.Lock()
-	s.sessions[id] = session
-	s.byTokenHash[session.TokenHash] = session
-	job, persist := s.snapshotLocked()
-	s.mu.Unlock()
+	job, persist := s.registerSession(session, now)
 	if persist {
 		s.writeSnapshot(job)
 	}
 
 	return id, token, nil
+}
+
+// registerSession stamps the lifetime from config and installs the session in both
+// indexes, all under s.mu. It exists so Create names neither s.cfg nor the maps:
+// the expiry used to be built from s.cfg.MaxLifetime BEFORE the lock was taken,
+// which is a race against UpdateConfig, and a rule about where a field may be read
+// is only enforceable when the reads have a named home.
+func (s *Store) registerSession(session *Session, now time.Time) (snapshotJob, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session.ExpiresAt = now.Add(s.cfg.MaxLifetime)
+	s.sessions[session.ID] = session
+	s.byTokenHash[session.TokenHash] = session
+	return s.snapshotLocked()
 }
 
 // Authenticate validates a token and returns the associated session.
@@ -463,24 +503,49 @@ func (s *Store) RunMaintenance(ctx context.Context) {
 	}
 }
 
-// Enabled reports whether session auth is enabled.
+// Enabled is the ONE predicate every consumer of agent sessions asks — the front
+// door's session branch, the session API's handlers and their registration. enabled
+// and mode were a two-field encoding of one question, and the halves drifted: mode
+// was documented as reducing the auth surface while nothing read it.
 func (s *Store) Enabled() bool {
 	if s == nil {
 		return false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.cfg.Enabled
+	return s.cfg.Enabled && ModeServes(s.cfg.Mode)
 }
 
-// Mode returns the current auth mode.
-func (s *Store) Mode() string {
+// DisabledBy names the settings switching agent sessions off, so a refusal can
+// prescribe a command that works. Two fields reach the one predicate, and an
+// operator who disabled through one of them is not helped by being told to set
+// the other. Empty when the store serves.
+func (s *Store) DisabledBy() []string {
 	if s == nil {
-		return "off"
+		return []string{SettingEnabled}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.cfg.Mode
+
+	var off []string
+	if !s.cfg.Enabled {
+		off = append(off, SettingEnabled)
+	}
+	if !ModeServes(s.cfg.Mode) {
+		off = append(off, SettingMode)
+	}
+	return off
+}
+
+// PersistPath returns the file the store persists to, so a caller rebuilding
+// the config from elsewhere can carry it over instead of recomputing it.
+func (s *Store) PersistPath() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cfg.PersistPath
 }
 
 func (s *Store) isExpired(sess *Session, now time.Time) bool {
@@ -553,8 +618,8 @@ func (sess *Session) toPersisted() persistedSession {
 
 // toSession maps an on-disk record back to an in-memory Session, decoding and
 // validating the token hash. ok=false means the record is malformed and should
-// be skipped. idleTimeout is injected from store config (not persisted).
-func (rec persistedSession) toSession(idleTimeout time.Duration) (*Session, bool) {
+// be skipped.
+func (rec persistedSession) toSession() (*Session, bool) {
 	tokenHash, err := hex.DecodeString(strings.TrimSpace(rec.TokenHash))
 	if err != nil || len(tokenHash) != sha256.Size {
 		return nil, false
@@ -563,17 +628,16 @@ func (rec persistedSession) toSession(idleTimeout time.Duration) (*Session, bool
 	copy(hash[:], tokenHash)
 
 	return &Session{
-		ID:          rec.ID,
-		AgentID:     rec.AgentID,
-		Label:       rec.Label,
-		Browser:     rec.Browser,
-		TokenHash:   hash,
-		CreatedAt:   rec.CreatedAt,
-		LastSeenAt:  rec.LastSeenAt,
-		ExpiresAt:   rec.ExpiresAt,
-		IdleTimeout: idleTimeout,
-		Status:      rec.Status,
-		Grants:      append([]string(nil), rec.Grants...),
+		ID:         rec.ID,
+		AgentID:    rec.AgentID,
+		Label:      rec.Label,
+		Browser:    rec.Browser,
+		TokenHash:  hash,
+		CreatedAt:  rec.CreatedAt,
+		LastSeenAt: rec.LastSeenAt,
+		ExpiresAt:  rec.ExpiresAt,
+		Status:     rec.Status,
+		Grants:     append([]string(nil), rec.Grants...),
 	}, true
 }
 
@@ -596,7 +660,7 @@ func (s *Store) loadPersisted() {
 
 	now := s.now()
 	for _, rec := range persisted.Sessions {
-		sess, ok := rec.toSession(s.cfg.IdleTimeout)
+		sess, ok := rec.toSession()
 		if !ok {
 			continue
 		}

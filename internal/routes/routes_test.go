@@ -241,6 +241,7 @@ func TestCapabilityMetaContract(t *testing.T) {
 		CapUpload:           {CapUpload, "upload", "security.allowUpload", "upload_disabled"},
 		CapStateExport:      {CapStateExport, "stateExport", "security.allowStateExport", "state_export_disabled"},
 		CapNetworkIntercept: {CapNetworkIntercept, "networkIntercept", "security.allowNetworkIntercept", "network_intercept_disabled"},
+		CapMemory:           {CapMemory, "memory", "security.allowMemory", "memory_disabled"},
 	}
 	for cap, expected := range want {
 		got, ok := Meta(cap)

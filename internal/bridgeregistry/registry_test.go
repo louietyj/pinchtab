@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -52,7 +53,7 @@ func TestRegisterListAndClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := dirInfo.Mode().Perm(); got != 0o700 {
+	if got := dirInfo.Mode().Perm(); runtime.GOOS != "windows" && got != 0o700 {
 		t.Fatalf("registry mode = %o, want 700", got)
 	}
 	entries, err := os.ReadDir(filepath.Join(stateDir, registryDir))
@@ -66,7 +67,7 @@ func TestRegisterListAndClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := fileInfo.Mode().Perm(); got != 0o600 {
+	if got := fileInfo.Mode().Perm(); runtime.GOOS != "windows" && got != 0o600 {
 		t.Fatalf("record mode = %o, want 600", got)
 	}
 

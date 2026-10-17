@@ -60,10 +60,7 @@ func NetworkRoute(client *http.Client, base, token string, cmd *cobra.Command, p
 		req["method"] = method
 	}
 
-	path := "/network/route"
-	if tab, _ := cmd.Flags().GetString("tab"); tab != "" {
-		path = fmt.Sprintf("/tabs/%s/network/route", url.PathEscape(tab))
-	}
+	path := networkRoutePath(cmd)
 	result := requireMap(apiclient.DoPostQuiet(client, base, token, path, req), 1, "Failed to install route")
 
 	jsonOutput, _ := cmd.Flags().GetBool("json")
@@ -81,10 +78,7 @@ func NetworkUnroute(client *http.Client, base, token string, cmd *cobra.Command,
 	if pattern != "" {
 		params.Set("pattern", pattern)
 	}
-	path := "/network/route"
-	if tab, _ := cmd.Flags().GetString("tab"); tab != "" {
-		path = fmt.Sprintf("/tabs/%s/network/route", url.PathEscape(tab))
-	}
+	path := networkRoutePath(cmd)
 	result := requireMap(apiclient.DoDelete(client, base, token, path, params), 1, "Failed to remove route(s)")
 
 	jsonOutput, _ := cmd.Flags().GetBool("json")
@@ -97,4 +91,44 @@ func NetworkUnroute(client *http.Client, base, token string, cmd *cobra.Command,
 	} else {
 		fmt.Println("routes cleared")
 	}
+}
+
+func NetworkRules(client *http.Client, base, token string, cmd *cobra.Command) {
+	path := networkRoutePath(cmd)
+	result := requireMap(apiclient.DoGet(client, base, token, path, nil), 1, "Failed to list routes")
+
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+	if jsonOutput {
+		printIndented(result)
+		return
+	}
+	rules, _ := result["rules"].([]any)
+	if len(rules) == 0 {
+		fmt.Println("no interception rules: this tab mocks and blocks nothing")
+		return
+	}
+	for _, entry := range rules {
+		rule, _ := entry.(map[string]any)
+		fmt.Println(describeRouteRule(rule))
+	}
+}
+
+func describeRouteRule(rule map[string]any) string {
+	line := fmt.Sprintf("%v (%v)", rule["pattern"], rule["action"])
+	for _, key := range []string{"method", "resourceType", "status", "contentType"} {
+		if v, ok := rule[key]; ok && v != nil && v != "" && v != float64(0) {
+			line += fmt.Sprintf(" %s=%v", key, v)
+		}
+	}
+	if body, ok := rule["body"].(string); ok && body != "" {
+		line += fmt.Sprintf(" body=%d bytes", len(body))
+	}
+	return line
+}
+
+func networkRoutePath(cmd *cobra.Command) string {
+	if tab, _ := cmd.Flags().GetString("tab"); tab != "" {
+		return fmt.Sprintf("/tabs/%s/network/route", url.PathEscape(tab))
+	}
+	return "/network/route"
 }

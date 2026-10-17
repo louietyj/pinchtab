@@ -81,7 +81,7 @@ func (h *Handlers) enforceCurrentTabDomainPolicy(w http.ResponseWriter, r *http.
 		return "", true
 	}
 
-	if provider, ok := h.Bridge.(tabPolicyStateProvider); ok {
+	if provider, ok := bridgeAs[tabPolicyStateProvider](h.Bridge); ok {
 		if state, ok := provider.GetTabPolicyState(tabID); ok && !state.UpdatedAt.IsZero() {
 			if state.CurrentURL != "" {
 				h.recordResolvedURL(r, state.CurrentURL)
@@ -120,7 +120,7 @@ func (h *Handlers) enforceCurrentTabDomainPolicy(w http.ResponseWriter, r *http.
 	}
 
 	state := bridge.EvaluateTabPolicy(currentURL, h.Config.IDPI, h.Config.AllowedDomains)
-	if setter, ok := h.Bridge.(tabPolicyStateSetter); ok {
+	if setter, ok := bridgeAs[tabPolicyStateSetter](h.Bridge); ok {
 		setter.SetTabPolicyState(tabID, state)
 	}
 	h.recordResolvedURL(r, currentURL)

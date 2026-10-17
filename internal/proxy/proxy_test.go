@@ -2,8 +2,10 @@ package proxy
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/pinchtab/pinchtab/internal/httpx"
@@ -206,5 +208,46 @@ func TestHTTP_DoesNotDoubleTheOuterChainsResponseHeaders(t *testing.T) {
 		if got[0] != "outer-"+name {
 			t.Errorf("%s = %q, want the outer chain's value, which is the one it logged", name, got[0])
 		}
+	}
+}
+
+type receivedBody struct {
+	contentLength    int64
+	transferEncoding []string
+	body             string
+}
+
+func bodyEchoBridge(t *testing.T, got *receivedBody) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		*got = receivedBody{contentLength: r.ContentLength, transferEncoding: r.TransferEncoding, body: string(raw)}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestHTTP_ForwardsABodyWithItsLength(t *testing.T) {
+	var got receivedBody
+	srv := bodyEchoBridge(t, &got)
+	const body = `{"pattern":"api"}`
+
+	req := httptest.NewRequest(http.MethodDelete, "/network/route", strings.NewReader(body))
+	HTTP(httptest.NewRecorder(), req, srv.URL+"/network/route")
+
+	if got.contentLength != int64(len(body)) || got.body != body || len(got.transferEncoding) != 0 {
+		t.Fatalf("instance received length %d, encoding %v, body %q; want length %d, no chunking, %q", got.contentLength, got.transferEncoding, got.body, len(body), body)
+	}
+}
+
+func TestHTTP_ForwardsAnEmptyBodyUnchunked(t *testing.T) {
+	var got receivedBody
+	srv := bodyEchoBridge(t, &got)
+
+	req := httptest.NewRequest(http.MethodPost, "/close", strings.NewReader(""))
+	HTTP(httptest.NewRecorder(), req, srv.URL+"/close")
+
+	if got.contentLength != 0 || len(got.transferEncoding) != 0 || got.body != "" {
+		t.Fatalf("instance received length %d, encoding %v, body %q; want an empty unchunked request", got.contentLength, got.transferEncoding, got.body)
 	}
 }

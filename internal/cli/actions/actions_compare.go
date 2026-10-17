@@ -59,7 +59,7 @@ func Compare(client *http.Client, base, token string, cmd *cobra.Command, liveBa
 		if concurrency > 0 {
 			body["concurrency"] = concurrency
 		}
-		raw, err := apiclient.DoPostRawE(longClient, base, token, "/audit", body)
+		raw, err := apiclient.DoRawE(longClient, base, token, http.MethodPost, "/audit", apiclient.WithBody(body))
 		if err != nil {
 			return audit.AuditReport{}, err
 		}

@@ -2,11 +2,10 @@ package handlers
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/pinchtab/pinchtab/internal/httpx"
-	"github.com/pinchtab/pinchtab/internal/navguard"
 	"github.com/pinchtab/pinchtab/internal/remedy"
+	"github.com/pinchtab/pinchtab/internal/security"
 )
 
 // idpiDomainBlockedCode is the one code every IDPI domain block reports, so a
@@ -29,7 +28,7 @@ var idpiDriftedTabRemedy = remedy.Declare("pinchtab back")
 // A refused target URL is the opposite case: nothing navigated, there is nothing
 // to recover from, and the allowlist genuinely is the only lever — so this is the
 // only remedy that names it, and the only place that guidance is rendered.
-const idpiRefusedURLHint = "the requested URL is outside security.allowedDomains, so the request was refused and nothing navigated. Allowing it widens what automation may reach — see docs/guides/security.md."
+const idpiRefusedURLHint = "the requested URL is outside security.allowedDomains, so the request was refused and nothing navigated. Widen the allowlist, then restart PinchTab to apply the change; allowing it widens what automation may reach — see docs/guides/security.md."
 
 // writeIDPIDomainBlocked is the single writer of an IDPI domain-block refusal, so
 // the status and code cannot differ between the three sites that produce one.
@@ -50,23 +49,25 @@ func idpiBlockDetails(url, hint string, r remedy.Remedy) map[string]any {
 	details["url"] = url
 	// The domain is a discrete field as well as prose so MCP and dashboard
 	// consumers do not have to parse the sentence to learn what was blocked.
-	if host, ok := navguard.ExtractHost(url); ok && strings.TrimSpace(host) != "" {
+	if host := security.ExtractHost(url); host != "" {
 		details["domain"] = host
 	}
 	return details
 }
 
-// allowlistWidening appends to the current allowlist rather than replacing it, and carries
-// the restart because the security block is snapshotted at boot.
+// allowlistWidening appends to the current allowlist rather than replacing it. The security
+// block is snapshotted at boot, so the change needs a restart to apply — but the restart is
+// named in the hint, not this executable remedy, because `pinchtab server restart` would stop
+// a bridge, and this refusal answers on a bridge as well as a server.
 var allowlistWidening = remedy.Declare(
-	`pinchtab config set security.allowedDomains "$(pinchtab config get security.allowedDomains),<domain>" && pinchtab server restart`)
+	`pinchtab config set security.allowedDomains "$(pinchtab config get security.allowedDomains),<domain>"`)
 
 // idpiAllowlistRemedy is the copy-pasteable widening of the allowlist. A hostless target
 // (about:blank) cannot be allowlisted at all, so it gets no remedy instead of one that
 // cannot work.
 func idpiAllowlistRemedy(url string) remedy.Remedy {
-	host, ok := navguard.ExtractHost(url)
-	if !ok || strings.TrimSpace(host) == "" {
+	host := security.ExtractHost(url)
+	if host == "" {
 		return remedy.None
 	}
 	return allowlistWidening.Fill(host)

@@ -51,17 +51,16 @@ The attach request body is:
 {
   "name": "shared-chrome",
   "cdpUrl": "ws://127.0.0.1:9222/devtools/browser/...",
-  "provider": "chrome",
-  "browser": "chrome-local"
+  "browser": "chrome"
 }
 ```
 
-`browser` is optional and accepts a provider name (`chrome`, `cloak`) or a
-configured target name from `browser.targets`. When `browser.targets` is
-configured, an omitted value attaches to the configured default target and the
-target's browser is used. If you also pass `provider`, it must agree with the
-`browser` value. Without browser targets,
-`provider` defaults to `chrome`; use `cloak` for a CloakBrowser endpoint
+`browser` (or its alias `provider`) is optional and takes a provider name
+(`chrome`, `cloak`, `ghost-chrome`), not a target name. When `browser.targets`
+is configured, the provider must have at least one configured target, and an
+omitted value attaches with the default target's provider. If you pass both
+`browser` and `provider`, they must agree. Without browser targets, the
+provider defaults to `chrome`; use `cloak` for a CloakBrowser endpoint
 (equivalent to `--browser cloak` on the CLI).
 
 Accepted `cdpUrl` shapes:
@@ -143,22 +142,25 @@ The value of `webSocketDebuggerUrl` is the `cdpUrl` you pass to PinchTab.
 
 ```bash
 curl -X POST http://localhost:9867/instances/attach \
+  -H "Authorization: Bearer $(pinchtab config token --stdout)" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "shared-chrome",
     "cdpUrl": "ws://127.0.0.1:9222/devtools/browser/abc123",
-    "browser": "chrome-local"
+    "browser": "chrome"
   }'
-# Response
+# Response (201, abridged)
 {
   "id": "inst_0a89a5bb",
   "profileId": "prof_278be873",
   "profileName": "shared-chrome",
-  "port": "",
+  "port": "9868",
+  "url": "http://127.0.0.1:9868",
   "mode": "headed",
   "headless": false,
   "status": "running",
   "attached": true,
+  "attachType": "cdp-bridge",
   "cdpUrl": "ws://127.0.0.1:9222/devtools/browser/abc123",
   "browser": "chrome"
 }
@@ -167,14 +169,15 @@ curl -X POST http://localhost:9867/instances/attach \
 Notes:
 
 - `name` is optional; if omitted, the server generates one like `attached-...`
-- the server validates the URL against `security.attach.allowHosts` and `security.attach.allowSchemes`
+- the server validates the URL against `security.attach.allowHosts` and `security.attach.allowSchemes` (a rejected URL answers `403`)
+- `port` and `url` belong to the child bridge PinchTab spawned from the instance port range, not to Chrome
 
 ---
 
 ## Step 5: confirm it is registered
 
 ```bash
-curl -s http://localhost:9867/instances | jq .
+curl -s -H "Authorization: Bearer $(pinchtab config token --stdout)" http://localhost:9867/instances | jq .
 # CLI Alternative
 pinchtab instance list
 ```
@@ -182,6 +185,7 @@ pinchtab instance list
 An attached instance appears in the normal instance list with:
 
 - `attached: true`
+- `attachType: "cdp-bridge"`
 - `cdpUrl: ...`
 - `status: "running"`
 
@@ -265,6 +269,7 @@ then managed instance start via:
 
 ```bash
 curl -X POST http://localhost:9867/instances/start \
+  -H "Authorization: Bearer $(pinchtab config token --stdout)" \
   -H "Content-Type: application/json" \
   -d '{"mode":"headless"}'
 # CLI Alternative

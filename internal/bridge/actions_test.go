@@ -409,8 +409,8 @@ func TestRemovedHumanActionKindsAreUnknown(t *testing.T) {
 			if err == nil {
 				t.Fatalf("expected %s to be rejected", kind)
 			}
-			if !strings.Contains(err.Error(), "unknown action") {
-				t.Fatalf("expected unknown action error for %s, got: %v", kind, err)
+			if !errors.Is(err, ErrUnknownAction) || !strings.Contains(err.Error(), kind) {
+				t.Fatalf("expected ErrUnknownAction naming %s, got: %v", kind, err)
 			}
 		})
 	}

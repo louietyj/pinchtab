@@ -58,6 +58,19 @@ assert_ok "tab pdf with options"
 end_test
 
 # ─────────────────────────────────────────────────────────────────
+start_test "pinchtab pdf --tab <id> refuses a body tabId naming another tab"
+
+pt_post /navigate -d "{\"url\":\"${FIXTURES_URL}/index.html\"}"
+assert_ok "navigate"
+TAB_ID=$(echo "$RESULT" | jq -r '.tabId')
+
+pt_post "/tabs/${TAB_ID}/pdf" -d '{"tabId":"OTHER"}'
+assert_http_status 400 "body tabId that does not match the path"
+assert_json_contains "$RESULT" '.error' 'does not match' "the refusal names the mismatch"
+
+end_test
+
+# ─────────────────────────────────────────────────────────────────
 start_test "screenshot: quality parameter"
 
 pt_post /navigate -d "{\"url\":\"${FIXTURES_URL}/table.html\"}"

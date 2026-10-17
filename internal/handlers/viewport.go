@@ -56,7 +56,7 @@ func (h *Handlers) setViewport(w http.ResponseWriter, r *http.Request, req viewp
 		req.DeviceScaleFactor = 1.0
 	}
 
-	ctx, resolvedTabID, ok := h.guardedTabContext(w, r, req.TabID, guardDomainPolicy|guardHandoffPause)
+	ctx, resolvedTabID, ok := h.guardedTabContext(w, r, req.TabID, guardDialogBlocked|guardDomainPolicy|guardHandoffPause)
 	if !ok {
 		return
 	}

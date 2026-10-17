@@ -36,7 +36,7 @@ func (h *Handlers) HandleFingerprintRotate(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	ctx, resolvedTabID, ok := h.guardedTabContext(w, r, req.TabID, guardDomainPolicy|guardHandoffPause)
+	ctx, resolvedTabID, ok := h.guardedTabContext(w, r, req.TabID, guardDialogBlocked|guardDomainPolicy|guardHandoffPause)
 	if !ok {
 		return
 	}
@@ -98,7 +98,7 @@ func (h *Handlers) HandleFingerprintRotate(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	if tracker, ok := h.Bridge.(interface{ SetFingerprintRotateActive(string, bool) }); ok {
+	if tracker, ok := bridgeAs[interface{ SetFingerprintRotateActive(string, bool) }](h.Bridge); ok {
 		tracker.SetFingerprintRotateActive(resolvedTabID, true)
 	}
 

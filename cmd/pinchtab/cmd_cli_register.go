@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"strings"
 	"time"
@@ -23,10 +24,11 @@ func browserRootCommands() []*cobra.Command {
 		dblclickCmd, dragCmd, typeCmd, screenshotCmd, annotateCmd, captureCmd, tabsCmd, pressCmd, fillCmd,
 		hoverCmd, mouseCmd, focusCmd, scrollCmd, evalCmd, pdfCmd, textCmd, titleCmd, urlCmd,
 		htmlCmd, stylesCmd, valueCmd, attrCmd, countCmd, boxCmd, visibleCmd, enabledCmd, checkedCmd,
-		downloadCmd, uploadCmd, findCmd, selectCmd, checkCmd, uncheckCmd, networkCmd, waitCmd,
+		downloadCmd, uploadCmd, findCmd, extractCmd, selectCmd, checkCmd, uncheckCmd, networkCmd, waitCmd,
 		keyboardCmd, keydownCmd, keyupCmd, scrollintoviewCmd, dialogCmd, consoleCmd, errorsCmd,
 		clipboardCmd, cacheCmd, cookiesCmd, setCmd, storageCmd, stateCmd, closeCmd, handoffCmd,
-		resumeCmd, handoffStatusCmd, recordCmd, auditCmd, compareCmd, scrapeCmd, visionCmd,
+		resumeCmd, handoffStatusCmd, recordCmd, auditCmd, compareCmd, scrapeCmd, a11yCmd, memoryCmd,
+		visionCmd,
 	}
 }
 
@@ -43,10 +45,14 @@ func registerBrowserCommands() {
 	keyboardCmd.AddCommand(keyboardTypeCmd, keyboardInsertTextCmd)
 	dialogCmd.AddCommand(dialogAcceptCmd, dialogDismissCmd)
 	mouseCmd.AddCommand(mouseMoveCmd, mouseDownCmd, mouseUpCmd, mouseWheelCmd)
-	networkCmd.AddCommand(networkRouteCmd, networkUnrouteCmd)
+	networkCmd.AddCommand(networkRouteCmd, networkUnrouteCmd, networkRulesCmd)
 	recordCmd.AddCommand(recordStartCmd, recordStopCmd, recordStatusCmd)
+	a11yCmd.AddCommand(a11yAuditCmd)
+	memoryCmd.AddCommand(memorySnapshotCmd, memorySummaryCmd, memoryCompareCmd)
 
 	configureBrowserFlags()
+	configureA11yFlags()
+	configureMemoryFlags()
 
 	addRootCommands(rootCmds...)
 }
@@ -56,7 +62,7 @@ func registerManagementCommands() {
 
 	instanceCmd.AddCommand(instanceListCmd, startInstanceCmd, instanceNavigateCmd, instanceStopCmd, instanceRestartCmd, instanceLogsCmd)
 	activityCmd.AddCommand(activityTabCmd)
-	profilesCmd.AddCommand(profilesPruneCmd)
+	profilesCmd.AddCommand(profilesCreateCmd, profilesPruneCmd)
 
 	configureManagementFlags()
 
@@ -137,7 +143,7 @@ func configureBrowserFlags() {
 	captureCmd.Flags().StringP("output", "o", "", "Save the captured image to this local file path (default: capture-<ts>.jpg)")
 	captureCmd.Flags().StringP("selector", "s", "", "Scope: clips screenshot and filters snapshot subtree to the same element")
 	captureCmd.Flags().String("filter", "", "Snapshot filter: 'interactive' or 'all' (default: interactive)")
-	captureCmd.Flags().String("format", "", "Image format: 'jpeg' (default) or 'png'")
+	captureCmd.Flags().String("format", "", "Image format: 'jpeg' or 'png' (default: inferred from -o .png, otherwise jpeg)")
 	captureCmd.Flags().StringP("quality", "q", "", "JPEG quality (0-100)")
 	captureCmd.Flags().String("depth", "", "Snapshot max depth (-1 for full)")
 	captureCmd.Flags().String("wait", "", "Lifecycle wait: stable (default) | load | none")
@@ -175,11 +181,29 @@ func configureBrowserFlags() {
 	findCmd.Flags().Bool("explain", false, "Show score breakdown")
 	findCmd.Flags().Bool("ref-only", false, "Output just the element ref")
 
+	extractCmd.Flags().String("schema", "", "JSON schema file to extract against, or - to read it from stdin")
+	_ = extractCmd.MarkFlagRequired("schema")
+	extractCmd.Flags().String("scope", "", "Confine every field to one element's subtree (ref, role:, text: or a plain query)")
+	extractCmd.Flags().Int("max-items", 0, "Cap on items per array (server default 100)")
+	extractCmd.Flags().Bool("fields", false, "After the data, print a field<TAB>ref<TAB>confidence table so a value can be acted on")
+	extractCmd.Flags().Bool("explain", false, "Print the field table with score, source and reason columns")
+
 	textCmd.Flags().Bool("raw", false, "Raw extraction mode (alias of --full)")
 	textCmd.Flags().Bool("full", false, "Return the full page text (document.body.innerText, the API's mode=full/mode=raw) instead of the default Readability-filtered content")
+	textCmd.Flags().Bool("markdown", false, "Return the page as Markdown (preserves headings, links and tables); mutually exclusive with --full/--raw")
+	textCmd.Flags().StringP("output", "o", "", "Write the extracted text to this file and print a one-line confirmation instead of the body")
 	textCmd.Flags().String("frame", "", "Extract text from a specific iframe by frameId. If unset, uses the tab's active frame scope (set via `pinchtab frame`) or the top-level document.")
 	textCmd.Flags().StringP("selector", "s", "", "Element selector to extract text from (ref/CSS/XPath/text)")
 	textCmd.Flags().Bool("json", false, "Output full JSON response instead of just text content")
+	textCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+		markdown, _ := cmd.Flags().GetBool("markdown")
+		raw, _ := cmd.Flags().GetBool("raw")
+		full, _ := cmd.Flags().GetBool("full")
+		if markdown && (raw || full) {
+			return fmt.Errorf("--markdown cannot be combined with --full or --raw; each selects a different extraction mode")
+		}
+		return nil
+	}
 	titleCmd.Flags().String("frame", "", "Read title from a specific iframe by frameId. If unset, uses the tab's active frame scope or top-level document.")
 	titleCmd.Flags().Bool("json", false, "Output full JSON response instead of just title")
 	urlCmd.Flags().String("frame", "", "Read URL from a specific iframe by frameId. If unset, uses the tab's active frame scope or top-level document.")
@@ -236,6 +260,7 @@ func configureBrowserFlags() {
 		annotateCmd,
 		pdfCmd,
 		findCmd,
+		extractCmd,
 		textCmd,
 		titleCmd,
 		urlCmd,
@@ -287,7 +312,7 @@ func configureBrowserFlags() {
 
 	evalCmd.Flags().Bool("await-promise", false, "Resolve a returned Promise before responding")
 	evalCmd.Flags().String("frame", "", "Run in a child frame (cross-site too): its frame ID, or part of its URL. `pinchtab frame` scoping does not apply to eval")
-	navCmd.Flags().Bool("print-tab-id", false, "Print only the tab ID on stdout (also triggered automatically when stdout is a pipe)")
+	navCmd.Flags().Bool("print-tab-id", false, "Print only the tab ID on stdout; with --snap or --text the payload owns stdout and the tab ID goes to stderr (also triggered automatically when stdout is a pipe)")
 	for _, cmd := range []*cobra.Command{handoffCmd, tabHandoffCmd} {
 		cmd.Flags().String("reason", "", "Reason for human handoff (default: manual_handoff)")
 		cmd.Flags().Int("timeout-ms", 0, "Optional auto-resume timeout in milliseconds")
@@ -322,6 +347,7 @@ func configureBrowserFlags() {
 		reloadCmd,
 		navCmd,
 		findCmd,
+		extractCmd,
 		evalCmd,
 		tabsCmd,
 		closeCmd,
@@ -355,8 +381,8 @@ func configureBrowserFlags() {
 	networkRouteCmd.Flags().String("content-type", "", "(With --body) Response Content-Type (default application/json)")
 	networkRouteCmd.Flags().Int("status", 0, "(With --body) Response status code (default 200)")
 	networkRouteCmd.Flags().String("method", "", "Limit to an HTTP method (GET, POST, ...). Fulfill rules without --method skip OPTIONS preflights to avoid breaking CORS.")
-	addTabFlag(networkRouteCmd, networkUnrouteCmd)
-	addJSONFlag(networkRouteCmd, networkUnrouteCmd)
+	addTabFlag(networkRouteCmd, networkUnrouteCmd, networkRulesCmd)
+	addJSONFlag(networkRouteCmd, networkUnrouteCmd, networkRulesCmd)
 
 	networkCmd.Flags().String("filter", "", "URL pattern filter")
 	networkCmd.Flags().String("method", "", "HTTP method filter (GET, POST, etc)")
@@ -375,12 +401,18 @@ func configureBrowserFlags() {
 	waitCmd.Flags().Bool("dom-quiet", false, "Wait until the DOM goes 300ms unchanged and unscrolled, with no spinner or finite animation running (at most 2s); unlike networkidle, analytics don't hold it up")
 	waitCmd.Flags().String("fn", "", "Wait for JS expression to be truthy")
 	waitCmd.Flags().String("state", "", "Element state: visible (default) or hidden")
-	waitCmd.Flags().Int("timeout", 0, "Timeout in milliseconds (default 10000, max 30000)")
+	waitCmd.Flags().Int("timeout-ms", 0, "Timeout in milliseconds (default 10000, max 30000)")
+	// --timeout on wait is milliseconds, but the same bare flag is SECONDS on
+	// nav/scrape — a 1000x footgun. Keep it for back-compat as a deprecated alias
+	// (still ms); cobra prints its deprecation note pointing at --timeout-ms on use.
+	waitCmd.Flags().Int("timeout", 0, "Deprecated: use --timeout-ms")
+	_ = waitCmd.Flags().MarkDeprecated("timeout", "use --timeout-ms (this flag is milliseconds; bare --timeout means seconds on nav and scrape)")
 
 	consoleCmd.Flags().Bool("clear", false, "Clear console logs")
 	consoleCmd.Flags().String("limit", "", "Maximum entries to return")
 	errorsCmd.Flags().Bool("clear", false, "Clear error logs")
 	errorsCmd.Flags().String("limit", "", "Maximum entries to return")
+	addJSONFlag(consoleCmd, errorsCmd)
 
 	auditCmd.Flags().Bool("sitemap", false, "Treat the URL as a sitemap.xml and audit the discovered pages")
 	auditCmd.Flags().Int("sample-size", 0, "Pages audited per template group, e.g. /products/p1..pN (0 = all pages; deterministic picks)")
@@ -473,15 +505,24 @@ func addRootCommands(cmds ...*cobra.Command) {
 func addTabFlag(cmds ...*cobra.Command) {
 	for _, cmd := range cmds {
 		cmd.Flags().String("tab", "", "Tab ID")
+		tabFlagCommands = append(tabFlagCommands, cmd)
 		existingPreRun := cmd.PreRun
-		cmd.PreRun = func(cmd *cobra.Command, args []string) {
+		existingPreRunE := cmd.PreRunE
+		cmd.PreRun = nil
+		cmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 			defaultTabFlagFromState(cmd)
 			if existingPreRun != nil {
 				existingPreRun(cmd, args)
 			}
+			if existingPreRunE != nil {
+				return existingPreRunE(cmd, args)
+			}
+			return nil
 		}
 	}
 }
+
+var tabFlagCommands []*cobra.Command
 
 func portIsListening(baseURL string) bool {
 	host := strings.TrimPrefix(baseURL, "http://")

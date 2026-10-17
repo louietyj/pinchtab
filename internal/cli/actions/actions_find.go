@@ -42,9 +42,10 @@ func Find(client *http.Client, base, token string, query string, cmd *cobra.Comm
 	if tabID != "" {
 		path = "/tabs/" + tabID + "/find"
 	}
+	capture := apiclient.CaptureVocab(tabID == "")
 
 	if refOnly {
-		result := apiclient.DoPostQuiet(client, base, token, path, body)
+		result := apiclient.DoPostQuiet(client, base, token, path, body, capture)
 		if ref, ok := result["best_ref"].(string); ok && ref != "" {
 			fmt.Println(ref)
 			return
@@ -53,12 +54,12 @@ func Find(client *http.Client, base, token string, query string, cmd *cobra.Comm
 	}
 
 	if jsonOutput {
-		apiclient.DoPost(client, base, token, path, body)
+		apiclient.DoPost(client, base, token, path, body, capture)
 		return
 	}
 
 	// Terse: one line per match: <ref>\t<role>\t"<name>"
-	result := apiclient.DoPostQuiet(client, base, token, path, body)
+	result := apiclient.DoPostQuiet(client, base, token, path, body, capture)
 	matches, ok := result["matches"].([]any)
 	if !ok || len(matches) == 0 {
 		// Single result format

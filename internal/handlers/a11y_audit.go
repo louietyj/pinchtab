@@ -13,6 +13,12 @@ import (
 func (h *Handlers) HandleA11yAudit(w http.ResponseWriter, r *http.Request) {
 	tabID := r.URL.Query().Get("tabId")
 
+	engine, engErr := audit.ParseEngine(r.URL.Query().Get("engine"))
+	if engErr != nil {
+		httpx.Error(w, http.StatusBadRequest, engErr)
+		return
+	}
+
 	if !h.ensureBrowserOrRespond(w, h.Config) {
 		return
 	}
@@ -22,10 +28,15 @@ func (h *Handlers) HandleA11yAudit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	defer h.armAutoCloseIfEnabled(resolvedTabID)
+	defer h.armIdleLifecycle(resolvedTabID)
 	defer cancel()
 
 	h.waitForReadyState(tCtx)
+
+	if engine == audit.EngineAxe {
+		h.runAxeAudit(w, r, tCtx, resolvedTabID)
+		return
+	}
 
 	rawNodes, err := bridge.FetchAXTree(tCtx)
 	if err != nil {

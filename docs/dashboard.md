@@ -4,7 +4,7 @@ PinchTab includes a built-in web dashboard for monitoring instances, managing pr
 
 The dashboard is part of the full server:
 
-- `pinchtab` or `pinchtab server` starts the full server and serves the dashboard
+- `pinchtab server` (or the daemon from `pinchtab daemon install`) starts the full server and serves the dashboard
 - `pinchtab bridge` does not serve the dashboard
 
 You can open the dashboard at:
@@ -19,11 +19,12 @@ You can open the dashboard at:
 
 ## Dashboard overview
 
-The current dashboard exposes three main pages:
+The current dashboard exposes four main pages:
 
 1. **Monitoring**
-2. **Profiles**
-3. **Settings**
+2. **Agents**
+3. **Profiles**
+4. **Settings**
 
 The UI is a React SPA served by the Go server.
 
@@ -59,6 +60,12 @@ Operational data comes from:
 
 ---
 
+## Agents page
+
+The Agents page lists agents known to the server (from `GET /api/agents`) and shows the selected agent's recorded activity, updated live over `GET /api/agents/{id}/events`.
+
+---
+
 ## Profiles page
 
 ![Dashboard Profiles](media/dashboard-profiles.jpeg)
@@ -78,12 +85,13 @@ What you can do:
 - stop the running instance for a profile
 - edit profile metadata
 - delete a profile
-- open a profile details modal
+- open a profile's details panel
 
 The launch flow uses the server APIs behind the scenes:
 
 ```bash
 curl -X POST http://localhost:9867/profiles \
+  -H "Authorization: Bearer $PINCHTAB_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name":"work","useWhen":"Team account workflows"}'
 # Response
@@ -96,6 +104,7 @@ curl -X POST http://localhost:9867/profiles \
 
 ```bash
 curl -X POST http://localhost:9867/instances/start \
+  -H "Authorization: Bearer $PINCHTAB_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"profileId":"prof_278be873","mode":"headed"}'
 # CLI Alternative
@@ -114,14 +123,15 @@ pinchtab instance start --profile prof_278be873 --mode headed
 
 ---
 
-## Profile details modal
+## Profile details panel
 
-Profile details are shown in a modal, not as a separate top-level page.
+Profile details are shown in a panel beside the profile list, not as a separate top-level page.
 
-The modal currently includes tabs for:
+The panel currently includes tabs for:
 
 - **Profile**
 - **Live**
+- **Tabs**
 - **Logs**
 
 From there you can:
@@ -150,6 +160,8 @@ It includes sections for:
 - Network & Attach
 - Browser Runtime
 - Timeouts
+- AutoSolver
+- Observability
 
 What you can do:
 
@@ -172,10 +184,10 @@ The Security IDPI section is focused on content-protection behavior:
 - `security.idpi.wrapContent`
 - `security.idpi.customPatterns`
 
-The health payload also surfaces summary info:
+The health payload also surfaces summary info (the API requires the server token; see `pinchtab config token --stdout`):
 
 ```bash
-curl http://localhost:9867/health | jq .
+curl -H "Authorization: Bearer $PINCHTAB_TOKEN" http://localhost:9867/health | jq .
 # Response
 {
   "status": "ok",
@@ -196,7 +208,7 @@ The dashboard uses Server-Sent Events, not WebSockets.
 Primary stream endpoint:
 
 ```bash
-curl http://localhost:9867/api/events
+curl -H "Authorization: Bearer $PINCHTAB_TOKEN" http://localhost:9867/api/events
 ```
 
 This stream carries:
@@ -219,7 +231,7 @@ If the React dashboard assets are not built into the binary, the server serves a
 ### Dashboard not loading
 
 ```bash
-curl http://localhost:9867/health
+pinchtab health
 ```
 
 If the server is up, try:
@@ -233,6 +245,7 @@ Start one:
 
 ```bash
 curl -X POST http://localhost:9867/instances/start \
+  -H "Authorization: Bearer $PINCHTAB_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"mode":"headless"}'
 # CLI Alternative
@@ -241,4 +254,4 @@ pinchtab instance start
 
 ### No live profile preview
 
-The profile must have a running instance before the Live tab in the profile details modal can show live tab data.
+The profile must have a running instance before the Live tab in the profile details panel can show live tab data.

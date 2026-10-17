@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Memory Leak Fixture</title>
+</head>
+<body>
+  <h1>Memory Leak Fixture</h1>
+  <p>Each Leak click appends a 5 MB array of doubles to <code>window.leaked</code>; Release drops them all.</p>
+  <button id="leak" type="button">Leak</button>
+  <button id="release" type="button">Release</button>
+  <p>Arrays held: <span id="count">0</span></p>
+  <script>
+    window.leaked = [];
+    const DOUBLES_PER_LEAK = 5 * 1024 * 1024 / 8;
+    document.getElementById("leak").addEventListener("click", () => {
+      window.leaked.push(Array.from({ length: DOUBLES_PER_LEAK }, (_, i) => i + 0.5));
+      document.getElementById("count").textContent = String(window.leaked.length);
+    });
+    document.getElementById("release").addEventListener("click", () => {
+      window.leaked = [];
+      document.getElementById("count").textContent = "0";
+    });
+  </script>
+</body>
+</html>

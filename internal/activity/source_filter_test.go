@@ -28,7 +28,7 @@ func TestQuerySourceFilterIsNormalized(t *testing.T) {
 				t.Fatalf("Record: %v", err)
 			}
 
-			got, err := s.Query(Filter{Source: "mcp"})
+			got, err := s.Query(Filter{Sources: []string{"mcp"}})
 			if err != nil {
 				t.Fatalf("Query: %v", err)
 			}
@@ -53,7 +53,7 @@ func TestQuerySourceFilterDoesNotMatchPrefix(t *testing.T) {
 		}
 	}
 
-	got, err := s.Query(Filter{Source: "mcp"})
+	got, err := s.Query(Filter{Sources: []string{"mcp"}})
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}

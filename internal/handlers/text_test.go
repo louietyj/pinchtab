@@ -155,6 +155,9 @@ func TestResolveTextMode(t *testing.T) {
 		{"full", "raw"},
 		{"FULL", "raw"},
 		{"  raw  ", "raw"},
+		{"markdown", "markdown"},
+		{"MARKDOWN", "markdown"},
+		{"  markdown  ", "markdown"},
 	} {
 		got, err := resolveTextMode(tc.requested)
 		if err != nil {
@@ -176,12 +179,12 @@ func TestResolveTextMode_RefusesAnUnimplementedMode(t *testing.T) {
 	if !strings.Contains(message, `"readable"`) {
 		t.Errorf("the refusal does not name what the caller sent: %s", message)
 	}
-	for _, accepted := range []string{"full", "raw"} {
+	for _, accepted := range []string{"full", "markdown", "raw"} {
 		if !strings.Contains(message, accepted) {
 			t.Errorf("the refusal does not name the accepted value %q: %s", accepted, message)
 		}
 	}
-	if !strings.Contains(message, "full, raw") {
+	if !strings.Contains(message, "full, markdown, raw") {
 		t.Errorf("the accepted values are not in a stable order, so the refusal differs between runs: %s", message)
 	}
 }
@@ -388,5 +391,282 @@ func TestExtractDocumentText_CoverageFloorCountsCharactersNotBytes(t *testing.T)
 	}
 	if extraction.RawLength != utf8.RuneCountInString(raw) {
 		t.Fatalf("RawLength = %d, want %d characters", extraction.RawLength, utf8.RuneCountInString(raw))
+	}
+}
+
+// markdownFixtureHTML is a rendered article the seaportal converter turns into
+// Markdown: a heading, two subheadings, an inline link, a list and a 3-column
+// table, with enough prose that extraction does not treat it as thin.
+const markdownFixtureHTML = `<!doctype html><html><head><title>Doc Title</title>` +
+	`<meta name="description" content="A short description of the doc."></head><body><article>` +
+	`<h1>Main Heading</h1>` +
+	`<h2>First Section</h2>` +
+	`<p>A paragraph with an <a href="https://example.com/link">inline link</a> in it that keeps ` +
+	`going with more words so extraction triggers properly and does not collapse to nothing.</p>` +
+	`<h2>Second Section</h2>` +
+	`<ul><li>Alpha item one here</li><li>Beta item two here</li><li>Gamma item three here</li></ul>` +
+	`<table><thead><tr><th>Col A</th><th>Col B</th><th>Col C</th></tr></thead>` +
+	`<tbody><tr><td>a1</td><td>b1</td><td>c1</td></tr><tr><td>a2</td><td>b2</td><td>c2</td></tr></tbody></table>` +
+	`<p>More trailing text so the article body sits comfortably above any thin-content threshold ` +
+	`the extractor applies before it will hand back a document.</p></article></body></html>`
+
+// markdownBridge answers the frame-scoped HTML inspect read with a fixed
+// document and the raw-text script with fixed text, so the markdown extraction
+// path can be exercised without a real browser.
+type markdownBridge struct {
+	mockBridge
+	html string
+	url  string
+	raw  string
+}
+
+func (b *markdownBridge) EvaluateInFrame(_ context.Context, _ string, _ string, result any, _ bridge.EvalOpts) error {
+	switch out := result.(type) {
+	case *inspectPayload:
+		out.HTML = b.html
+		out.URL = b.url
+		return nil
+	case *string:
+		*out = b.raw
+		return nil
+	default:
+		return fmt.Errorf("evaluate result is %T, want *inspectPayload or *string", result)
+	}
+}
+
+func TestExtractDocumentMarkdown_ConvertsRenderedHTMLToMarkdown(t *testing.T) {
+	b := &markdownBridge{html: markdownFixtureHTML, url: "http://example.test/page"}
+	h := New(b, &config.RuntimeConfig{}, nil, nil, nil)
+
+	extraction, err := h.extractDocumentText(context.Background(), extractionMarkdown, "FRAME1")
+	if err != nil {
+		t.Fatalf("extractDocumentText: %v", err)
+	}
+	if extraction.Mode != extractionMarkdown {
+		t.Fatalf("Mode = %q, want %q", extraction.Mode, extractionMarkdown)
+	}
+	if extraction.Title != "Doc Title" {
+		t.Errorf("Title = %q, want the converter title", extraction.Title)
+	}
+	if extraction.Description != "A short description of the doc." {
+		t.Errorf("Description = %q, want the converter description", extraction.Description)
+	}
+	for _, syntax := range []string{"# ", "## ", "[inline link](https://example.com/link)", "- Alpha item one here", "|"} {
+		if !strings.Contains(extraction.Text, syntax) {
+			t.Errorf("markdown does not contain %q:\n%s", syntax, extraction.Text)
+		}
+	}
+	if extraction.RawKnown {
+		t.Errorf("RawKnown = true; markdown has no raw-length comparison to report")
+	}
+}
+
+func TestExtractDocumentMarkdown_EmptyConversionFallsBackToRaw(t *testing.T) {
+	b := &markdownBridge{html: "<html><body></body></html>", url: "http://example.test/empty", raw: landingPageRawText}
+	h := New(b, &config.RuntimeConfig{}, nil, nil, nil)
+
+	extraction, err := h.extractDocumentText(context.Background(), extractionMarkdown, "FRAME1")
+	if err != nil {
+		t.Fatalf("extractDocumentText: %v", err)
+	}
+	if extraction.Mode != extractionMarkdownFallback {
+		t.Fatalf("Mode = %q, want %q when the converter yields nothing", extraction.Mode, extractionMarkdownFallback)
+	}
+	if extraction.Text != landingPageRawText {
+		t.Errorf("Text = %q, want the raw document text", extraction.Text)
+	}
+	if !extraction.RawKnown || extraction.RawLength != utf8.RuneCountInString(landingPageRawText) {
+		t.Errorf("RawLength = %d (known=%v), want %d", extraction.RawLength, extraction.RawKnown, utf8.RuneCountInString(landingPageRawText))
+	}
+}
+
+// A table row that overruns is dropped, never split: every returned line must be
+// a whole source line, and the result must not be empty (the header rows fit).
+func TestTruncateCharsLine_NeverSplitsTableRow(t *testing.T) {
+	body := "| Col A | Col B | Col C |\n|-------|-------|-------|\n| a1 | b1 | c1 |\n| a2 | b2 | c2 |\n| a3 | b3 | c3 |"
+	cut, truncated := truncateCharsLine(body, 60)
+	if !truncated {
+		t.Fatalf("expected a cut at 60 chars of a %d-char body", utf8.RuneCountInString(body))
+	}
+	if cut == "" {
+		t.Fatalf("result is empty; the header rows fit within 60 chars and must survive")
+	}
+	sourceLines := map[string]bool{}
+	for _, line := range strings.Split(body, "\n") {
+		sourceLines[line] = true
+	}
+	for _, line := range strings.Split(cut, "\n") {
+		if !sourceLines[line] {
+			t.Fatalf("returned line %q is not a whole source line; a table row was split:\n%s", line, cut)
+		}
+	}
+	if utf8.RuneCountInString(cut) > 60 {
+		t.Errorf("cut kept %d chars, over the 60 limit", utf8.RuneCountInString(cut))
+	}
+}
+
+// seaportal emits each paragraph as ONE line, so a page opening with a long
+// paragraph must still return a rune-cut of it — not an empty body. This fails on
+// the whole-lines-only helper, which dropped the first overrunning line.
+func TestTruncateCharsLine_RuneCutsLongFirstLine(t *testing.T) {
+	body := strings.Repeat("word ", 60) + "end" // one ~303-char paragraph, no newlines
+	if utf8.RuneCountInString(body) <= 200 {
+		t.Fatalf("fixture must exceed the limit; got %d chars", utf8.RuneCountInString(body))
+	}
+	cut, truncated := truncateCharsLine(body, 200)
+	if !truncated {
+		t.Fatal("expected a cut")
+	}
+	if cut == "" {
+		t.Fatal("a long first paragraph must be rune-cut, not dropped to empty")
+	}
+	if n := utf8.RuneCountInString(cut); n == 0 || n > 200 {
+		t.Fatalf("cut kept %d chars, want 1..200", n)
+	}
+	if !strings.HasPrefix(body, cut) {
+		t.Fatalf("the partial line must be a prefix of the source paragraph:\n%q", cut)
+	}
+}
+
+// A cut that would land inside a [..](..) link is pulled back to before the
+// link, never emitting a half-open one — and the text before the link survives
+// rather than the whole line being dropped.
+func TestTruncateCharsLine_NeverSplitsLink(t *testing.T) {
+	assertNoPartialLink := func(t *testing.T, cut string) {
+		t.Helper()
+		if strings.Contains(cut, "](") || strings.Count(cut, "[") != strings.Count(cut, "]") {
+			t.Fatalf("a partial link survived: %q", cut)
+		}
+	}
+
+	t.Run("cut pulls back to before the link, keeping the lead", func(t *testing.T) {
+		line2 := "Read [the annual report](https://example.com/reports/2026/annual.pdf) today"
+		body := "# Title\n" + line2
+		cut, truncated := truncateCharsLine(body, 30) // budget lands inside the link
+		if !truncated {
+			t.Fatal("expected a cut")
+		}
+		if cut != "# Title\nRead" {
+			t.Fatalf("expected the lead before the link to survive; got %q", cut)
+		}
+		assertNoPartialLink(t, cut)
+	})
+
+	// A long opening paragraph with an inline link across the limit must still
+	// return the prose before the link, not an empty body.
+	t.Run("long first line with a link across the limit", func(t *testing.T) {
+		lead := strings.Repeat("word ", 38) // 190 chars, trailing space
+		body := lead + "[annual report](https://example.com/x/y/z) and more padding text here"
+		cut, truncated := truncateCharsLine(body, 200) // budget lands inside the link
+		if !truncated {
+			t.Fatal("expected a cut")
+		}
+		if cut == "" {
+			t.Fatal("a long first paragraph with a link must return the prose before it, not empty")
+		}
+		if strings.Contains(cut, "[") {
+			t.Fatalf("the cut must end before the link's '['; got %q", cut)
+		}
+		if !strings.HasPrefix(body, cut) {
+			t.Fatalf("the partial line must be a prefix of the source; got %q", cut)
+		}
+		if n := utf8.RuneCountInString(cut); n > 200 {
+			t.Fatalf("cut kept %d chars, over the 200 limit", n)
+		}
+		assertNoPartialLink(t, cut)
+	})
+}
+
+func TestTruncateCharsLine_NoCutWhenUnderLimit(t *testing.T) {
+	body := "one\ntwo\nthree"
+	got, truncated := truncateCharsLine(body, 100)
+	if truncated || got != body {
+		t.Fatalf("under-limit body was altered: got=%q truncated=%v", got, truncated)
+	}
+}
+
+func TestWriteTextResponse_MarkdownPlainFormatIsTextMarkdown(t *testing.T) {
+	extraction := textExtraction{Text: "# Heading\n\nBody text.", Mode: extractionMarkdown}
+	w := textResponseRecorder(t, extraction, -1, "text")
+
+	if got := w.Header().Get("Content-Type"); got != "text/markdown; charset=utf-8" {
+		t.Errorf("Content-Type = %q, want text/markdown", got)
+	}
+	if w.Body.String() != "# Heading\n\nBody text." {
+		t.Errorf("body = %q, want the bare Markdown", w.Body.String())
+	}
+	if got := w.Header().Get(headerTextExtraction); got != extractionMarkdown {
+		t.Errorf("%s = %q, want %q", headerTextExtraction, got, extractionMarkdown)
+	}
+}
+
+func TestWriteTextResponse_MarkdownEnvelopeCarriesTitleAndDescription(t *testing.T) {
+	extraction := textExtraction{
+		Text:        "## Section\n\n| a | b |\n|---|---|\n| 1 | 2 |",
+		Mode:        extractionMarkdown,
+		Title:       "Converter Title",
+		Description: "Converter description.",
+	}
+	w := textResponseRecorder(t, extraction, -1, "")
+	envelope := decodeTextEnvelope(t, w)
+
+	if envelope["extraction"] != extractionMarkdown {
+		t.Errorf("extraction = %v, want %q", envelope["extraction"], extractionMarkdown)
+	}
+	if envelope["title"] != "Converter Title" {
+		t.Errorf("title = %v, want the converter title", envelope["title"])
+	}
+	if envelope["description"] != "Converter description." {
+		t.Errorf("description = %v, want the converter description", envelope["description"])
+	}
+	if _, ok := envelope["rawLength"]; ok {
+		t.Errorf("rawLength present for a markdown response with no raw comparison")
+	}
+}
+
+// maxChars over a Markdown table: the JSON textLength counts the truncated body
+// and the last line stays a whole table row.
+func TestWriteTextResponse_MarkdownMaxCharsCutsOnLineBoundary(t *testing.T) {
+	body := "| Col A | Col B |\n|-------|-------|\n| a1 | b1 |\n| a2 | b2 |\n| a3 | b3 |"
+	extraction := textExtraction{Text: body, Mode: extractionMarkdown}
+	w := textResponseRecorder(t, extraction, 40, "")
+	envelope := decodeTextEnvelope(t, w)
+
+	if envelope["truncated"] != true {
+		t.Fatalf("truncated = %v, want true", envelope["truncated"])
+	}
+	text, _ := envelope["text"].(string)
+	for _, line := range strings.Split(text, "\n") {
+		if !strings.Contains(body, line) {
+			t.Fatalf("returned line %q is not a whole source line", line)
+		}
+	}
+	if envelope["textLength"] != float64(utf8.RuneCountInString(text)) {
+		t.Errorf("textLength = %v, want the truncated body length %d", envelope["textLength"], utf8.RuneCountInString(text))
+	}
+}
+
+// The guard runs on markdown exactly as on readability: reuse the injected
+// corpus the /text and /html guard tests share and assert the same warn-and-wrap.
+func TestWriteTextResponse_MarkdownReusesTheTextGuard(t *testing.T) {
+	h := inspectIDPIHandlers(false)
+	h.Bridge = &mockBridge{}
+
+	for _, mode := range []string{extractionReadability, extractionMarkdown} {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/text", nil)
+		h.writeTextResponse(w, r, context.Background(), textExtraction{Text: injectedMarkup, Mode: mode}, -1, "", nil, nil)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("mode %q: status = %d, want 200 (warn, not block) body=%s", mode, w.Code, w.Body.String())
+		}
+		envelope := decodeTextEnvelope(t, w)
+		if envelope["idpiWarning"] == nil || envelope["idpiWarning"] == "" {
+			t.Errorf("mode %q: idpiWarning missing; the guard did not run on the body", mode)
+		}
+		text, _ := envelope["text"].(string)
+		if !strings.Contains(text, "untrusted_web_content") {
+			t.Errorf("mode %q: body is not wrapped as untrusted content:\n%s", mode, text)
+		}
 	}
 }

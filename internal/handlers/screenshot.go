@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/pinchtab/pinchtab/internal/api/types"
 	"github.com/pinchtab/pinchtab/internal/bridge"
 	"github.com/pinchtab/pinchtab/internal/httpx"
 )
@@ -89,8 +90,17 @@ func (h *Handlers) HandleScreenshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	vocabBefore := h.tabVocab(resolvedTabID)
 	clip, clipErr := h.resolveScreenshotClip(tCtx, resolvedTabID, req.selector)
+	h.publishVocabIfReepoched(w, resolvedTabID, vocabBefore)
 	if clipErr != nil {
+		// A selector that matched nothing answers like every other read verb,
+		// named code included; a clip failure is still a server fault and keeps
+		// the crash annotation, which is what that path exists for.
+		if clipErr.status == http.StatusNotFound {
+			respondSelectorFailure(w, clipErr.err)
+			return
+		}
 		h.errorWithCrashContext(w, clipErr.status, clipErr.err)
 		return
 	}
@@ -126,7 +136,7 @@ func (h *Handlers) HandleScreenshot(w http.ResponseWriter, r *http.Request) {
 		// pixels, whatever the devicePixelRatio.
 		if clip == nil && !req.beyondViewport {
 			if vw, vh := bridge.ViewportSize(tCtx); vw > 0 && vh > 0 {
-				w.Header().Set(ViewportHeader, fmt.Sprintf("%gx%g", vw, vh))
+				w.Header().Set(types.HeaderViewport, fmt.Sprintf("%gx%g", vw, vh))
 			}
 		}
 		writeRawImage(w, buf, imageContentType(req.format), "screenshot write")
@@ -138,9 +148,6 @@ func (h *Handlers) HandleScreenshot(w http.ResponseWriter, r *http.Request) {
 		"base64": base64.StdEncoding.EncodeToString(buf),
 	})
 }
-
-// ViewportHeader carries a raw viewport screenshot's CSS viewport, "<w>x<h>".
-const ViewportHeader = "X-PinchTab-Viewport"
 
 // statusError pairs an HTTP status with the error to serialize.
 type statusError struct {
@@ -156,7 +163,8 @@ func (h *Handlers) resolveScreenshotClip(ctx context.Context, tabID, selector st
 	}
 	nodeID, err := h.resolveSelectorNodeID(ctx, tabID, selector)
 	if err != nil {
-		return nil, &statusError{400, frameScopedSelectorError("selector", err)}
+		wrapped := frameScopedSelectorError("selector", err)
+		return nil, &statusError{selectorFailureStatus(wrapped), wrapped}
 	}
 	clip, err := bridge.ScreenshotClipForNode(ctx, nodeID)
 	if err != nil {
@@ -171,6 +179,7 @@ func (h *Handlers) serveAnnotatedScreenshot(w http.ResponseWriter, ctx context.C
 		httpx.Error(w, 500, fmt.Errorf("annotate: %w", err))
 		return
 	}
+	h.publishTabVocab(w, tabID)
 	if req.raw {
 		writeRawImage(w, img, imageContentType(outFormat), "annotated screenshot write")
 		return

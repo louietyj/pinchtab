@@ -294,6 +294,42 @@ get_tab_count() {
   e2e_curl -s "${E2E_SERVER}/tabs" | jq '.tabs | length'
 }
 
+_e2e_snapshot_tab_ids() {
+  e2e_curl -s --max-time 5 "${E2E_SERVER}/tabs" 2>/dev/null | jq -r '.tabs[].id // empty' 2>/dev/null || true
+}
+
+# Records the scenario's starting tab set and, separately, whether the snapshot
+# succeeded. A successful empty baseline (0 tabs) and a failed snapshot both leave
+# an empty id set, but cleanup must treat them oppositely, so the success flag is
+# tracked on its own rather than inferred from the contents.
+_e2e_record_tab_baseline() {
+  SCENARIO_TAB_BASELINE=""
+  SCENARIO_TAB_BASELINE_OK=0
+  local body status
+  body=$(e2e_curl -s --max-time 5 -w $'\n%{http_code}' "${E2E_SERVER}/tabs" 2>/dev/null) || return 0
+  status="${body##*$'\n'}"
+  [ "$status" = "200" ] || return 0
+  SCENARIO_TAB_BASELINE_OK=1
+  SCENARIO_TAB_BASELINE="$(printf '%s' "${body%$'\n'*}" | jq -r '.tabs[].id // empty' 2>/dev/null | tr '\n' ' ')"
+}
+
+_e2e_close_leaked_tabs() {
+  local id
+  # Skip only when the start-of-scenario snapshot FAILED: an unknown baseline cannot
+  # say which tabs the scenario opened. A successful empty baseline means the
+  # scenario began with no tabs, so every tab present now is one it opened.
+  [ "${SCENARIO_TAB_BASELINE_OK:-0}" = "1" ] || return 0
+  while read -r id; do
+    [ -n "$id" ] || continue
+    case " ${SCENARIO_TAB_BASELINE} " in
+      *" ${id} "*) continue ;;
+    esac
+    e2e_curl -s --max-time 5 -X POST "${E2E_SERVER}/close" \
+      -H "Content-Type: application/json" \
+      -d "{\"tabId\":\"$id\"}" >/dev/null 2>&1 || true
+  done < <(_e2e_snapshot_tab_ids)
+}
+
 get_tab_id() {
   echo "$RESULT" | jq -r '.tabId'
 }

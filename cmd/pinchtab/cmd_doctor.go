@@ -18,18 +18,24 @@ var doctorCmd = &cobra.Command{
 	Use:   "doctor",
 	Short: "Run discovery and health checks against the configured browser",
 	Long: `Run a series of read-only diagnostic checks against the current
-PinchTab configuration. Initially focused on CloakBrowser discovery
-(binary exists, executes, exposes CDP, accepts fingerprint flags),
-but the framework is browser-neutral.
+PinchTab configuration. On the default provider they cover the config file,
+the browser binary (found, version adequate), a headless launch that must
+expose CDP, and the request shapes the provider handles; CloakBrowser adds
+fingerprint-flag and font checks. The browser is resolved the way the server
+resolves it: browser.binary when set, otherwise discovery.
 
-The doctor command does not require a running PinchTab server. It works
-directly against the on-disk config and may launch a short-lived browser
-subprocess (which is always torn down).
+The doctor command inspects the installation and does not require a running
+PinchTab server; it may launch a short-lived browser subprocess, which is
+always torn down. It never reports on a running browser: if a server answers
+at the configured address, doctor names it and the surfaces (/health, pinchtab
+security, instance metrics) that carry the runtime state. The summary says
+whether any check launched a browser, so a run of skips never reads as a
+clean bill of health.
 
 Exit codes:
   0  all checks passed or were skipped
   1  at least one check failed
-  2  usage or setup error (e.g. config could not be loaded)`,
+  2  usage error (e.g. an unknown check name)`,
 	Example: `  pinchtab doctor
   pinchtab doctor --json
   pinchtab doctor browser cloak-eu
@@ -40,9 +46,18 @@ Exit codes:
 }
 
 func runDoctor(cmd *cobra.Command, _ []string) error {
-	cfg, err := loadDoctorConfig()
-	if err != nil {
-		return newCommandExitError(2, fmt.Errorf("pinchtab doctor: %w", err))
+	cfg, diagnostics, loadErr := config.LoadConfig()
+	config.EmitLoadDiagnostics(diagnostics)
+	if cfg == nil {
+		return newCommandExitError(2, fmt.Errorf("pinchtab doctor: no configuration found"))
+	}
+	if loadErr != nil {
+		check := strings.TrimSpace(doctorCheck)
+		if check != "" && !doctor.KnownCheck(cfg, check) {
+			return newCommandExitError(2, fmt.Errorf("pinchtab doctor: unknown check %q for browser=%s", check, cfg.DefaultBrowser))
+		}
+		results := doctor.RunWithConfigError(cmd.Context(), cfg, check, loadErr)
+		return runDoctorResults(cmd, cfg, results, "pinchtab doctor", "")
 	}
 	return runDoctorChecks(cmd, cfg, doctorCheck, "pinchtab doctor", "")
 }
@@ -60,15 +75,20 @@ func runDoctorChecks(cmd *cobra.Command, cfg *config.RuntimeConfig, check, errPr
 	}
 
 	results := doctor.Run(cmd.Context(), cfg, check)
+	return runDoctorResults(cmd, cfg, results, errPrefix, target)
+}
+
+func runDoctorResults(cmd *cobra.Command, cfg *config.RuntimeConfig, results []doctor.CheckResult, errPrefix, target string) error {
 	browser := config.NormalizeBrowser(cfg.DefaultBrowser)
 	out := cmd.OutOrStdout()
+	runtime := doctor.ProbeRuntime(cmd.Context(), cfg)
 
 	if doctorJSON {
-		if err := doctor.WriteJSON(out, browser, target, results); err != nil {
+		if err := doctor.WriteJSON(out, browser, target, results, runtime); err != nil {
 			return fmt.Errorf("write json: %w", err)
 		}
 	} else {
-		doctor.WriteText(out, browser, target, results)
+		doctor.WriteText(out, browser, target, results, runtime)
 	}
 
 	summary := doctor.Summarize(results)

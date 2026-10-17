@@ -147,8 +147,10 @@ func (h *Handlers) handleWaitCore(w http.ResponseWriter, r *http.Request, req wa
 		return
 	}
 
-	// Fixed duration wait doesn't need a browser tab.
 	if mode == "ms" {
+		if _, tabID, err := h.tabContext(r, req.TabID); err == nil && h.refuseIfDialogBlocked(w, tabID) {
+			return
+		}
 		ms := *req.Ms
 		if ms < 0 {
 			ms = 0
@@ -173,7 +175,7 @@ func (h *Handlers) handleWaitCore(w http.ResponseWriter, r *http.Request, req wa
 		return
 	}
 
-	ctx, resolvedTabID, ok := h.guardedTabContext(w, r, req.TabID, guardDomainPolicy)
+	ctx, resolvedTabID, ok := h.guardedTabContext(w, r, req.TabID, guardDialogBlocked|guardDomainPolicy)
 	if !ok {
 		return
 	}

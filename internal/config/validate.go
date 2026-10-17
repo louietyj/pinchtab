@@ -14,11 +14,51 @@ import (
 	"github.com/pinchtab/pinchtab/internal/browsers"
 	"github.com/pinchtab/pinchtab/internal/config/geo"
 	"github.com/pinchtab/pinchtab/internal/safelog"
+	"github.com/pinchtab/pinchtab/internal/session"
 )
+
+// validateAgentSessionMode gates sessions.agent.mode. "required" is refused
+// rather than accepted-and-ignored: it names a real posture — the session
+// credential as the only accepted agent credential — that this server does not
+// enforce, and an operator who sets it believes they have session-only auth while
+// the bearer token and the dashboard cookie still authenticate. Refusing is
+// operator-visible and small-radius (the default is preferred, so only an explicit
+// setter is hit) and it replaces a silent security misapprehension with a loud one.
+func validateAgentSessionMode(mode string) []error {
+	switch session.NormalizeMode(mode) {
+	case "", session.ModeOff, session.ModePreferred:
+		return nil
+	case session.ModeRequired:
+		return []error{ValidationError{
+			Field:       "sessions.agent.mode",
+			Message:     fmt.Sprintf("%q is not implemented: the server bearer token and the dashboard cookie still authenticate, so this value cannot deliver the session-only auth it names (must be off or preferred)", session.ModeRequired),
+			FatalAtLoad: true,
+		}}
+	default:
+		return []error{ValidationError{
+			Field:       "sessions.agent.mode",
+			Message:     fmt.Sprintf("invalid value %q (must be off or preferred)", mode),
+			FatalAtLoad: true,
+		}}
+	}
+}
 
 type ValidationError struct {
 	Field   string
 	Message string
+
+	// FatalAtLoad stops the process at load instead of warning past the problem.
+	// Membership is an explicit opt-in with a reason per field, so the class stays
+	// readable in the type rather than being re-decided from a message:
+	//
+	//   sessions.agent.mode — an auth posture. A value the server cannot interpret
+	//     would otherwise be read as the default and leave agent sessions serving,
+	//     which is the misapprehension refusing it exists to end. Choosing a posture
+	//     on the operator's behalf is what a load must not do.
+	//
+	// It is the only member. Every other validation error warns at load and gates
+	// only the write paths, which is what keeps an inert key from aborting a server.
+	FatalAtLoad bool
 }
 
 func (e ValidationError) Error() string {
@@ -160,7 +200,7 @@ func ValidateFileConfig(fc *FileConfig) []error {
 		if tp.Lifecycle != "" && !isValidLifecyclePolicy(tp.Lifecycle) {
 			errs = append(errs, ValidationError{
 				Field:   "instanceDefaults.tabPolicy.lifecycle",
-				Message: fmt.Sprintf("invalid value %q (must be keep or close_idle)", tp.Lifecycle),
+				Message: fmt.Sprintf("invalid value %q (must be keep, close_idle, or freeze_idle)", tp.Lifecycle),
 			})
 		}
 		if tp.CloseDelaySec != nil && *tp.CloseDelaySec < 0 {
@@ -213,11 +253,12 @@ func ValidateFileConfig(fc *FileConfig) []error {
 		errs = append(errs, validateBrowserExtraFlags(fc.Browser.BrowserExtraFlags)...)
 	}
 
-	errs = append(errs, validateIDPIConfig(fc.Security.IDPI, effectiveSecurityAllowedDomains(fc.Security))...)
+	errs = append(errs, validateIDPIConfig(fc.Security.EffectiveIDPI(), effectiveSecurityAllowedDomains(fc.Security))...)
 	errs = append(errs, validateAllowedDomainList("security.downloadAllowedDomains", fc.Security.DownloadAllowedDomains)...)
 	errs = append(errs, validateTrustedCIDRList("security.trustedProxyCIDRs", fc.Security.TrustedProxyCIDRs)...)
 	errs = append(errs, validateTrustedCIDRList("security.trustedResolveCIDRs", fc.Security.TrustedResolveCIDRs)...)
 	errs = append(errs, validatePositiveIntLimit("security.downloadMaxBytes", fc.Security.DownloadMaxBytes, MaxDownloadMaxBytes)...)
+	errs = append(errs, validatePositiveIntLimit("security.memorySnapshotMaxBytes", fc.Security.MemorySnapshotMaxBytes, MaxMemorySnapshotMaxBytes)...)
 	errs = append(errs, validatePositiveIntLimit("security.uploadMaxRequestBytes", fc.Security.UploadMaxRequestBytes, MaxUploadMaxRequestBytes)...)
 	errs = append(errs, validatePositiveIntLimit("security.uploadMaxFiles", fc.Security.UploadMaxFiles, MaxUploadMaxFiles)...)
 	errs = append(errs, validatePositiveIntLimit("security.uploadMaxFileBytes", fc.Security.UploadMaxFileBytes, MaxUploadMaxFileBytes)...)
@@ -321,6 +362,7 @@ func ValidateFileConfig(fc *FileConfig) []error {
 			Message: fmt.Sprintf("must be > 0 (got %d)", *fc.Observability.Activity.RetentionDays),
 		})
 	}
+	errs = append(errs, validateAgentSessionMode(fc.Sessions.Agent.Mode)...)
 	if fc.Sessions.Dashboard.IdleTimeoutSec != nil && *fc.Sessions.Dashboard.IdleTimeoutSec <= 0 {
 		errs = append(errs, ValidationError{
 			Field:   "sessions.dashboard.idleTimeoutSec",
@@ -457,7 +499,7 @@ var (
 	cloakPlatforms     = []string{"windows", "macos", "linux"}
 	stealthLevels      = []string{"light", "medium", "full"}
 	evictionPolicies   = []string{"reject", "close_oldest", "close_lru"}
-	lifecyclePolicies  = []string{"keep", "close_idle"}
+	lifecyclePolicies  = []string{"keep", "close_idle", "freeze_idle"}
 	strategies         = []string{"simple", "explicit", "simple-autorestart", "always-on", "no-instance"}
 	allocationPolicies = []string{"fcfs", "round_robin", "random"}
 	attachSchemes      = []string{"ws", "wss", "http", "https"}
@@ -477,6 +519,10 @@ func isValidEvictionPolicy(policy string) bool {
 
 func isValidLifecyclePolicy(policy string) bool {
 	return slices.Contains(lifecyclePolicies, policy)
+}
+
+func IdleTabLifecycle(policy string) bool {
+	return policy == "close_idle" || policy == "freeze_idle"
 }
 
 func ValidLifecyclePolicies() []string {

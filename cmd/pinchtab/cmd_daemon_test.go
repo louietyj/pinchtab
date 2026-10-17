@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -232,6 +233,14 @@ func TestPrintDaemonOverviewIncludesStatusAndHints(t *testing.T) {
 	output := captureStdout(t, func() {
 		printDaemonOverview()
 	})
+	if runtime.GOOS == "windows" {
+		for _, needle := range []string{"Daemon", "supported on macOS and Linux", "current OS is windows"} {
+			if !strings.Contains(output, needle) {
+				t.Fatalf("expected output to contain %q\n%s", needle, output)
+			}
+		}
+		return
+	}
 
 	for _, needle := range []string{
 		"Daemon",

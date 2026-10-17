@@ -43,8 +43,8 @@ Best fit:
 Behavior:
 
 - you start instances explicitly with `/instances/start`, `/instances/launch`, or `/profiles/{id}/start`
-- shorthand routes proxy to the first running instance only if one already exists
-- if nothing is running, shorthand routes return an error instead of launching a browser for you
+- shorthand routes proxy to the earliest-started running instance (of the default browser target) only if one already exists
+- if nothing is running, shorthand routes return `503 no running instances — launch one from the Profiles tab` instead of launching a browser for you; `GET /tabs` returns an empty list
 
 Best fit:
 
@@ -61,7 +61,8 @@ Behavior:
 - launches one managed instance when the strategy starts
 - exposes the same shorthand routes as `simple`
 - watches that managed instance and keeps restarting it after unexpected exits until the configured restart limit is reached
-- exposes `GET /always-on/status` for current managed-instance state
+- exposes `GET /always-on/status` for current managed-instance state: `instanceId`, `restartCount`, `maxRestarts`,
+  `lastCrash`, `lastStart`, and `status` (`running`, `restarting`, `crashed`, or `stopped`)
 
 Best fit:
 
@@ -78,7 +79,9 @@ Behavior:
 - launches one managed instance when the strategy starts
 - exposes the same shorthand routes as `simple`
 - watches that managed instance and tries to restart it after unexpected exits under the configured restart policy
-- exposes `GET /autorestart/status` for restart state
+- exposes `GET /autorestart/status` for restart state (same shape as `/always-on/status`)
+
+Both managed strategies take their limits from `multiInstance.restart`; `maxRestarts: -1` means unlimited.
 
 Best fit:
 
@@ -111,7 +114,12 @@ Valid policies in the current implementation:
 - `round_robin`
 - `random`
 
-Allocation policy matters only when PinchTab has multiple eligible running instances and needs to choose one. If your request already targets `/instances/{id}/...`, no allocation policy is involved for that request.
+Allocation policy is meant for the case where PinchTab has multiple eligible running instances and needs to choose one.
+If your request already targets `/instances/{id}/...`, no allocation policy is involved for that request.
+
+**Current behavior:** the value is validated and loaded into the orchestrator's allocator, but no request path
+consults that allocator yet. Shorthand routes always go to the earliest-started running instance of the requested
+(or default) browser target, which is what `fcfs` describes, whichever policy is configured.
 
 ### `fcfs`
 

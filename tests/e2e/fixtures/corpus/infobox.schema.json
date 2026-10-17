@@ -1,0 +1,34 @@
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "mountain name",
+      "x-pinchtab-hint": "role:heading"
+    },
+    "elevation": {
+      "type": "number",
+      "description": "elevation in metres"
+    },
+    "prominence": {
+      "type": "number",
+      "description": "prominence in metres"
+    },
+    "isolation": {
+      "type": "number",
+      "description": "isolation in km"
+    },
+    "location": {
+      "type": "string",
+      "description": "location"
+    },
+    "parentRange": {
+      "type": "string",
+      "description": "parent range"
+    },
+    "easiestRoute": {
+      "type": "string",
+      "description": "easiest route"
+    }
+  }
+}

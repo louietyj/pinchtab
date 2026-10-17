@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/pinchtab/pinchtab/internal/api/types"
 )
 
 // fitFactor returns the factor that brings an encoded image within maxPixels,
@@ -34,7 +36,7 @@ func imageSize(data []byte) (int, int) {
 // viewportCSSWidth reads the server's X-PinchTab-Viewport header ("<w>x<h>",
 // CSS pixels); 0 when absent.
 func viewportCSSWidth(h http.Header) float64 {
-	w, _, _ := strings.Cut(h.Get("X-PinchTab-Viewport"), "x")
+	w, _, _ := strings.Cut(h.Get(types.HeaderViewport), "x")
 	v, err := strconv.ParseFloat(w, 64)
 	if err != nil {
 		return 0

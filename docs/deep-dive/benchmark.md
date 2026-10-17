@@ -44,17 +44,18 @@ lane-specific task overrides.
 
 ### Environment
 
-Every run is executed inside Docker Compose (`tests/tools/docker-compose.yml`)
-with three services:
+Every run is executed against Docker Compose (`tests/tools/docker-compose.yml`)
+plus a host-side runner:
 
 - `fixtures` — the benchmark web server hosting the test pages
   (`/`, `/wiki.html`, `/articles.html`, `/search.html`, `/form.html`,
   `/dashboard.html`, `/ecommerce.html`, `/spa.html`, `/login.html`, etc.).
 - `pinchtab` or `agent-browser` — the browser surface being measured.
-  PinchTab is built from `tests/tools/config/pinchtab-benchmark.json`
+  PinchTab is configured from `tests/tools/config/pinchtab-benchmark.json`
   (IDPI `wrapContent=false`, to match agent-browser's unwrapped output).
 - `runner` — the Go program at `tests/tools/runner/` that drives the LLM
-  agent loop.
+  agent loop. It is not a Compose service: `./dev bench` runs it on the host
+  with `go run`, and the lane wrappers `docker exec` into the containers.
 
 ### Agent loop
 
@@ -103,7 +104,7 @@ deliberate, to keep the comparison fair:
   size ≈ **58.5 KB**.
 - **PinchTab in the benchmark** = just `SKILL.md` (~14.5 KB). The reference
   subfolder is not inlined.
-- **agent-browser full skill** comes from `agent-browwser skills get
+- **agent-browser full skill** comes from `agent-browser skills get
   agent-browser --full`. In the benchmark the runner extracts only the
   header plus `references/commands.md` and `references/snapshot-refs.md`
   and drops the rest (see
@@ -123,7 +124,7 @@ the tool surface itself*, re-run with `--full` skills on both lanes.
 ## Results: 2026-04-20 runs (n=5 each)
 
 All ten runs scored 10/10 passes on the same 10-step set. Anthropic
-`claude-haiku-4-5-20251001`, `--max-turns 120`.
+`claude-haiku-4-5-20251001`, `--max-turns 100` (la1: 120).
 
 ### Raw per-run totals
 
@@ -274,7 +275,7 @@ stronger model close the gap by using fewer turns on agent-browser's
 click→snapshot pattern? — we re-ran the 24-step extended scope with
 `claude-sonnet-4-6`, n=2 per lane. Two runs per lane is too few for a
 confident headline, but enough to spot whether the ratio between lanes
-changes vs Haiku. Logs prefixed `lae-sonnet46-*` (agent-browser) and
+changes vs Haiku. Logs prefixed `lae*-sonnet46-*` (agent-browser) and
 `lpe-sonnet46-*` (PinchTab).
 
 ### Raw per-run totals

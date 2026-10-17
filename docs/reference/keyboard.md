@@ -36,11 +36,14 @@ Hold or release individual keys. Useful for modifier keys (Shift, Ctrl, Alt) or 
 
 ```bash
 pinchtab keydown Shift
-pinchtab keyboard type "abc"   # Types "ABC" (shift held)
 pinchtab keyup Shift
 ```
 
+`keyboard type` sends each character's text as given and sets no modifier flags on its key events, so do not rely on a held `keydown Shift` to change the typed text. For a modified key, use a [`press`](./press.md) chord such as `Shift+ArrowLeft`.
+
 ## API Equivalent
+
+`keydown` and `keyup` are the `keydown` / `keyup` action kinds with a `key` field.
 
 ```bash
 curl -X POST http://localhost:9867/action \

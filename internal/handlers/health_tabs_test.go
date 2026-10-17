@@ -175,6 +175,52 @@ func TestHandleTabs_Success(t *testing.T) {
 	}
 }
 
+func TestHandleTabs_TransientTabsListedOnlyWhenFlagged(t *testing.T) {
+	targets := []bridge.TabTarget{
+		{TargetID: "real", URL: "https://example.com/", Type: "page"},
+		{TargetID: "blank", URL: "about:blank", Type: "page"},
+		{TargetID: "file", URL: "file:///tmp/page.html", Type: "page"},
+		{TargetID: "own-port", URL: "http://localhost:9867/dashboard", Type: "page"},
+	}
+	cases := []struct {
+		name  string
+		query string
+		want  []string
+	}{
+		{name: "default", query: "", want: []string{"real"}},
+		{name: "flagged", query: "?" + IncludeTransientTabsQuery + "=1", want: []string{"real", "blank", "file", "own-port"}},
+		{name: "flag off", query: "?" + IncludeTransientTabsQuery + "=0", want: []string{"real"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := &Handlers{
+				Bridge: &MockBridge{targets: targets, currentTabID: "real"},
+				Config: &config.RuntimeConfig{Port: "9867"},
+			}
+			w := httptest.NewRecorder()
+			h.HandleTabs(w, httptest.NewRequest("GET", "/tabs"+tc.query, nil))
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200: %s", w.Code, w.Body.String())
+			}
+			var resp struct {
+				Tabs []struct {
+					ID string `json:"id"`
+				} `json:"tabs"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			got := make([]string, 0, len(resp.Tabs))
+			for _, tab := range resp.Tabs {
+				got = append(got, tab.ID)
+			}
+			if fmt.Sprint(got) != fmt.Sprint(tc.want) {
+				t.Fatalf("tabs = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestHandleTabs_EnsureBrowserFailureStopsBeforeEnumeration(t *testing.T) {
 	mockBridge := &MockBridge{ensureBrowserErr: "attach failed"}
 	h := &Handlers{Bridge: mockBridge, Config: &config.RuntimeConfig{}}
@@ -372,9 +418,9 @@ func (m *MockBridge) FocusTab(tabID string) error {
 	return nil
 }
 
-func (m *MockBridge) ScheduleAutoClose(tabID string) {}
+func (m *MockBridge) ScheduleIdleLifecycle(tabID string) {}
 
-func (m *MockBridge) CancelAutoClose(tabID string) {}
+func (m *MockBridge) CancelIdleLifecycle(tabID string) {}
 
 func (m *MockBridge) GetRefCache(tabID string) *bridge.RefCache {
 	return nil
@@ -438,16 +484,8 @@ func (m *MockBridge) StealthStatus() *stealth.Status {
 	}
 }
 
-func (m *MockBridge) GetMemoryMetrics(tabID string) (*bridge.MemoryMetrics, error) {
-	return &bridge.MemoryMetrics{JSHeapUsedMB: 10, JSHeapTotalMB: 20}, nil
-}
-
-func (m *MockBridge) GetBrowserMemoryMetrics() (*bridge.MemoryMetrics, error) {
-	return &bridge.MemoryMetrics{JSHeapUsedMB: 50, JSHeapTotalMB: 100}, nil
-}
-
 func (m *MockBridge) GetAggregatedMemoryMetrics() (*bridge.MemoryMetrics, error) {
-	return &bridge.MemoryMetrics{JSHeapUsedMB: 50, JSHeapTotalMB: 100, Nodes: 500}, nil
+	return &bridge.MemoryMetrics{MemoryMB: 50, Renderers: 3}, nil
 }
 
 func (m *MockBridge) GetCrashLogs() []string {
@@ -576,7 +614,7 @@ func (m *MockBridge) SetFileInputFiles(ctx context.Context, nodeID int64, paths 
 	return nil
 }
 
-func (m *MockBridge) ResolveSelectorToNodeID(ctx context.Context, selector string) (int64, error) {
+func (m *MockBridge) ResolveSelectorToNodeID(ctx context.Context, selector string, refCache *bridge.RefCache, frameID string) (int64, error) {
 	return 0, nil
 }
 
@@ -718,5 +756,52 @@ func TestHandleHealth_IncludesFailureAndCrashDiagnostics(t *testing.T) {
 	}
 	if _, ok := resp["crashes"]; !ok {
 		t.Fatal("expected crashes diagnostics in /health response")
+	}
+}
+
+// GET /tabs/{id}/metrics reports the owning INSTANCE's process-tree memory. The tab
+// id selects the instance and the 404 for an unknown tab, never the measurement, so
+// two live tabs of one instance must answer identically — that is the documented
+// behaviour (docs/reference/metrics.md, docs/guides/memory-monitoring.md), not a bug.
+//
+// The day a genuinely per-target reading exists, this is the test that has to change,
+// and changing it is the decision to publish a narrower scope under this path.
+func TestTabMetricsReportTheInstanceAggregateForEveryTabOfOneInstance(t *testing.T) {
+	h := New(&MockBridge{}, &config.RuntimeConfig{}, nil, nil, nil)
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux, nil)
+
+	read := func(path string) map[string]any {
+		t.Helper()
+		req := httptest.NewRequest("GET", path, nil)
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d: %s", path, w.Code, w.Body.String())
+		}
+		var body map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("decode %s: %v (body %s)", path, err, w.Body.String())
+		}
+		return body
+	}
+
+	first := read("/tabs/tab-one/metrics")
+	second := read("/tabs/tab-two/metrics")
+	if fmt.Sprint(first) != fmt.Sprint(second) {
+		t.Errorf("two tabs of one instance reported different memory (%v vs %v); this endpoint measures the browser process tree, so a per-tab difference would mean the scope changed",
+			first, second)
+	}
+
+	// The scope is checkable rather than merely asserted: the same reading is what
+	// this instance publishes for itself at /metrics, which is the layer the
+	// reference table names.
+	instance, ok := read("/metrics")["memory"].(map[string]any)
+	if !ok {
+		t.Fatalf("the instance /metrics carried no memory block; the comparison below would be vacuous")
+	}
+	if fmt.Sprint(first) != fmt.Sprint(instance) {
+		t.Errorf("the tab endpoint reported %v while the instance reports %v; the tab path must serve the instance aggregate, not a second source",
+			first, instance)
 	}
 }

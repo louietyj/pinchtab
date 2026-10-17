@@ -118,10 +118,11 @@ assert_result_eq '.result' 'true' 'stale overlay removed on zero-result refresh'
 end_test
 
 # ─────────────────────────────────────────────────────────────────
-start_test "annotate: bad selector is a 400, not a 500"
+start_test "annotate: a selector that matches nothing is 404 element_not_found, not a 500"
 
 pt_get "/annotate?selector=%23definitely-not-here"
-assert_http_status "400" "bad selector returns 400"
+assert_http_status "404" "unmatched selector returns 404"
+assert_json_eq "$RESULT" '.code' 'element_not_found' "the refusal carries the element_not_found code"
 
 end_test
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/pinchtab/pinchtab/internal/remedy"
 	"github.com/pinchtab/pinchtab/internal/selector"
 )
 
@@ -20,9 +21,7 @@ func optTrimmedString(r mcp.CallToolRequest, key string) string {
 	return strings.TrimSpace(optString(r, key))
 }
 
-// Tool calls are written by language models, and a stringified number is one of
-// the commonest shapes they emit. Every numeric argument accepts both, so a
-// future one cannot pick a strict accessor by accident — there is none.
+// Models commonly send numbers as strings; there is no strict numeric accessor.
 func optFloat(r mcp.CallToolRequest, key string) (float64, bool) {
 	if v, ok := r.GetArguments()[key].(float64); ok {
 		return v, true
@@ -35,15 +34,21 @@ func optFloat(r mcp.CallToolRequest, key string) (float64, bool) {
 	return 0, false
 }
 
+func firstFloat(r mcp.CallToolRequest, keys ...string) (float64, bool) {
+	for _, key := range keys {
+		if v, ok := optFloat(r, key); ok {
+			return v, true
+		}
+	}
+	return 0, false
+}
+
 func optInt(r mcp.CallToolRequest, key string) (int, bool) {
 	v, ok := optFloat(r, key)
 	return int(v), ok
 }
 
-// Booleans get the same tolerance as numbers, and for the same reason. The one
-// opt-out argument makes it matter more than the opt-in flags: dropping
-// withBounds="false" leaves bounds switched on, so the response looks like the
-// default rather than like the request.
+// A stringified boolean is accepted so withBounds="false" is not silently read as the default.
 func optBool(r mcp.CallToolRequest, key string) (bool, bool) {
 	if v, ok := r.GetArguments()[key].(bool); ok {
 		return v, true
@@ -79,24 +84,9 @@ func firstNonEmptyString(r mcp.CallToolRequest, keys ...string) string {
 	return ""
 }
 
-// firstSuppliedString answers "was this argument sent", the question firstNonEmptyString
-// cannot answer because collapsing empty and absent is its entire job. It is the same
-// question the bridge asks — ActionRequest.HasText is inferred from key presence over the
-// same text/value pair that fill and select both read.
-//
-// The value travels verbatim rather than trimmed, so MCP and POST /action agree on every
-// input and not merely on the cases where emptiness is the point.
-//
-// The dialog arguments keep the collapsing helper deliberately: an empty dialogAction means
-// not-specified, so a value this helper would report as supplied-but-unusable is instead a
-// skipped one-shot handler. That is a silent SKIP rather than a misleading refusal — a
-// different shape, and it wants its own decision rather than being swept in here.
-//
-// wrongType names the JSON type of a value that WAS supplied under one of the keys but is
-// not a string. The library does not enforce the declared type before calling a handler, so
-// a model answering a numeric-looking field with 2024 rather than "2024" arrives here — and
-// collapsing that into "not supplied" reproduces the very complaint this helper was written
-// for: telling a caller an argument it sent is missing.
+// firstSuppliedString reports presence, untrimmed, so MCP and POST /action agree on every
+// input; wrongType names a value that was sent under a non-string type instead of
+// collapsing it into "not supplied".
 func firstSuppliedString(r mcp.CallToolRequest, keys ...string) (value string, supplied bool, wrongType string) {
 	args := r.GetArguments()
 	for _, key := range keys {
@@ -183,12 +173,7 @@ func hasASCIIAlpha(v string) bool {
 	return false
 }
 
-// firstSelectorString is firstNonEmptyString for the selector aliases, except that a key
-// which was SENT under a non-string type is reported by name instead of being collapsed
-// into not-given. A later alias that yields a usable string still wins — the caller's
-// intent is unambiguous there — so wrongKey only survives when NO key produced a selector.
-// A supplied empty string keeps collapsing deliberately: empty carries no selector meaning
-// on any verb, so it falls through exactly as before.
+// A later alias with a usable string wins; wrongKey survives only when no key produced a selector.
 func firstSelectorString(r mcp.CallToolRequest, keys ...string) (value, wrongKey, wrongType string) {
 	args := r.GetArguments()
 	for _, key := range keys {
@@ -209,16 +194,9 @@ func firstSelectorString(r mcp.CallToolRequest, keys ...string) (value, wrongKey
 	return "", wrongKey, wrongType
 }
 
-// actionSelectorArg resolves common selector aliases used by MCP clients.
-// If only "query" is provided, natural language input is normalized to
-// semantic selector form (find:...).
-//
-// A wrong-typed alias REFUSES rather than falling through — the fall-through would act on
-// a different argument (query) or a different target (nodeId) while the caller's mistyped
-// selector is silently ignored, which is worse than refusing. The caller of this function
-// turns wrongKey/wrongType into the refusal, naming the key that was actually sent.
+// A wrong-typed selector alias refuses rather than falling through to a different argument.
 func actionSelectorArg(r mcp.CallToolRequest) (sel, wrongKey, wrongType string) {
-	sel, wrongKey, wrongType = firstSelectorString(r, "selector", "ref", "element", "target")
+	sel, wrongKey, wrongType = firstSelectorString(r, selectorArgKeys...)
 	if sel != "" || wrongType != "" {
 		return sel, wrongKey, wrongType
 	}
@@ -246,9 +224,20 @@ func resolveXY(r mcp.CallToolRequest) (float64, float64, bool) {
 	return 0, 0, false
 }
 
+func toolResult(body []byte, code int, err error) (*mcp.CallToolResult, error) {
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return resultFromBytes(body, code)
+}
+
 func resultFromBytes(body []byte, code int) (*mcp.CallToolResult, error) {
 	if code >= 400 {
-		return mcp.NewToolResultError(fmt.Sprintf("HTTP %d: %s", code, string(body))), nil
+		message := fmt.Sprintf("HTTP %d: %s", code, string(body))
+		if guidance := mcpRemedyGuidance(body); guidance != "" {
+			message = guidance + "\n" + message
+		}
+		return mcp.NewToolResultError(message), nil
 	}
 	if reason := reportsNoSuccess(body); reason != "" {
 		return mcp.NewToolResultError(reason), nil
@@ -256,29 +245,90 @@ func resultFromBytes(body []byte, code int) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText(string(body)), nil
 }
 
-// reportsNoSuccess is the funnel's body-level failure rule: an endpoint that answers 200
-// while reporting it achieved nothing must reach the agent as an error, or the agent
-// confirms work the browser never did — the cookie-set path shipped exactly that.
-//
-// The rule keys on the COUNTING SHAPE, not on failure-flavoured key names: a top-level
-// numeric "failed" above zero marks a response that counts the work it was asked to do.
-// That is what keeps the exclusions structural rather than a list — the observability
-// snapshot, /health/tabs and the console endpoint report failures AS their payload but
-// carry no top-level failed count, and /network's per-request "failed" is a nested bool,
-// so none of them can match. A key-name rule would break exactly those.
-//
-// Partial success stays a SUCCESS carrying detail: the succeeded items' effects already
-// happened, and the body's own counts and failures list are what the agent needs to retry
-// only what missed. Zero success is an error, with the body riding along as the reason.
-// Fail closed within the shape: a failed count with no readable success count beside it
-// confirms nothing and is refused. A body that does not parse as an object cannot carry
-// the shape and keeps the status rule — most funnel responses are not counting anything.
-//
-// The cookie tool keeps unsetCookieReport ON TOP of this rule deliberately: it confirms a
-// single named write with a stricter fail-closed contract (an unreadable body, or one
-// missing its counts, refuses) than a funnel serving every tool can impose without
-// breaking non-counting responses. Its check runs first, so its more specific message
-// wins; this rule is the class-wide net behind it.
+type remedyTool struct {
+	name  string
+	param string
+}
+
+// Neither tool name nor parameter follows from the CLI verb (nav is pinchtab_navigate,
+// dialog's positional is its action), so the table is explicit and the whole-binary remedy
+// census pins it complete.
+var remedyVerbTools = map[string]remedyTool{
+	"resume": {"pinchtab_resume", "tabId"},
+	"dialog": {"pinchtab_dialog", "action"},
+	"nav":    {"pinchtab_navigate", "url"},
+	"back":   {"pinchtab_back", ""},
+	"snap":   {"pinchtab_snapshot", ""},
+}
+
+// A verb without an MCP counterpart, or a multi-command remedy, yields no guidance.
+func mcpRemedyGuidance(body []byte) string {
+	segments := remedy.Segments(remedyLine(body))
+	if len(segments) != 1 {
+		return ""
+	}
+	words := segments[0]
+	if len(words) < 2 {
+		return ""
+	}
+	tool, ok := remedyVerbTools[words[1]]
+	if !ok {
+		return ""
+	}
+	if tool.param != "" {
+		if arg := firstPositional(words[2:]); arg != "" {
+			return fmt.Sprintf("call %s with %s %s", tool.name, tool.param, arg)
+		}
+	}
+	return "call " + tool.name
+}
+
+// RemedyToolForVerb is the seam the whole-binary remedy census reads.
+func RemedyToolForVerb(verb string) (name, param string, ok bool) {
+	tool, ok := remedyVerbTools[verb]
+	return tool.name, tool.param, ok
+}
+
+// ToolInputHasParam reports whether name is a registered tool declaring param (any tool when param is empty).
+func ToolInputHasParam(name, param string) bool {
+	for _, tool := range allTools() {
+		if tool.Name != name {
+			continue
+		}
+		if param == "" {
+			return true
+		}
+		_, ok := tool.InputSchema.Properties[param]
+		return ok
+	}
+	return false
+}
+
+func remedyLine(body []byte) string {
+	var envelope struct {
+		Details struct {
+			Remedy string `json:"remedy"`
+		} `json:"details"`
+	}
+	if json.Unmarshal(body, &envelope) != nil {
+		return ""
+	}
+	return envelope.Details.Remedy
+}
+
+func firstPositional(words []string) string {
+	for _, word := range words {
+		if !strings.HasPrefix(word, "-") {
+			return word
+		}
+	}
+	return ""
+}
+
+// A 200 whose top-level counts report zero successes reaches the agent as an error. The
+// rule keys on the counting shape, not on key names, so payloads that describe failures
+// without a top-level failed count cannot match. Partial success stays a success; a failed
+// count with no success count beside it refuses.
 func reportsNoSuccess(body []byte) string {
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(body, &top); err != nil {
@@ -315,11 +365,13 @@ func topLevelCount(top map[string]json.RawMessage, key string) (int, bool) {
 
 type profileInstanceStatus struct {
 	Name    string `json:"name"`
+	Exists  bool   `json:"exists"`
 	Running bool   `json:"running"`
 	Status  string `json:"status"`
 	Port    string `json:"port"`
 	ID      string `json:"id"`
 	Error   string `json:"error"`
+	Message string `json:"message"`
 }
 
 func jsonResult(v any) (*mcp.CallToolResult, error) {

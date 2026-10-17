@@ -15,7 +15,7 @@ PinchTab can run multiple isolated Chrome instances at the same time. Each runni
 pinchtab server
 ```
 
-By default the orchestrator listens on `http://localhost:9867`.
+By default the orchestrator listens on `http://localhost:9867`. Every API call below needs the server token; the examples assume `export PINCHTAB_TOKEN=$(pinchtab config token --stdout)` and send it as `-H "Authorization: Bearer $PINCHTAB_TOKEN"` (omitted for brevity). The CLI alternatives pick the token up automatically.
 
 ## Start An Instance
 
@@ -43,8 +43,8 @@ Notes:
 
 - `POST /instances/launch` still exists as a compatibility endpoint, but it now follows the same semantics as `POST /instances/start`.
 - If you omit `profileId`, PinchTab creates a managed instance with an auto-generated profile name.
-- `securityPolicy.allowedDomains` lets you widen IDPI/domain trust for just that instance. This is additive over the server baseline, so one instance can use `["*"]` while the rest stay on the default allowlist.
-- Starting an instance is only optional in workflows that use shorthand routes with auto-launch behavior, such as the `simple` strategy. In `explicit`, you should assume you need to start one yourself.
+- `securityPolicy.allowedDomains` lets you widen IDPI/domain trust for just that instance. This is merged with the server's `security.allowedDomains`, so with a local-only server allowlist one instance can use `["*"]` while the rest stay restricted. The server default leaves `allowedDomains` unset, so passing a list to an instance on a default server restricts that instance to the list.
+- Starting an instance is only optional in workflows that use shorthand routes with auto-launch behavior, such as the default `always-on` strategy or `simple`. In `explicit`, you should assume you need to start one yourself.
 
 ## Open A Tab In A Specific Instance
 
@@ -68,6 +68,10 @@ curl "http://localhost:9867/tabs/<tabId>/text"
 curl "http://localhost:9867/tabs/<tabId>/metrics"
 ```
 
+`/tabs/<tabId>/metrics` answers with the owning instance's aggregate memory, not the
+tab's own — the tab id selects which instance to ask. See
+[Memory monitoring](memory-monitoring.md).
+
 ## Reuse A Persistent Profile
 
 List existing profiles first:
@@ -81,9 +85,9 @@ Then start an instance for a known profile:
 ```bash
 curl -X POST http://localhost:9867/instances/start \
   -H "Content-Type: application/json" \
-  -d '{"profileId":"278be873adeb","mode":"headless"}'
+  -d '{"profileId":"prof_278be873","mode":"headless"}'
 # CLI Alternative
-pinchtab instance start --profile 278be873adeb --mode headless
+pinchtab instance start --profile prof_278be873 --mode headless
 ```
 
 Because a profile can have only one active managed instance, starting the same profile again while it is already active returns an error instead of creating a duplicate browser.

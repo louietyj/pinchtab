@@ -1,0 +1,62 @@
+{
+  "score": 56,
+  "findings": [
+    {
+      "rule": "empty-button",
+      "severity": "moderate",
+      "count": 1,
+      "samples": [
+        "button"
+      ]
+    },
+    {
+      "rule": "empty-link",
+      "severity": "moderate",
+      "count": 1,
+      "samples": [
+        "link"
+      ]
+    },
+    {
+      "rule": "heading-skip",
+      "severity": "minor",
+      "count": 2,
+      "samples": [
+        "h3 follows h1",
+        "h6 follows h4"
+      ]
+    },
+    {
+      "rule": "missing-alt",
+      "severity": "serious",
+      "count": 1,
+      "samples": [
+        "image e1"
+      ]
+    },
+    {
+      "rule": "missing-label",
+      "severity": "serious",
+      "count": 1,
+      "samples": [
+        "textbox e2"
+      ]
+    },
+    {
+      "rule": "missing-lang",
+      "severity": "moderate",
+      "count": 1,
+      "samples": [
+        "html element has no lang attribute"
+      ]
+    },
+    {
+      "rule": "missing-title",
+      "severity": "moderate",
+      "count": 1,
+      "samples": [
+        "document.title is empty"
+      ]
+    }
+  ]
+}

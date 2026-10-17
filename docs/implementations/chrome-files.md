@@ -4,11 +4,12 @@ PinchTab manages Chrome instances using dedicated **User Data Directories** (pro
 
 ## Profile Resolution
 
-PinchTab determines the Chrome `--user-data-dir` (profile) using the following precedence:
+PinchTab derives the Chrome `--user-data-dir` (profile) as `profiles.baseDir` joined with `profiles.defaultProfile` (`finalizeProfileConfig` in `internal/config/config_load.go`):
 
-1.  **Explicit `ProfileDir`**: If a specific path is provided in the configuration or as a flag, PinchTab uses that exact directory.
-2.  **Named Profile**: If a profile name is provided (e.g., via the dashboard or CLI), PinchTab resolves it to a subdirectory within the `ProfilesBaseDir`.
-3.  **Default Profile**: If no profile is specified, it defaults to `~/.pinchtab/profiles/default` (on Linux/macOS).
+1.  **Named Profile**: When an instance is started for a named profile (dashboard, `pinchtab instance start --profile <name>`, or the API), the orchestrator writes the child's config with `profiles.baseDir` / `profiles.defaultProfile` pointing at that profile's directory (`buildChildFileConfig` in `internal/orchestrator/child_config.go`).
+2.  **Default Profile**: Otherwise `profiles.baseDir` defaults to `<server.stateDir>/profiles` and `profiles.defaultProfile` to `default`, giving `~/.pinchtab/profiles/default` on Linux/macOS.
+
+There is no config key for an arbitrary profile path, and `--user-data-dir` in `browser.extraFlags` is rejected by config validation.
 
 ## The Singleton Model
 
@@ -26,13 +27,13 @@ With the introduction of **New Headless mode** (`--headless=new`), Chrome's prof
 
 ### Headless Auto-Fallback
 To support parallel automation tasks, PinchTab implements an **automatic fallback for headless instances**:
-1.  If a headless instance tries to start using a profile that is already locked by another PinchTab process, it will **automatically create a unique temporary directory** (e.g., `/tmp/pinchtab-profile-*`).
+1.  If a headless instance tries to start using a profile that is already locked by another PinchTab process, it will **automatically create a unique temporary directory** (`pinchtab-profile-*` under the system temp directory, e.g. `/tmp`).
 2.  This allows you to run multiple headless tasks in parallel without manually managing profile paths.
 
 ### Manual Parallelism (Headed Mode)
 In **headed mode**, PinchTab does *not* automatically fall back to a temporary directory (to avoid losing user session data unexpectedly). If you need to run multiple headed browsers in parallel, you must:
-*   Use different named profiles.
-*   Explicitly provide a unique `--user-data-dir` for each instance.
+*   Use a different named profile for each instance, or
+*   point `profiles.baseDir` / `profiles.defaultProfile` at a separate directory for each server.
 
 ## Best Practices for AI Agents
 
@@ -46,7 +47,7 @@ When building agents that use PinchTab, follow these guidelines:
 
 If you see the error `"The profile appears to be in use by another Chromium process"`:
 1.  **Check for active instances**: Ensure you don't have another PinchTab or Chrome process already using that profile.
-2.  **Stale Locks**: If no process is active, PinchTab will attempt to automatically clear stale `SingletonLock` files on the next startup.
+2.  **Stale Locks**: If no process is active, PinchTab automatically clears the stale `SingletonLock` / `SingletonSocket` / `SingletonCookie` files when browser startup fails with this error, then retries once.
 3.  **Manual Fix**: In rare cases, you may need to manually remove the `SingletonLock` file from the profile directory.
 
 For more details on how PinchTab recovers from crashes, see [Chrome Profile Lock Recovery](./chrome-profile-lock-recovery.md).

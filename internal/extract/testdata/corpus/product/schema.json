@@ -1,0 +1,42 @@
+{
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "book title",
+      "x-pinchtab-hint": "role:heading"
+    },
+    "price": {
+      "type": "number",
+      "description": "price"
+    },
+    "availability": {
+      "type": "string",
+      "description": "availability"
+    },
+    "upc": {
+      "type": "string",
+      "description": "UPC"
+    },
+    "productType": {
+      "type": "string",
+      "description": "product type"
+    },
+    "tax": {
+      "type": "number",
+      "description": "tax"
+    },
+    "reviews": {
+      "type": "integer",
+      "description": "number of reviews"
+    },
+    "description": {
+      "type": "string",
+      "description": "product description"
+    }
+  },
+  "required": [
+    "title",
+    "price"
+  ]
+}

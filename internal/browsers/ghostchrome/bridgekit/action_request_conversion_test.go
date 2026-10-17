@@ -181,6 +181,7 @@ var notCarriedToTheStaticRequest = map[string]string{
 	"DialogText":                reasonNoLiveRenderer,
 	"Browser":                   reasonRoutingDecided,
 	"Vocab":                     reasonHandlerOnly,
+	"VocabTab":                  reasonHandlerOnly,
 }
 
 const (

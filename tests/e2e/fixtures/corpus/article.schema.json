@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "properties": {
+    "headline": {
+      "type": "string",
+      "description": "article headline",
+      "x-pinchtab-hint": "role:heading"
+    },
+    "published": {
+      "type": "string",
+      "description": "publication date"
+    },
+    "lead": {
+      "type": "string",
+      "description": "first paragraph of the story"
+    },
+    "imageCaption": {
+      "type": "string",
+      "description": "image caption"
+    }
+  },
+  "required": [
+    "headline"
+  ]
+}

@@ -61,10 +61,10 @@ func settleDOM(client *http.Client, base, token, tabID string) bool {
 	if tabID != "" {
 		path = "/tabs/" + tabID + "/evaluate"
 	}
-	raw, err := apiclient.DoPostRawE(client, base, token, path, map[string]any{
+	raw, err := apiclient.DoRawE(client, base, token, http.MethodPost, path, apiclient.WithBody(map[string]any{
 		"expression":   domQuietJS,
 		"awaitPromise": true,
-	})
+	}))
 	if err != nil {
 		return true
 	}

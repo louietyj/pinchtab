@@ -18,6 +18,7 @@ import (
 	"github.com/pinchtab/pinchtab/internal/httpx"
 	"github.com/pinchtab/pinchtab/internal/navguard"
 	"github.com/pinchtab/pinchtab/internal/remedy"
+	"github.com/pinchtab/pinchtab/internal/urls"
 )
 
 // HandleNavigate navigates a tab to a URL or creates a new tab.
@@ -111,6 +112,11 @@ func decodeNavigateRequest(w http.ResponseWriter, r *http.Request) (navigateRequ
 type navTargets struct {
 	target       *validatedNavigateTarget
 	trustedCIDRs []*net.IPNet
+	// url is the normalized target every decision above was made about. The
+	// caller navigates to THIS, not to what it decoded: a decision taken on
+	// "https://intranet" and a navigation issued for "intranet" are a decision
+	// about a different string than the one that ran.
+	url string
 }
 
 // navigateToURL runs the full navigate pipeline on an already-decoded request:
@@ -129,6 +135,7 @@ func (h *Handlers) navigateToURL(w http.ResponseWriter, r *http.Request, req nav
 	if !ok {
 		return
 	}
+	req.URL = targets.url
 
 	navRoute := h.recordNavigateRoute(r, routing)
 
@@ -197,13 +204,17 @@ func (h *Handlers) resolveNavigateBrowser(w http.ResponseWriter, r *http.Request
 // (still scans and wraps, just warns instead of hard-blocking).
 func idpiScannerHint() string {
 	return ". To read pages like this, set strict mode off: `pinchtab config set security.idpi.strictMode false` " +
-		"then `pinchtab server restart` — content is still scanned and wrapped, just warned instead of blocked (see docs/guides/security.md)"
+		"then restart PinchTab to apply — content is still scanned and wrapped, just warned instead of blocked (see docs/guides/security.md)"
 }
 
 // validateNavigateTargets runs URL validation, the IDPI domain guard, and SSRF
 // target resolution, recording the navigate request on both the blocked and
 // accepted paths. On success it returns the resolved target and trusted-proxy CIDRs.
 func (h *Handlers) validateNavigateTargets(w http.ResponseWriter, r *http.Request, tabID, url string, effectiveCfg *config.RuntimeConfig) (navTargets, bool) {
+	// The raw HTTP path is the only one that reaches here scheme-less: the CLI
+	// normalizes through urls.Normalize and MCP through urls.Sanitize. Doing it
+	// here as well is what lets the host extractor below be a plain parse.
+	url = urls.EnsureScheme(url)
 	allowFile := effectiveCfg != nil && effectiveCfg.AllowFileScheme
 	if err := validateNavigateURL(url, allowFile); err != nil {
 		httpx.Error(w, 400, err)
@@ -227,7 +238,7 @@ func (h *Handlers) validateNavigateTargets(w http.ResponseWriter, r *http.Reques
 	// guard above (strict-mode allowlists block it via the empty-host path).
 	if allowFile && navguard.IsFileURL(url) {
 		h.recordNavigateRequest(r, tabID, url)
-		return navTargets{target: &validatedNavigateTarget{AllowInternal: true}, trustedCIDRs: buildNavigateTrustedProxyCIDRs(effectiveCfg)}, true
+		return navTargets{target: &validatedNavigateTarget{AllowInternal: true}, trustedCIDRs: buildNavigateTrustedProxyCIDRs(effectiveCfg), url: url}, true
 	}
 
 	trustedResolveCIDRs := parseCIDRs(effectiveCfg.TrustedResolveCIDRs)
@@ -238,7 +249,7 @@ func (h *Handlers) validateNavigateTargets(w http.ResponseWriter, r *http.Reques
 	}
 	trustedCIDRs := buildNavigateTrustedProxyCIDRs(effectiveCfg)
 	h.recordNavigateRequest(r, tabID, url)
-	return navTargets{target: target, trustedCIDRs: trustedCIDRs}, true
+	return navTargets{target: target, trustedCIDRs: trustedCIDRs, url: url}, true
 }
 
 // recordNavigateRoute builds the single-browser route metadata for this navigate,
@@ -300,7 +311,7 @@ type staticFirstOutcome struct {
 // one budget would let a slow static fetch starve the Chrome attempt that exists
 // to rescue it.
 func (h *Handlers) tryStaticFirstNavigate(w http.ResponseWriter, r *http.Request, req navigateRequest, effectiveCfg *config.RuntimeConfig, navRoute *browserops.RouteMetadata) staticFirstOutcome {
-	sf, ok := h.Bridge.(staticFirstNavigator)
+	sf, ok := bridgeAs[staticFirstNavigator](h.Bridge)
 	if !ok || !sf.StaticFirstNavigate() || !req.NewTab {
 		return staticFirstOutcome{}
 	}
@@ -321,7 +332,7 @@ func (h *Handlers) tryStaticFirstNavigate(w http.ResponseWriter, r *http.Request
 		}
 		h.setCurrentTabForRequest(r, navResult.TabID)
 		h.recordResolvedURL(r, navResult.URL)
-		markCreatedTab(w, navResult.TabID)
+		h.markCreatedTab(w, r, navResult.TabID)
 		httpx.JSON(w, 200, map[string]any{"tabId": navResult.TabID, "url": navResult.URL, "title": navResult.Title, "route": navRoute})
 		return staticFirstOutcome{handled: true}
 	}
@@ -424,12 +435,12 @@ func (h *Handlers) executeNavigate(w http.ResponseWriter, r *http.Request, req n
 		WriteTabContextError(w, err, 404)
 		return
 	}
-	if _, ok := h.applyTabGuards(w, r, ctx, resolvedTabID, guardHandoffPause); !ok {
+	if _, ok := h.applyTabGuards(w, r, ctx, resolvedTabID, guardDialogBlocked|guardHandoffPause); !ok {
 		return
 	}
 	// Navigate signals fresh work on this tab — drop any pending auto-close
 	// timer; the next read/action will re-arm.
-	h.cancelAutoCloseIfEnabled(resolvedTabID)
+	h.cancelIdleLifecycle(resolvedTabID)
 
 	tCtx, tCancel := context.WithTimeout(ctx, navTimeout)
 	defer tCancel()
@@ -512,7 +523,7 @@ func (h *Handlers) runNavigate(w http.ResponseWriter, r *http.Request, ex navExe
 		if ex.isNewTab && errors.Is(navErr, context.DeadlineExceeded) {
 			httpx.Error(w, http.StatusServiceUnavailable, fmt.Errorf(
 				"new tab did not load in time: %v; the browser may be out of memory or overloaded; "+
-					"close tabs or restart the instance with `pinchtab server restart`", navErr))
+					"close tabs or restart PinchTab", navErr))
 			return
 		}
 		navigateErrorWithHint(w, classifyNavigateError(navErr), navErr, ex.url)
@@ -554,7 +565,7 @@ func (h *Handlers) runNavigate(w http.ResponseWriter, r *http.Request, ex navExe
 		h.setCurrentTabForRequest(r, navResult.TabID)
 		if ex.isNewTab {
 			h.recordResolvedTab(r, navResult.TabID)
-			markCreatedTab(w, navResult.TabID)
+			h.markCreatedTab(w, r, navResult.TabID)
 		}
 		h.recordResolvedURL(r, navResult.URL)
 		httpx.JSON(w, 200, navResponse(navResult.TabID, navResult.URL, navResult.Title, route, !ex.isNewTab))
@@ -589,7 +600,7 @@ func (h *Handlers) runNavigate(w http.ResponseWriter, r *http.Request, ex navExe
 	h.setCurrentTabForRequest(r, ex.tabID)
 	if ex.isNewTab {
 		h.recordResolvedTab(r, ex.tabID)
-		markCreatedTab(w, ex.tabID)
+		h.markCreatedTab(w, r, ex.tabID)
 	}
 	h.recordResolvedURL(r, navURL)
 

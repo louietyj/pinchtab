@@ -147,6 +147,24 @@ func (b *Bridge) dropFetchPauseSuppression(tabID string) {
 	delete(b.fetchPauseFlags, tabID)
 }
 
+// releaseTabLock drops a closed tab's lease.
+//
+// The lock manager hangs off the Bridge rather than the TabManager, so it was
+// missed by purgeTrackedTabState, which clears that type's own per-tab maps and
+// notifies the dialog, executor, log and route managers. A tab that was locked
+// and then closed therefore left its entry behind for the life of the process.
+//
+// Registered beside dropFetchPauseSuppression as built-in cleanup, so it is
+// re-applied whenever a launch, restart or remote-CDP path swaps the TabManager.
+// Locks is nil-checked because wireTabManager runs before the constructor
+// assigns it on the very first wire.
+func (b *Bridge) releaseTabLock(tabID string) {
+	if b.Locks == nil || tabID == "" {
+		return
+	}
+	b.Locks.Release(tabID)
+}
+
 // AddTabRemovedHook registers an external per-tab cleanup that must survive a
 // TabManager swap. It records the hook on the bridge and applies it to the
 // current TabManager; wireTabManager re-applies all recorded hooks after a
@@ -214,6 +232,8 @@ func (b *Bridge) wireTabManager(browserCtx context.Context) {
 	// wire, so no cross-reinit duplication). External hooks recorded on the
 	// bridge are re-applied so they survive the TabManager swap.
 	b.TabManager.AddTabRemovedHook(b.dropFetchPauseSuppression)
+	b.TabManager.AddTabRemovedHook(b.releaseTabLock)
+	b.SetFreezeVeto(b.tabHandoffPaused)
 	b.tabRemovedHooksMu.Lock()
 	hooks := make([]func(string), len(b.externalTabRemovedHooks))
 	copy(hooks, b.externalTabRemovedHooks)
@@ -324,20 +344,20 @@ func (b *Bridge) FocusTab(tabID string) error {
 	return tm.FocusTab(tabID)
 }
 
-func (b *Bridge) ScheduleAutoClose(tabID string) {
+func (b *Bridge) ScheduleIdleLifecycle(tabID string) {
 	tm, err := b.tabManager()
 	if err != nil {
 		return
 	}
-	tm.ScheduleAutoClose(tabID)
+	tm.ScheduleIdleLifecycle(tabID)
 }
 
-func (b *Bridge) CancelAutoClose(tabID string) {
+func (b *Bridge) CancelIdleLifecycle(tabID string) {
 	tm, err := b.tabManager()
 	if err != nil {
 		return
 	}
-	tm.CancelAutoClose(tabID)
+	tm.CancelIdleLifecycle(tabID)
 }
 
 func (b *Bridge) Lock(tabID, owner string, ttl time.Duration) error {

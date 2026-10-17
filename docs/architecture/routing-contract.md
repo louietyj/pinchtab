@@ -28,7 +28,7 @@ Each shape constant classifies the kind of work a request represents:
 
 ### StateChanging Flag
 
-When `RequestIntent.StateChanging` is true, the request mutates browser state. Providers that only handle read-only operations (e.g. ghost-chrome lite) should return `DecisionSkip` for state-changing requests even if the shape would otherwise be acceptable.
+When `RequestIntent.StateChanging` is true, the request mutates browser state. Providers that only handle read-only operations (e.g. ghost-chrome's static fetch) should return `DecisionSkip` for state-changing requests even if the shape would otherwise be acceptable.
 
 ## Security Invariant
 
@@ -48,20 +48,20 @@ Security denials (domain block, IDPI content block, private/internal IP block, r
 
 ## Ghost-Chrome Escalation
 
-- Ghost-chrome has a special internal `Route()` method that implements lite-first-then-Chrome escalation
+- Ghost-chrome's escalation lives in `bridgekit.BridgeAdapter` (`internal/browsers/ghostchrome/bridgekit/`), which wraps the Chrome `BridgeAPI` and implements static-first-then-Chrome for `Navigate`, `Snapshot`, and `Text`
 - This is NOT a general multi-browser fallback — it's hardcoded ghost-to-chrome escalation within one provider
-- When ghost-chrome's lite attempt produces low-quality results (SPA markers, thin content), it escalates to Chrome automatically
+- When ghost-chrome's static attempt fails the quality gate (`ghostchrome.AssessContent`: SPA markers, thin content), it escalates to Chrome automatically
 
 ## Fallback Policy (current vs future)
 
-- **Current**: `DecisionSkip` returns HTTP 400 immediately. No multi-browser fallback exists in the handler layer.
+- **Current**: `DecisionSkip` downgrades the request to `chrome` (`resolveBrowserForRequest` in `internal/handlers/browser_routing.go`). There is no ordered multi-provider fallback; `chrome` is the only fallback target.
 - **Future**: `DecisionSkip` should trigger fallback to the next available provider in priority order. Security denials must remain non-fallback-able.
 
 ## Routing Order
 
-1. Resolve browser provider from request (query param `?browser=`) or config default
+1. Resolve browser provider (`config.ResolveBrowser`): request (`?browser=` query or body `browser`), then session browser, then the tab's owning instance browser, then `browsers.default`, then the first of `browsers.available`, else `chrome`. An unknown provider returns 400
 2. Call `CanHandle(intent)` on the resolved provider
-3. If `DecisionSkip` — return 400 (future: try next provider)
+3. If `DecisionSkip` — downgrade to `chrome` (future: try next provider)
 4. If `DecisionFail` — return 400 with error
 5. If `DecisionHandle` — proceed to security checks
 6. Apply security policy (domain, IDPI, IP, redirects)

@@ -1,28 +1,33 @@
 package activity
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/pinchtab/pinchtab/internal/api/types"
 	"github.com/pinchtab/pinchtab/internal/authn"
 	"github.com/pinchtab/pinchtab/internal/browserops"
 	"github.com/pinchtab/pinchtab/internal/httpx"
 )
 
 const (
-	HeaderAgentID      = "X-Agent-Id"
-	HeaderPTSessionID  = "X-PinchTab-Session-Id"
-	HeaderPTSource     = "X-PinchTab-Source"
+	HeaderAgentID     = "X-Agent-Id"
+	HeaderPTSessionID = "X-PinchTab-Session-Id"
+	// HeaderPTSource and HeaderPTTabID are the two identity headers that also form
+	// part of the CLI/MCP wire contract, so their spelling lives once in api/types
+	// and these alias it. The rest are activity-only and single-homed here.
+	HeaderPTSource     = types.HeaderSource
 	HeaderPTInstance   = "X-PinchTab-Instance-Id"
 	HeaderPTProfileID  = "X-PinchTab-Profile-Id"
 	HeaderPTProfile    = "X-PinchTab-Profile-Name"
-	HeaderPTTabID      = "X-PinchTab-Tab-Id"
+	HeaderPTTabID      = types.HeaderTabID
 	HeaderPTTabCreated = "X-PinchTab-Tab-Created"
 )
 
@@ -45,12 +50,20 @@ type Update struct {
 	Action      string
 	Route       *browserops.RouteMetadata
 	Ref         string
+	Steps       *StepCounts
 }
 
 func Middleware(rec Recorder, source string, next http.Handler) http.Handler {
 	if rec == nil || !rec.Enabled() {
 		return next
 	}
+
+	// Recording must never fail a request, so the error is swallowed — but
+	// swallowing it silently is how the activity feed goes empty with nothing
+	// anywhere saying why. Reported on the TRANSITION in each direction: a fault
+	// that lasts warns once rather than once per request, which is the volume at
+	// which an operator stops reading it, and the recovery says so too.
+	var recordingBroken atomic.Bool
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -94,7 +107,13 @@ func Middleware(rec Recorder, source string, next http.Handler) http.Handler {
 		if evt.Method == "" {
 			evt.Method = r.Method
 		}
-		_ = rec.Record(evt)
+		if err := rec.Record(evt); err != nil {
+			if recordingBroken.CompareAndSwap(false, true) {
+				slog.Warn("activity: recording failed; events are being lost until this recovers", "err", err)
+			}
+		} else if recordingBroken.CompareAndSwap(true, false) {
+			slog.Info("activity: recording recovered")
+		}
 	})
 }
 
@@ -104,10 +123,10 @@ func sourceFor(r *http.Request, fallback string) string {
 	}
 	creds := authn.CredentialsFromRequest(r)
 	if creds.Method == authn.MethodCookie {
-		return "dashboard"
+		return SourceDashboard
 	}
 	if creds.Method == authn.MethodHeader || creds.Method == authn.MethodSession {
-		return "client"
+		return SourceClient
 	}
 	return fallback
 }
@@ -151,6 +170,9 @@ func EnrichRequest(r *http.Request, update Update) {
 	if update.Action != "" {
 		state.event.Action = update.Action
 	}
+	if update.Steps != nil {
+		state.event.Steps = update.Steps
+	}
 	if update.Route != nil {
 		state.event.Route = update.Route
 	}
@@ -170,7 +192,7 @@ func PropagateHeaders(ctx context.Context, req *http.Request) {
 
 	evt := state.snapshot()
 	if evt.RequestID != "" {
-		req.Header.Set("X-Request-Id", evt.RequestID)
+		req.Header.Set(httpx.RequestIDHeader, evt.RequestID)
 	}
 	if evt.AgentID != "" {
 		req.Header.Set(HeaderAgentID, evt.AgentID)
@@ -197,11 +219,11 @@ func PropagateHeaders(ctx context.Context, req *http.Request) {
 
 func requestIDFor(r *http.Request, w http.ResponseWriter) string {
 	if w != nil {
-		if rid := strings.TrimSpace(w.Header().Get("X-Request-Id")); rid != "" {
+		if rid := strings.TrimSpace(w.Header().Get(httpx.RequestIDHeader)); rid != "" {
 			return rid
 		}
 	}
-	return strings.TrimSpace(r.Header.Get("X-Request-Id"))
+	return strings.TrimSpace(r.Header.Get(httpx.RequestIDHeader))
 }
 
 func agentIDFor(r *http.Request) string {
@@ -260,9 +282,19 @@ func initialURL(r *http.Request) string {
 	return ""
 }
 
+// activityPeekBytes bounds what the enrichment reads from a request body. It is a
+// budget for THIS function's parse, never a limit on the request: the peeked bytes
+// are put back in front of the rest, so the handler always sees every byte the
+// client sent. Substituting the peek for the body truncated an oversize action or
+// navigate payload and then reported the client's own JSON as invalid.
+const activityPeekBytes = 8 << 10
+
 // EnrichRouteActivity peeks at the request body for action and navigate
-// requests to extract kind, ref, and url for the activity stream. The body
-// is restored for the downstream proxy handler.
+// requests to extract kind, ref, and url for the activity stream. The body is
+// restored in full for the downstream handler: what was read is replayed ahead of
+// whatever is still unread, so enrichment costs the request nothing. A payload
+// whose first activityPeekBytes are not a complete JSON object simply enriches
+// nothing — the activity row loses a field, the request keeps its bytes.
 func EnrichRouteActivity(r *http.Request) {
 	if r == nil || r.Body == nil || r.Method != http.MethodPost {
 		return
@@ -274,11 +306,13 @@ func EnrichRouteActivity(r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, 8<<10))
-	if err != nil || len(body) == 0 {
+	original := r.Body
+	peeked, err := io.ReadAll(io.LimitReader(original, activityPeekBytes))
+	r.Body = httpx.ReplayBody(peeked, original)
+	if err != nil || len(peeked) == 0 {
 		return
 	}
-	r.Body = io.NopCloser(bytes.NewReader(body))
+	body := peeked
 
 	var peek struct {
 		Kind string `json:"kind"`

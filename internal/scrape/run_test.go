@@ -627,6 +627,73 @@ func TestAGenuinelyFailedPageIsStillReported(t *testing.T) {
 	}
 }
 
+// PIN-412: a 4xx page is a failure even though it carries no transport Error. The
+// summary must count it in failedPages (not httpPages), keep it out of contentTypes,
+// keep the buckets summing to the page total, and fire the errors recommendation. A
+// transport-Error-only fixture cannot prove this, since that page never reaches the
+// StatusCode >= 400 arm.
+func TestA404PageCountsAsFailedNotHTTP(t *testing.T) {
+	crawl := crawlAdvising(nil,
+		seaportal.PageObject{URL: "https://example.com/good", Status: 200, Markdown: longMarkdown, ContentType: "page"},
+		seaportal.PageObject{URL: "https://example.com/missing", Status: 404, ContentType: "page"},
+	)
+
+	report, err := Run(context.Background(), Input{URL: "https://example.com"}, RunOptions{NoBrowser: true}, crawl, nil)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	// The fixture only proves the fix if the 404 stayed a non-Error 4xx page.
+	missing := report.Pages[1]
+	if missing.StatusCode != 404 || missing.Error != "" {
+		t.Fatalf("fixture 404 page is not a bare 4xx: status=%d error=%q", missing.StatusCode, missing.Error)
+	}
+
+	s := report.Summary
+	if s.FailedPages != 1 {
+		t.Errorf("FailedPages = %d, want 1 (the 404)", s.FailedPages)
+	}
+	if s.HTTPPages != 1 {
+		t.Errorf("HTTPPages = %d, want 1 (only the 200)", s.HTTPPages)
+	}
+	if s.BrowserPages != 0 {
+		t.Errorf("BrowserPages = %d, want 0", s.BrowserPages)
+	}
+	if got := s.HTTPPages + s.BrowserPages + s.FailedPages; got != len(report.Pages) {
+		t.Errorf("buckets sum to %d, want the page total %d", got, len(report.Pages))
+	}
+	if s.ContentTypes["page"] != 1 {
+		t.Errorf("contentTypes[page] = %d, want 1 — the 404 must not be counted as a page", s.ContentTypes["page"])
+	}
+	if rec := recommendationNaming(t, report, "returned errors"); rec == "" {
+		t.Errorf("the 4xx page produced no errors recommendation: %v", s.Recommendations)
+	}
+}
+
+// AC #3: a 3xx redirect and an unset-status page are NOT failures — the arm is
+// >= 400, so they stay in the ordinary buckets and change nothing.
+func TestRedirectAndUnsetStatusAreNotFailures(t *testing.T) {
+	crawl := crawlAdvising(nil,
+		seaportal.PageObject{URL: "https://example.com/redir", Status: 301, Markdown: longMarkdown, ContentType: "page"},
+		seaportal.PageObject{URL: "https://example.com/nostatus", Status: 0, Markdown: longMarkdown, ContentType: "page"},
+	)
+
+	report, err := Run(context.Background(), Input{URL: "https://example.com"}, RunOptions{NoBrowser: true}, crawl, nil)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if report.Summary.FailedPages != 0 {
+		t.Errorf("FailedPages = %d, want 0 for a 3xx and an unset-status page", report.Summary.FailedPages)
+	}
+	if report.Summary.HTTPPages != 2 {
+		t.Errorf("HTTPPages = %d, want 2", report.Summary.HTTPPages)
+	}
+	if report.Summary.ContentTypes["page"] != 2 {
+		t.Errorf("contentTypes[page] = %d, want 2 — neither page is a failure", report.Summary.ContentTypes["page"])
+	}
+}
+
 // Crawl-scope advice describes which URLs were SAMPLED, which no amount of browser
 // rendering changes, so it must survive verbatim. Dropping advice that is still true is
 // the failure mode on the other side of this fix.
@@ -733,5 +800,25 @@ func TestAnUnrecognisedInheritedRecommendationIsForwardedNotDropped(t *testing.T
 	}
 	if !found {
 		t.Errorf("an inherited recommendation matching neither the regenerated phrases nor the sitemap lines was silently swallowed; the recorded rule says unrecognised advice FORWARDS, since dropping advice that is still true is the worse failure\n got %v", report.Summary.Recommendations)
+	}
+}
+
+func TestToMarkdownConvertsRenderedHTML(t *testing.T) {
+	md := ToMarkdown(renderedHTML, "https://example.com/page")
+	if md.Err != "" {
+		t.Fatalf("unexpected converter error: %s", md.Err)
+	}
+	if md.Title != "Rendered Title" {
+		t.Errorf("Title = %q, want the converter title", md.Title)
+	}
+	if strings.TrimSpace(md.Markdown) == "" {
+		t.Error("Markdown is empty for a rich rendered document")
+	}
+}
+
+func TestToMarkdownEmptyForContentlessDocument(t *testing.T) {
+	md := ToMarkdown("<html><body></body></html>", "https://example.com/empty")
+	if md.Markdown != "" {
+		t.Errorf("Markdown = %q, want empty so the caller falls back", md.Markdown)
 	}
 }

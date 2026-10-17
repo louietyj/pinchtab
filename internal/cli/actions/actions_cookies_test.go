@@ -2,6 +2,7 @@ package actions
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -149,6 +150,92 @@ func TestCookiesSetForwardsOnlyTheFlagsGiven(t *testing.T) {
 	if _, present := body["url"]; present {
 		t.Errorf("body pins a url the caller never gave (%v); the server defaults it to the tab's page", body["url"])
 	}
+}
+
+// countJSONObjects reports how many top-level JSON objects are concatenated in s.
+// A double-print emits two, which is what breaks `jq` / `json.tool` on the pipe.
+func countJSONObjects(t *testing.T, s string) int {
+	t.Helper()
+	dec := json.NewDecoder(strings.NewReader(s))
+	n := 0
+	for {
+		var v map[string]any
+		err := dec.Decode(&v)
+		if err == io.EOF {
+			return n
+		}
+		if err != nil {
+			t.Fatalf("stdout is not clean JSON (%v): %q", err, s)
+		}
+		n++
+	}
+}
+
+// cookieWriteServer answers POST and DELETE /cookies with the confirmation bodies
+// the two verbs render, so the test observes exactly what reaches stdout.
+func cookieWriteServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			_, _ = io.Copy(io.Discard, r.Body)
+			_ = json.NewEncoder(w).Encode(map[string]any{"set": 1, "failed": 0, "total": 1})
+		case http.MethodDelete:
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "cleared"})
+		default:
+			http.Error(w, "unexpected method", http.StatusMethodNotAllowed)
+		}
+	}))
+}
+
+// The regression: set/clear printed the response body twice (the auto-rendering
+// helper AND printCookiesResult), so --json emitted two objects and terse printed
+// the JSON before its status line. Each path must now emit exactly one thing.
+func TestCookiesSetAndClearPrintExactlyOnce(t *testing.T) {
+	srv := cookieWriteServer(t)
+	defer srv.Close()
+
+	t.Run("set --json is one object", func(t *testing.T) {
+		out := captureStdout(t, func() {
+			CookiesSet(http.DefaultClient, srv.URL, "", newCookiesTestCmd("--json"), "z1", "v1")
+		})
+		if n := countJSONObjects(t, out); n != 1 {
+			t.Errorf("set --json emitted %d JSON objects, want exactly 1: %q", n, out)
+		}
+	})
+
+	t.Run("set terse is only the status line", func(t *testing.T) {
+		out := captureStdout(t, func() {
+			CookiesSet(http.DefaultClient, srv.URL, "", newCookiesTestCmd(), "z2", "v2")
+		})
+		if strings.Contains(out, "{") {
+			t.Errorf("terse set printed a JSON body before its status line: %q", out)
+		}
+		if strings.TrimSpace(out) != "OK" {
+			t.Errorf("terse set printed %q, want only OK", out)
+		}
+	})
+
+	t.Run("clear --json is one object", func(t *testing.T) {
+		out := captureStdout(t, func() {
+			CookiesClear(http.DefaultClient, srv.URL, "", newCookiesTestCmd("--json"))
+		})
+		if n := countJSONObjects(t, out); n != 1 {
+			t.Errorf("clear --json emitted %d JSON objects, want exactly 1: %q", n, out)
+		}
+	})
+
+	t.Run("clear terse is only the status line", func(t *testing.T) {
+		out := captureStdout(t, func() {
+			CookiesClear(http.DefaultClient, srv.URL, "", newCookiesTestCmd())
+		})
+		if strings.Contains(out, "{") {
+			t.Errorf("terse clear printed a JSON body before its status line: %q", out)
+		}
+		if strings.TrimSpace(out) != "OK" {
+			t.Errorf("terse clear printed %q, want only OK", out)
+		}
+	})
 }
 
 // The confirmation must fail CLOSED. A response that cannot say how many cookies were

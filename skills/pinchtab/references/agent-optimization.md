@@ -77,7 +77,7 @@ pinchtab nav <url> --block-images --snap
 
 ## Iframe Shortcuts
 
-Default `snap` (without `-i`) **flattens same-origin iframes** — nested iframe content appears as regular refs in the tree. Ref-based actions (`click`, `fill`, etc.) work **across iframe boundaries** without `frame` scope changes.
+`snap` (interactive and compact by default) **flattens same-origin iframes** — nested iframe content appears as regular refs in the tree. Ref-based actions (`click`, `fill`, etc.) work **across iframe boundaries** without `frame` scope changes.
 
 ```
 # snap already shows everything, including nested iframes:
@@ -149,7 +149,7 @@ For fleet workflows: check `pinchtab instances` to confirm the right instance is
 ### Stale Element Refs
 **Cause:** A `snap` was taken, then the page re-rendered (navigation, dynamic update). Old refs (`e5`, `e12`) are no longer valid.
 
-**Symptoms:** Interaction returns "ref not found" or acts on the wrong element.
+**Symptoms:** Interaction returns "ref not found" or 409 `vocab_superseded` — refs are guarded by the snapshot's vocabulary token, so a stale ref fails rather than hitting the wrong element.
 
 **Recovery:**
 ```bash

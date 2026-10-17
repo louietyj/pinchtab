@@ -294,6 +294,31 @@ func servicesForPlans(plans []suitePlan, fallback []string) []string {
 	return out
 }
 
+const pinchtabImageBuilder = "pinchtab"
+
+func servicesToBuild(plans []suitePlan, fallback []string) []string {
+	services := append([]string(nil), servicesForPlans(plans, fallback)...)
+	seen := map[string]bool{}
+	needsImageBuilder := false
+	for _, svc := range services {
+		seen[svc] = true
+		if strings.HasPrefix(svc, pinchtabImageBuilder+"-") {
+			needsImageBuilder = true
+		}
+	}
+	if needsImageBuilder && !seen[pinchtabImageBuilder] {
+		seen[pinchtabImageBuilder] = true
+		services = append([]string{pinchtabImageBuilder}, services...)
+	}
+	for _, plan := range plans {
+		if runner := plan.def.Runner; runner != "" && !seen[runner] {
+			seen[runner] = true
+			services = append(services, runner)
+		}
+	}
+	return services
+}
+
 func (r *Runner) showSuiteSkip(suite string) {
 	_, _ = fmt.Fprintf(r.stdout, "Skipping %s: filter %q has no matching scenarios\n", suite, r.args.Filter)
 }

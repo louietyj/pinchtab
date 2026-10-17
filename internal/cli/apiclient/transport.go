@@ -3,24 +3,74 @@ package apiclient
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/pinchtab/pinchtab/internal/api/types"
 )
 
 // request describes a single API call. body is a JSON payload (nil = no body;
 // Content-Type is set only when body is non-nil). headers are extra per-call
 // headers applied after the standard client headers.
 type request struct {
-	method  string
-	url     string
-	body    map[string]any
-	headers map[string]string
-	// respHeaders, when non-nil, receives the response headers so a caller can
-	// read one (the vocabulary token) without changing doRequest's return shape,
-	// which mustRequest and the other verbs share.
+	method      string
+	url         string
+	query       url.Values
+	body        map[string]any
+	headers     map[string]string
+	base        string
+	quiet       bool
+	vocab       *vocabCapture
 	respHeaders *http.Header
+}
+
+type vocabCapture struct {
+	implicit bool
+}
+
+type RequestOption func(*request)
+
+// CaptureVocab persists a successful response's vocabulary token keyed by the tab
+// the server resolved (the X-PinchTab-Tab-Id header), not by how the caller spelled
+// --tab. When implicit (no --tab), the resolved tab also becomes the store's
+// current pointer, so a later implicit action echoes that tab's token. The token
+// is delivered as a response header so it survives every snapshot format,
+// including the compact text the CLI defaults to.
+func CaptureVocab(implicit bool) RequestOption {
+	return func(r *request) { r.vocab = &vocabCapture{implicit: implicit} }
+}
+
+// CaptureHeaders stores the response headers in *dst.
+func CaptureHeaders(dst *http.Header) RequestOption {
+	return func(r *request) { r.respHeaders = dst }
+}
+
+func WithQuery(params url.Values) RequestOption {
+	return func(r *request) { r.query = params }
+}
+
+func WithBody(body map[string]any) RequestOption {
+	return func(r *request) { r.body = body }
+}
+
+func WithHeaders(headers map[string]string) RequestOption {
+	return func(r *request) { r.headers = headers }
+}
+
+func Quiet() RequestOption {
+	return func(r *request) { r.quiet = true }
+}
+
+func newRequest(method, base, path string, opts ...RequestOption) request {
+	r := request{method: method, base: base}
+	for _, opt := range opts {
+		opt(&r)
+	}
+	r.url = buildURL(base, path, r.query)
+	return r
 }
 
 func buildURL(base, path string, params url.Values) string {
@@ -37,10 +87,16 @@ func buildURL(base, path string, params url.Values) string {
 func doRequest(client *http.Client, token string, r request) (int, []byte, error) {
 	var bodyReader io.Reader
 	if r.body != nil {
-		data, _ := json.Marshal(r.body)
+		data, err := json.Marshal(r.body)
+		if err != nil {
+			return 0, nil, fmt.Errorf("encode request body for %s: %w", r.url, err)
+		}
 		bodyReader = bytes.NewReader(data)
 	}
-	req, _ := http.NewRequest(r.method, r.url, bodyReader)
+	req, err := http.NewRequest(r.method, r.url, bodyReader)
+	if err != nil {
+		return 0, nil, fmt.Errorf("build request: %w", err)
+	}
 	if r.body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -53,15 +109,24 @@ func doRequest(client *http.Client, token string, r request) (int, []byte, error
 		return 0, nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	// A short read is a failed request, never a body: a connection dropping
+	// mid-response would otherwise reach the caller as a fragment carrying its
+	// status, and the CLI would parse or print the fragment as the answer.
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp.StatusCode, nil, fmt.Errorf("read response from %s: %w", r.url, err)
+	}
+	if r.vocab != nil && resp.StatusCode < http.StatusBadRequest {
+		storeVocabToken(r.base, resp.Header.Get(vocabTabIDHeader), resp.Header.Get(vocabHeader), r.vocab.implicit)
+	}
 	if r.respHeaders != nil {
 		*r.respHeaders = resp.Header
 	}
-	body, _ := io.ReadAll(resp.Body)
 	return resp.StatusCode, body, nil
 }
 
 func setClientHeaders(req *http.Request, token string) {
-	req.Header.Set("X-PinchTab-Source", "client")
+	req.Header.Set(types.HeaderSource, "client")
 	if token == "" {
 		return
 	}

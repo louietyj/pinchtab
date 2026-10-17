@@ -1,6 +1,6 @@
 # PinchTab Security & Trust
 
-**TL;DR**: PinchTab is a local, sandboxed browser control tool. It does not phone home, steal credentials, or exfiltrate data. Source code is public; binaries are signed and published via GitHub.
+**TL;DR**: PinchTab is a local, sandboxed browser control tool. It does not phone home, steal credentials, or exfiltrate data. Source code is public; release binaries are published on GitHub with a `checksums.txt` to verify them.
 
 ## What PinchTab Does
 
@@ -9,7 +9,7 @@
 - Extracts the page's accessibility tree (for AI agents)
 - Runs screenshots and PDFs; JavaScript evaluation is available but **disabled by default** (`security.allowEvaluate = false`)
 
-High-risk operations such as JavaScript evaluation, local-file upload, file downloads, cookie access, and network export should be treated as explicit opt-in actions for the current task, not the default workflow. These are gated by security policy and disabled by default.
+High-risk operations such as JavaScript evaluation, local-file upload, file downloads, cookie access, and network export should be treated as explicit opt-in actions for the current task, not the default workflow. Evaluation, upload, downloads and cookie access are gated by security policy and disabled by default; network export is not gated, but redacts sensitive headers and omits bodies by default (see below).
 
 **All of this stays local.** No telemetry. No external API calls (except to sites you navigate to).
 
@@ -19,7 +19,7 @@ High-risk operations such as JavaScript evaluation, local-file upload, file down
 - ❌ Doesn't exfiltrate data to remote servers
 - ❌ Doesn't inject ads, malware, or miners
 - ❌ Doesn't track browsing or send analytics
-- ❌ Doesn't modify system files outside its state directory (`~/.pinchtab`)
+- ❌ Doesn't modify system files outside its state directories (`~/.pinchtab`, plus CLI current-tab state under `$XDG_STATE_HOME/pinchtab`, default `~/.local/state/pinchtab`)
 
 ## Security Policy (Defaults)
 
@@ -28,11 +28,11 @@ High-impact capabilities are **disabled by default** and require explicit config
 | Capability | Default | Config Key |
 |---|---|---|
 | JavaScript evaluation | **Disabled** | `security.allowEvaluate` |
-| File downloads | **Disabled** | `security.allowDownloads` |
-| File uploads | **Disabled** | `security.allowUploads` |
+| File downloads | **Disabled** | `security.allowDownload` |
+| File uploads | **Disabled** | `security.allowUpload` |
 | Network interception | **Disabled** | `security.allowNetworkIntercept` |
 | `file://` navigation | **Disabled** | `security.allowFileScheme`; grants read access to local files the server can read, and `file://` has no host so it is **not** constrained by `allowedDomains` or the SSRF guard — enable only on trusted, single-tenant hosts |
-| Navigation domains | **Local-only allowlist** | `security.allowedDomains` (restrict or expand deliberately) |
+| Navigation domains | **Unrestricted** unless set | `security.allowedDomains`; the first-run wizard's Guard UP choice sets a local-only list |
 | Cookie access | **Disabled** | `security.allowCookies`; use only when task requires it; do not log or expose session tokens |
 
 Agents reusing authenticated browser sessions should use dedicated low-privilege profiles and confirm with the user before performing account-changing actions.
@@ -55,7 +55,7 @@ The background daemon (`pinchtab daemon install`) is a convenience for persisten
 
 As an alternative to the daemon, run `pinchtab server` in the foreground — it stops when the terminal closes.
 
-Agent sessions expire after **30 minutes of idle** by default (`sessions.agent.idleTimeoutSec`), and tabs can auto-close via `tabPolicy.lifecycle: "close_idle"`.
+Agent sessions expire after **30 minutes of idle** by default (`sessions.agent.idleTimeoutSec`), and tabs can auto-close via `instanceDefaults.tabPolicy.lifecycle: "close_idle"` or freeze via `"freeze_idle"`.
 
 ## Builds & Verification
 
@@ -73,7 +73,7 @@ Binaries are built automatically from tagged commits via GitHub Actions (publicl
 - **Source**: https://github.com/pinchtab/pinchtab (MIT)
 - **Releases**: https://github.com/pinchtab/pinchtab/releases
 
-If you're concerned, audit the source—it's ~15MB, zero external dependencies, mostly Go stdlib.
+If you're concerned, audit the source—it's mostly Go, and its dependencies (chromedp, cobra, mcp-go and others) are listed in `go.mod`.
 
 ## VirusTotal Flag
 

@@ -219,17 +219,57 @@ Extract readable text from the page.
 
 ```bash
 pinchtab text
-pinchtab text --raw    # no formatting cleanup
+pinchtab text --raw    # = --full: whole-page innerText instead of the filtered main content
 pinchtab text "#main"  # text from one element
+pinchtab text --markdown              # Markdown for article-shaped pages (keeps links, tables)
+pinchtab text --markdown --output page.md  # write Markdown to a file, print a one-line confirmation
 ```
 
+Prefer `--markdown` for articles, docs and other prose-heavy pages: it preserves
+headings, inline links and tables, and `--output` keeps a long page out of the
+context window. It cannot be combined with `--full`/`--raw`.
+
 ### `pinchtab find <query>`
-Find elements by text content or CSS selector.
+Find elements by natural-language description over the accessibility tree (not CSS).
 
 ```bash
 pinchtab find "Submit"
-pinchtab find ".btn-primary"
+pinchtab find "login button" --ref-only   # print just the best ref
+pinchtab find "search box" --threshold 0.5 --explain
 ```
+
+### `pinchtab extract --schema <file|->`
+Extract structured data: typed JSON shaped by a JSON schema, read from the current page.
+
+```bash
+# one product: prints {"inStock": true, "name": "...", "price": 1299}
+echo '{"type":"object","properties":{
+  "name":{"type":"string","x-pinchtab-hint":"role:heading"},
+  "price":{"type":"number","description":"product price"},
+  "inStock":{"type":"boolean","description":"in stock availability"}}}' > product.json
+pinchtab extract --schema product.json
+
+# a list: one object per repeated card or table row
+echo '{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{
+  "name":{"type":"string","x-pinchtab-hint":"role:heading"},
+  "price":{"type":"number","description":"product price"}}}}}}' | pinchtab extract --schema - --max-items 10
+
+pinchtab extract --schema product.json --fields   # + field<TAB>ref<TAB>confidence table
+pinchtab click e12                                 # a field's ref works straight away
+```
+
+| Flag | Description |
+|------|-------------|
+| `--schema <file\|->` | JSON schema file, or `-` for stdin (required) |
+| `--scope <sel>` | Confine every field to one element's subtree (ref, `role:`, `text:` or a plain query) |
+| `--max-items <n>` | Cap on items per array |
+| `--fields` / `--explain` | Append the ref table; `--explain` adds score, source and reason |
+| `--json` | Full envelope (`data`, `fields`, `missing`, `truncated`) |
+
+Pick the read by what you need back: `extract` for typed values (prices, flags, rows)
+you would otherwise parse out of a snapshot; `find` for one element to act on;
+`text --markdown` for prose to read. A field reported `low`, or listed as missing on
+stderr, needs an `x-pinchtab-hint` (a ref or `role:`/`text:` selector) in the schema.
 
 ### `pinchtab eval <expression>`
 Run JavaScript in the browser context.
@@ -252,6 +292,27 @@ pinchtab network <requestId> --body
 ```
 
 > **Sensitive data:** Request bodies and exports may contain cookies, tokens, or personal data. Obtain explicit approval before inspecting bodies or exporting data, keep redaction enabled, and delete artifacts after use.
+
+### `pinchtab console`
+Read the tab's captured browser console logs (`console.log`/`warn`/`error`). Check this when a page looks healthy in the snapshot but does not respond to actions — the log often says why.
+
+```bash
+pinchtab console
+pinchtab console --limit 20
+pinchtab console --clear     # empty the buffer instead of reading it
+pinchtab console --json      # structured entries (level, message, timestamp) for jq
+```
+
+### `pinchtab errors`
+Read the tab's **uncaught JavaScript errors** — exceptions the page threw. A script that dies on load leaves the DOM present and the click handlers unwired, so the snapshot looks right while nothing works.
+
+```bash
+pinchtab errors
+pinchtab errors --clear      # empty the buffer instead of reading it
+pinchtab errors --json       # structured entries (url, line, column, stack) for jq
+```
+
+A buffer full of errors is the normal, useful case — it is what tells you the page failed, not an error in the command itself.
 
 ---
 
@@ -292,26 +353,52 @@ Read and write `localStorage` and `sessionStorage` for the active tab's origin.
 ```bash
 pinchtab storage get                      # both stores
 pinchtab storage get --type local         # one store
-pinchtab storage get --key token          # a single item
+pinchtab storage get token                # a single item
 pinchtab storage set token abc123         # writes to localStorage by default
 pinchtab storage set token abc123 --type session
-pinchtab storage delete --key token       # remove one key
-pinchtab storage delete                   # no --key: clears the whole store
+pinchtab storage delete token             # remove one key
+pinchtab storage clear                    # wipe localStorage (--type session for the other store)
 pinchtab storage clear --all              # both stores in one call
 ```
 
 | Flag | Command | Description |
 |------|---------|-------------|
 | `--type <local\|session>` | `get`, `set`, `delete`, `clear` | Which store. `get` defaults to both; the write verbs default to `local` |
-| `--key <key>` | `get`, `delete` | `get`: return only this item. `delete`: the key to remove — omit it and the whole store is cleared |
+| `--key <key>` | `get`, `delete` | Same as the `<key>` argument; give one or the other, never both |
 | `--all` | `clear` | Clear both stores in one call |
 | `--tab <id>` | all | Target a specific tab |
 
-`storage delete` with no `--key` clears the whole store `--type` selects — localStorage unless you pass `--type session` — for the tab's origin. It is the same call `storage clear` makes. `--all` is registered on `clear` only: `clear --all` empties both stores, while `delete --all` is refused as an unknown flag. `storage clear` without `--all` clears localStorage alone.
+`storage delete` needs a key: a bare `storage delete` is refused and names `storage clear`, which is the only verb that wipes a store. `storage clear` clears the store `--type` selects — localStorage unless you pass `--type session` — for the tab's origin, and `clear --all` empties both. `--all` is registered on `clear` only; `delete --all` is refused as an unknown flag.
+
+### `pinchtab clipboard`
+Read and write the server's shared clipboard (not the page's).
+
+```bash
+pinchtab clipboard write "text"   # alias: copy
+pinchtab clipboard read           # alias: paste
+```
+
+### `pinchtab memory`
+JS heap usage and DOM counters for the tab; heap snapshots need `security.allowMemory`.
+
+```bash
+pinchtab memory --gc                       # collect garbage first so two reads compare live memory
+pinchtab memory snapshot                   # V8 heap snapshot to a server-side file; prints its id
+pinchtab memory summary <id>               # top constructors and duplicate strings
+pinchtab memory compare <base> <head> --retained   # what grew between two snapshots
+```
 
 ---
 
 ## Audit Commands
+
+### `pinchtab a11y`
+Accessibility audit of the current page: native scan by default, axe-core with `--axe`.
+
+```bash
+pinchtab a11y audit
+pinchtab a11y audit --axe --rules color-contrast,label --json
+```
 
 ### `pinchtab audit`
 Browser-level site audit: screenshots, console errors, broken assets, interactive elements, accessibility score, Core Web Vitals, security findings.
@@ -346,11 +433,29 @@ List available profiles.
 
 ```bash
 pinchtab profiles
+pinchtab profiles create work
 pinchtab instance start --profile work
 ```
 
-### `pinchtab instances`
-List running PinchTab instances across profiles.
+### `pinchtab instance list`
+List running PinchTab instances across profiles (`pinchtab instances` is a deprecated alias).
+
+### Other commands agents commonly need
+
+```bash
+pinchtab wait "#results"          # a selector, or `wait 500` for ms; also --text, --url, --load
+pinchtab back | forward | reload
+pinchtab title | url | html
+pinchtab pdf --output page.pdf
+pinchtab dialog accept | dismiss  # answer a JS dialog; other page commands refuse with dialog_blocked while one is open
+pinchtab upload <file> --selector "input[type=file]"   # needs security.allowUpload
+pinchtab session create --agent-id myagent   # prints a ses_... token for PINCHTAB_SESSION
+pinchtab console --json            # raw envelope: jq '.console[]'
+pinchtab errors --json             # raw envelope: jq '.errors[]'
+pinchtab state save <name> | load <name> | show <name> | delete <name> | list | clean
+```
+
+`pinchtab <command> --help` is the authoritative flag list.
 
 ---
 

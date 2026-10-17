@@ -20,7 +20,7 @@ abstraction each:
 | Config validation | `internal/config/browser_targets.go` | registry-driven (`browsers.Get`/`browsers.IDs`) |
 | Lifecycle cleanup | `internal/browsers/providerhooks/` | registered `Hooks` (decorate, cleanup, shutdown) |
 
-`Engine` (`chrome` / `lite` / `auto`) — **deprecated**; replaced by the browser provider model (`chrome` / `cloak` / `ghost-chrome`). See [routing-contract.md](routing-contract.md) and [terminology.md](terminology.md) for the canonical provider definitions. `Capabilities` are additional concepts layered on top, partially wired.
+`Engine` (`chrome` / `lite` / `auto`) — **removed** from config (`server.engine` now fails validation); replaced by the browser provider model (`chrome` / `cloak` / `ghost-chrome`). See [routing-contract.md](routing-contract.md) and [terminology.md](terminology.md) for the canonical provider definitions. `Capabilities` are additional concepts layered on top, partially wired.
 
 ## Goal
 
@@ -42,9 +42,12 @@ internal/browsers/
   browser.go           // Browser interface + registry
   config.go            // LaunchConfig, GeoConfig, TargetConfig (provider-neutral)
   capabilities.go      // CapabilitySet (moved from config/)
-  common/              // shared chrome-family helpers (proxy auth, profile, CDP url discovery)
+  runtimekit/          // shared launch-plan resolution (ResolveProviderLaunchPlan)
+  providerhooks/       // optional bridge decoration + cleanup/shutdown hooks
+  all/, builtin/       // barrel packages that blank-import every built-in provider
   chrome/              // chrome implementation, registers itself
   cloak/               // cloak implementation, composes chrome
+  ghostchrome/         // static-first provider (staticfetch + bridgekit adapter)
   lightpanda/          // future
   brave/               // future
 ```
@@ -72,6 +75,10 @@ type Browser interface {
     // Strategy hooks
     GeoAlignment(geo GeoConfig) GeoStrategy
     ValidateTarget(cfg TargetConfig) error
+    ClassifyLaunchError(f LaunchFailure) LaunchErrorKind
+
+    // Request routing (see routing-contract.md)
+    CanHandle(intent RequestIntent) HandleDecision
 }
 
 type GeoStrategy struct {
@@ -82,7 +89,7 @@ type GeoStrategy struct {
 
 var registry = map[string]Browser{}
 
-func Register(b Browser)               { registry[b.ID()] = b }
+func Register(b Browser)               { registry[b.ID()] = b } // panics on duplicate ID
 func Get(id string) (Browser, bool)    { b, ok := registry[id]; return b, ok }
 func IDs() []string                    { /* sorted list */ }
 ```
@@ -98,32 +105,29 @@ Importers wire providers via a barrel file (e.g. `internal/browsers/all/all.go`)
 
 ### Launch mode
 
-`LaunchMode` controls **headed vs headless** browser launch state. It is
-purely about the display mode of the browser process — not about which
-provider handles a request (that is the provider model's job).
+`LaunchMode` (`internal/browsers/config.go`) is internal only: `chrome`,
+`lite`, or `auto`. `runtimekit` derives it from the configured default browser,
+and `ResolveLaunchMode` maps `auto` (and unknown values) to `chrome`. It is not
+public config — public selection uses browser provider names
+(`chrome` / `cloak` / `ghost-chrome`); the old public `Engine` field was removed.
+See [terminology.md](terminology.md).
 
-> **Deprecation note:** The `chrome` / `lite` / `auto` engine values that
-> previously occupied this field are fully superseded by the browser provider
-> model (`chrome` / `cloak` / `ghost-chrome`). The `Engine` field is
-> deprecated and will be removed. See [terminology.md](terminology.md).
-
-`Mode` is a field on `LaunchConfig`:
+Headed vs headless is a separate `Headless` bool on `LaunchConfig`:
 
 ```go
 type LaunchConfig struct {
-    Mode      LaunchMode  // headed | headless (internal only)
-    Binary    string
-    UserDir   string
-    Proxy     ProxyConfig
+    Mode       LaunchMode // chrome | lite | auto (internal only)
+    Binary     string
+    ProfileDir string
+    Proxy      ProxyConfig
     ExtraFlags []string
+    Headless   bool       // true → --headless=new + swiftshader flags
     // ...
 }
 ```
 
-- `headed`: full headful Chromium with GUI.
-- `headless`: headless Chromium (`--headless=new` + lightweight flags).
-
-A provider may reject a mode it cannot serve (e.g. a future `lightpanda` rejects `headed` mode).
+A provider may reject a mode it cannot serve: `chrome` and `cloak` both
+return an error for `lite`.
 
 ### Cloak as composition over Chrome
 
@@ -155,18 +159,25 @@ func (b Browser) DiscoverBinary() browsers.BinaryDiscovery {
 
 ### Doctor
 
-`doctor/runner.go` becomes a thin orchestrator:
+`doctor/runner.go` is a thin orchestrator that pulls checks from the
+configured browser only:
 
 ```go
-func Registry(cfg config.Config) []Check {
-    base := []Check{configFileCheck, binaryExistsCheck, binaryExecutableCheck, binaryStartsCheck}
-    for _, id := range browsers.IDs() {
-        b, _ := browsers.Get(id)
-        base = append(base, b.DoctorChecks(cfg.ResolveTarget())...)
+func Registry(cfg *config.RuntimeConfig) []CheckEntry {
+    entries := []CheckEntry{{Name: "config_file", Fn: checkConfigFile}}
+    browserID := config.NormalizeBrowser(browserFromCfg(cfg))
+    if b, ok := browsers.Get(browserID); ok {
+        for _, dc := range b.DoctorChecks(browsers.TargetConfig{Provider: browserID}) {
+            entries = append(entries, /* CheckEntry wrapping dc */)
+        }
     }
-    return base
+    // then binary_exists, binary_executable, binary_starts
+    return entries
 }
 ```
+
+`internal/doctor/browsers.go` (`ReportBrowsers`) separately walks every
+registered browser for the multi-browser report.
 
 Provider-specific checks (`cdp_reachable`, `fingerprint_flags_accepted`, `linux_fonts_present`) move into `browsers/cloak/doctor.go`.
 
@@ -306,7 +317,7 @@ The target architecture is implemented through Phase 6. Key components:
   and signals `*bridge.StaticEscalateError` instead of escalating internally,
   so Chrome is launched only when actually needed. Phase 2 re-runs with
   `SkipStatic`. The timeout budget is per phase (each phase gets
-  `NavigateTimeout`, default 30s), so a navigate that escalates can take up
+  `NavigateTimeout`, default 60s), so a navigate that escalates can take up
   to twice the configured timeout.
 - **Route metadata** — `usedProvider` is consistently `"ghost-chrome"` for all
   adapter paths. Static vs Chrome routing recorded in `Attempts[]`.
@@ -331,14 +342,14 @@ The target architecture is implemented through Phase 6. Key components:
    lives inside the adapter.
 
 4. **No separate routing package for browsers.** The `routing.Route()`
-   function and its `ghostchrome.StaticFetcher` adapter exist only
-   because handlers can't call `Browser.Route()` through BridgeAPI. Once
+   function and its `ghostchrome.StaticFetcher` adapter existed only
+   because handlers couldn't call `Browser.Route()` through BridgeAPI. Once
    BridgeAPI has Navigate/Snapshot/Text, routing decisions happen inside
    the adapter.
 
-5. **The server layer is thin wiring.** `configureBridgeRouter` creates
-   the adapter and sets `h.Bridge = adapter`. Nothing else. No
-   `h.StaticBrowser = ...`.
+5. **The server layer is thin wiring.** `configureBridgeRouter` asks
+   `providerhooks.DecorateBridge` for the configured browser and sets
+   `h.Bridge` to the result. Nothing else. No `h.StaticBrowser = ...`.
 
 ### Violations
 
@@ -392,7 +403,8 @@ Incremental. Each phase lands independently.
 `bridgekit.BridgeAdapter` (`internal/browsers/ghostchrome/bridgekit/bridge_adapter.go`)
 wraps `bridge.BridgeAPI` and a `ghostchrome.BridgeProxy`. All
 ghost-chrome static-vs-Chrome routing decisions are encapsulated here.
-Server layer creates the adapter via `bridgekit.NewBridgeAdapter(chromeBridge, cfg)`.
+`bridgekit`'s `init()` registers a `providerhooks.Hooks.DecorateBridge` for
+`ghost-chrome` that calls `bridgekit.NewBridgeAdapter(chromeBridge, cfg)`.
 
 **Phase 3 — Remove StaticBrowser from Handlers.** COMPLETE
 `StaticBrowser` field, `useStaticBrowser()`, `shouldUseStaticAction()`,
@@ -410,10 +422,11 @@ zero ghost-chrome awareness.
 
 ```go
 func configureBridgeRouter(h *handlers.Handlers, cfg *config.RuntimeConfig) {
-    if cfg.DefaultBrowser != config.BrowserGhostChrome {
+    decorated := providerhooks.DecorateBridge(config.NormalizeBrowser(cfg.DefaultBrowser), h.Bridge, cfg)
+    if decorated == h.Bridge {
         return
     }
-    h.Bridge = bridgekit.NewBridgeAdapter(h.Bridge, cfg)
+    h.Bridge = decorated
 }
 ```
 

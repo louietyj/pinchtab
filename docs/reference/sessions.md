@@ -4,7 +4,7 @@ Agent sessions provide durable, revocable authentication for automated agents. I
 
 ## Overview
 
-- **Session token**: `ses_<48 hex chars>` — high-entropy, never stored raw (only SHA-256 hash persisted)
+- **Session token**: `ses_<48 hex chars>` (24 random bytes) — never stored raw (only SHA-256 hash persisted)
 - **Session ID**: `ses_<16 hex chars>` — public identifier for management
 - **Auth header**: `Authorization: Session <token>`
 - **Env var**: `PINCHTAB_SESSION` — CLI auto-detects and uses session auth
@@ -30,29 +30,44 @@ In `config.json`:
 
 | Mode | Behavior |
 |------|----------|
-| `off` | Agent sessions disabled |
+| `off` | Agent sessions disabled, exactly as `enabled: false` |
 | `preferred` | Both bearer and session auth accepted (default) |
-| `required` | Only session auth accepted for agents |
+| `required` | **Not implemented — refused at config load.** It would mean only session auth is accepted for agents, but the bearer token and the dashboard cookie still authenticate, so the value is refused rather than accepted and ignored |
+
+Mode values are case-insensitive and surrounding space is ignored: `"Off"`, `"OFF"`
+and `" off "` all mean off. A capitalisation slip in this switch turns agent sessions
+off, as written, rather than being read as anything else.
+
+**A mode the server cannot interpret stops it.** `"required"`, a typo, or any other
+value outside the table is refused at load: the process reports the field and exits
+instead of starting with a posture chosen on your behalf — the failure a warning-only
+load would hide is agent sessions left serving. The daemon unit and auto-start run a
+bare `pinchtab server`, so the config file is the whole input and the exit is where you
+see it. `pinchtab config set sessions.agent.mode off` still works on a config the
+server refuses to load, so the repair does not need a hand edit.
 
 ## Lifecycle
 
 1. **Create** — `pinchtab session create --agent-id <id>` (or `POST /sessions` directly)
 2. **Use** — agent sends `Authorization: Session ses_...` with each request, or sets `PINCHTAB_SESSION`
 3. **Revoke** — `pinchtab session revoke <session-id>` (or `POST /sessions/{id}/revoke`)
+4. **End** — revoking, expiring or pruning a session closes the tabs it created on every instance, except a tab another caller has used since, a tab paused for human handoff and a locked tab
 
 ## Security
 
 - Tokens are never logged or persisted in plaintext
 - SHA-256 hash comparison using `crypto/subtle.ConstantTimeCompare`
 - Idle timeout (default 30m) and max lifetime (default 24h)
-- Sessions persisted to `agent-sessions.json` (atomic writes)
+- Sessions persisted to `<server.stateDir>/sessions.json` (atomic writes)
 - Each session bound to a specific agentId for activity tracking
 
 > **⚠️ Trusted, controlled environments only.** Agent sessions are meant for operators and automation you already trust: local machines, private networks, CI, or other controlled systems. They are not a multi-tenant isolation boundary and should not be treated as safe for untrusted users, untrusted agents, or public internet exposure.
 >
 > The session management API (`/sessions`) still has admin-style authority for create, list, and inspect operations. Any caller authenticated with the server bearer token or a valid dashboard cookie can manage sessions for any agent. Session-authenticated callers are blocked from dashboard/admin endpoint families, but a session without explicit grants can still access the normal non-admin automation surface by default.
 >
-> In untrusted or shared environments where agent sessions are not needed, disable them entirely by setting `"enabled": false` or `"mode": "off"` in your config to reduce the auth surface.
+> In untrusted or shared environments where agent sessions are not needed, disable them entirely by setting `"enabled": false` or `"mode": "off"` in your config to reduce the auth surface. The two are one switch: either refuses an existing session token at the front door and answers the whole `/sessions` family with `sessions_disabled`.
+>
+> `"mode": "required"` is not implemented and is refused at config load rather than accepted and ignored: the server bearer token and the dashboard cookie still authenticate, so setting it would leave you believing session auth is the only way in.
 
 ### Session Grants
 
@@ -60,7 +75,32 @@ When a session record contains explicit `grants`, PinchTab enforces them in midd
 
 The built-in grant groups are: `browse`, `network`, `media`, `cookies`, `clipboard`, `evaluate`, `storage`, `console`, `solve`, `tasks`, and `activity`.
 
-The `cookies` grant only authorizes session access to cookie routes; cookie operations still require the server-level `security.allowCookies` gate.
+Set them when the session is created, on the API or on the CLI:
+
+```bash
+curl -X POST "$BASE/sessions" -H "Authorization: Bearer $PINCHTAB_TOKEN" \
+  -d '{"agentId":"reader","grants":["browse","network"]}'
+
+pinchtab session create --agent-id reader --grant browse --grant network
+```
+
+An unrecognised grant is refused with `invalid_grant` and no session is created, so
+a typo cannot leave you holding a credential you believe is scoped. `"*"` is the
+explicit spelling of "not scoped" and means the same as omitting the field. Grants
+are reported by `pinchtab session list` and `pinchtab session info`, and they
+survive a restart. There is no route that changes the grants of an existing
+session: create a new one with the scope you want and revoke the old.
+
+A request refused for scope answers `session_scope_forbidden` with a hint naming
+the grants the session holds and the grant that would have covered the route. The
+same code also answers an admin verb, where no grant applies at all — the hint says
+which of the two fired, because the remedies differ: a different session, or the
+server token.
+
+**Grants narrow; they never widen.** A grant authorizes session access to a group
+of routes, and every server-level gate still applies on top: `evaluate` does not
+re-enable `security.allowEvaluate`, `cookies` does not re-enable
+`security.allowCookies`, and no grant reaches an admin route.
 
 That default is a convenience for trusted automation, not a sandbox. If you need hard isolation between agents or tenants, use separate PinchTab instances.
 
@@ -69,6 +109,9 @@ That default is a convenience for trusted automation, not a sandbox. If you need
 ```bash
 # Create a new session (prints the session token to stdout; use --json for a full JSON object)
 pinchtab session create --agent-id agent-1
+
+# Create one limited to a capability group (repeatable; see Session Grants)
+pinchtab session create --agent-id reader --grant browse
 export PINCHTAB_SESSION=$(pinchtab session create --agent-id agent-1)
 
 # CLI automatically uses session auth when PINCHTAB_SESSION is set
@@ -86,4 +129,12 @@ pinchtab session revoke ses_abc123def456
 
 ## API Endpoints
 
-See [endpoints.md](../endpoints.md) for full API reference.
+| Route | Purpose |
+| --- | --- |
+| `POST /sessions` | Create a session; body `agentId` (required), optional `label`, `grants` and `browser` (`invalid_browser` when unknown) |
+| `GET /sessions` | List sessions |
+| `GET /sessions/me` | The session authenticating the request |
+| `GET /sessions/{id}` | One session |
+| `POST /sessions/{id}/revoke` | Revoke a session |
+
+`pinchtab session create` also takes `--label`. See [endpoints.md](../endpoints.md) for the full API reference.

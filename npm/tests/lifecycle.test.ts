@@ -18,6 +18,13 @@ describe('isPinchtabHealthy', () => {
     assert.strictEqual(isPinchtabHealthy({ status: 'ok', tabs: 3 }), true);
   });
 
+  test('accepts a serving server that reports an unresponsive instance', () => {
+    assert.strictEqual(
+      isPinchtabHealthy({ status: 'degraded', unresponsiveInstances: ['inst_1'] }),
+      true
+    );
+  });
+
   test('rejects non-ready / non-PinchTab bodies', () => {
     assert.strictEqual(isPinchtabHealthy({ status: 'error' }), false);
     assert.strictEqual(isPinchtabHealthy({ status: 'draining' }), false);

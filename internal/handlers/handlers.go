@@ -14,6 +14,7 @@ import (
 	"github.com/pinchtab/pinchtab/internal/config"
 	"github.com/pinchtab/pinchtab/internal/contentguard"
 	"github.com/pinchtab/pinchtab/internal/dashboard"
+	"github.com/pinchtab/pinchtab/internal/heapsnap"
 	"github.com/pinchtab/pinchtab/internal/httpx"
 	"github.com/pinchtab/pinchtab/internal/idpi"
 	"github.com/pinchtab/pinchtab/internal/ids"
@@ -45,7 +46,8 @@ type Handlers struct {
 
 	recorder *recorder
 
-	autoSolve autoSolveTabs
+	autoSolve     autoSolveTabs
+	heapSnapshots heapsnap.Cache
 
 	// Optional dependency injection (for unit testing)
 	evalJS           func(ctx context.Context, expression string, out *string) error
@@ -114,7 +116,7 @@ func New(b bridge.BridgeAPI, cfg *config.RuntimeConfig, p bridge.ProfileService,
 		return h.Bridge.Evaluate(ctx, expression, out, opts)
 	}
 
-	if notifier, ok := h.Bridge.(tabRemovalNotifier); ok {
+	if notifier, ok := bridgeAs[tabRemovalNotifier](h.Bridge); ok {
 		notifier.AddTabRemovedHook(h.credentialStore.RemoveTab)
 	}
 
@@ -187,15 +189,21 @@ func (h *Handlers) annotateBrowserCrash(message string, details map[string]any) 
 		return message, details
 	}
 
+	return crashAnnotation(message, details, crash,
+		"this error is a symptom of the dead browser, not of your selector or timeout; restart PinchTab to recover it")
+}
+
+// crashAnnotation is the one shape a crash takes in an error body: the reason in
+// the message, browserCrashed/browserCrashReason as discrete fields, and a hint
+// that says what the caller should do about it.
+func crashAnnotation(message string, details map[string]any, crash bridge.CrashEvent, remedy string) (string, map[string]any) {
 	annotated := make(map[string]any, len(details)+3)
 	for k, v := range details {
 		annotated[k] = v
 	}
 	annotated["browserCrashed"] = true
 	annotated["browserCrashReason"] = crash.Reason
-	annotated["hint"] = fmt.Sprintf(
-		"the browser crashed (%s at %s) — this error is a symptom of the dead browser, not of your selector or timeout; restart it with: pinchtab server restart",
-		crash.Reason, crash.Time.Format(time.RFC3339))
+	annotated["hint"] = fmt.Sprintf("the browser crashed (%s at %s) — %s", crash.Reason, crash.Time.Format(time.RFC3339), remedy)
 	return fmt.Sprintf("%s (browser crashed: %s)", message, crash.Reason), annotated
 }
 
@@ -232,29 +240,20 @@ func (h *Handlers) ensureBrowserOrRespond(w http.ResponseWriter, cfg *config.Run
 	return true
 }
 
-// armAutoCloseIfEnabled (re)arms the per-tab idle close timer when the
-// instance has lifecycle policy "close_idle". Call when an authorized
-// read/action request has finished using the tab.
-func (h *Handlers) armAutoCloseIfEnabled(tabID string) {
-	if h == nil || h.Bridge == nil || tabID == "" {
-		return
+func (h *Handlers) armIdleLifecycle(tabID string) {
+	if h.closesIdleTabs(tabID) {
+		h.Bridge.ScheduleIdleLifecycle(tabID)
 	}
-	if h.Config == nil || h.Config.TabLifecyclePolicy != "close_idle" {
-		return
-	}
-	h.Bridge.ScheduleAutoClose(tabID)
 }
 
-// cancelAutoCloseIfEnabled stops a pending auto-close timer. Call from
-// /navigate to indicate fresh work on the tab.
-func (h *Handlers) cancelAutoCloseIfEnabled(tabID string) {
-	if h == nil || h.Bridge == nil || tabID == "" {
-		return
+func (h *Handlers) cancelIdleLifecycle(tabID string) {
+	if h.closesIdleTabs(tabID) {
+		h.Bridge.CancelIdleLifecycle(tabID)
 	}
-	if h.Config == nil || h.Config.TabLifecyclePolicy != "close_idle" {
-		return
-	}
-	h.Bridge.CancelAutoClose(tabID)
+}
+
+func (h *Handlers) closesIdleTabs(tabID string) bool {
+	return h != nil && h.Bridge != nil && tabID != "" && h.Config != nil && h.Config.TabLifecyclePolicy == "close_idle"
 }
 
 // clearTabFrameScope drops any active frame scope on a tab. Call from
@@ -271,7 +270,7 @@ func (h *Handlers) clearTabFrameScope(tabID string) {
 }
 
 func (h *Handlers) bridgeRestartStatus() (bool, time.Duration) {
-	provider, ok := h.Bridge.(restartStatusProvider)
+	provider, ok := bridgeAs[restartStatusProvider](h.Bridge)
 	if !ok {
 		return false, 0
 	}
@@ -339,10 +338,10 @@ type routeBinding struct {
 // method so the per-binding handlers can close over the receiver h.
 func (h *Handlers) bridgeBindings() []routeBinding {
 	return []routeBinding{
-		{pattern: "POST /navigate", root: h.HandleNavigate, tab: h.HandleTabNavigate, guards: guardHandoffPause},
-		{pattern: "POST /back", root: h.HandleBack, tab: h.HandleTabBack, guards: guardHandoffPause},
-		{pattern: "POST /forward", root: h.HandleForward, tab: h.HandleTabForward, guards: guardHandoffPause},
-		{pattern: "POST /reload", root: h.HandleReload, tab: h.HandleTabReload, guards: guardHandoffPause},
+		{pattern: "POST /navigate", root: h.HandleNavigate, tab: h.HandleTabNavigate, guards: guardDialogBlocked | guardHandoffPause},
+		{pattern: "POST /back", root: h.HandleBack, tab: h.HandleTabBack, guards: guardDialogBlocked | guardHandoffPause},
+		{pattern: "POST /forward", root: h.HandleForward, tab: h.HandleTabForward, guards: guardDialogBlocked | guardHandoffPause},
+		{pattern: "POST /reload", root: h.HandleReload, tab: h.HandleTabReload, guards: guardDialogBlocked | guardHandoffPause},
 		{pattern: "GET /snapshot", root: h.HandleSnapshot, tab: h.HandleTabSnapshot, guards: guardDialogBlocked | guardDomainPolicy},
 		{pattern: "GET /frame", root: h.HandleFrame, tab: h.HandleTabFrame, guards: guardNone},
 		{pattern: "POST /frame", root: h.HandleFrame, tab: h.HandleTabFrame, guards: guardNone},
@@ -354,20 +353,21 @@ func (h *Handlers) bridgeBindings() []routeBinding {
 		{pattern: "GET /url", root: h.HandleURL, tab: h.HandleTabURL, guards: guardDialogBlocked | guardDomainPolicy},
 		{pattern: "GET /html", root: h.HandleHTML, tab: h.HandleTabHTML, guards: guardDialogBlocked | guardDomainPolicy},
 		{pattern: "GET /styles", root: h.HandleStyles, tab: h.HandleTabStyles, guards: guardDialogBlocked | guardDomainPolicy},
-		{pattern: "GET /value", root: h.HandleGetValue, tab: h.HandleTabGetValue, guards: guardDomainPolicy},
-		{pattern: "GET /attr", root: h.HandleGetAttr, tab: h.HandleTabGetAttr, guards: guardDomainPolicy},
-		{pattern: "GET /count", root: h.HandleCount, tab: h.HandleTabCount, guards: guardDomainPolicy},
-		{pattern: "GET /box", root: h.HandleGetBox, tab: h.HandleTabGetBox, guards: guardDomainPolicy},
-		{pattern: "GET /visible", root: h.HandleGetVisible, tab: h.HandleTabGetVisible, guards: guardDomainPolicy},
-		{pattern: "GET /enabled", root: h.HandleGetEnabled, tab: h.HandleTabGetEnabled, guards: guardDomainPolicy},
-		{pattern: "GET /checked", root: h.HandleGetChecked, tab: h.HandleTabGetChecked, guards: guardDomainPolicy},
+		{pattern: "GET /value", root: h.HandleGetValue, tab: h.HandleTabGetValue, guards: guardDialogBlocked | guardDomainPolicy},
+		{pattern: "GET /attr", root: h.HandleGetAttr, tab: h.HandleTabGetAttr, guards: guardDialogBlocked | guardDomainPolicy},
+		{pattern: "GET /count", root: h.HandleCount, tab: h.HandleTabCount, guards: guardDialogBlocked | guardDomainPolicy},
+		{pattern: "GET /box", root: h.HandleGetBox, tab: h.HandleTabGetBox, guards: guardDialogBlocked | guardDomainPolicy},
+		{pattern: "GET /visible", root: h.HandleGetVisible, tab: h.HandleTabGetVisible, guards: guardDialogBlocked | guardDomainPolicy},
+		{pattern: "GET /enabled", root: h.HandleGetEnabled, tab: h.HandleTabGetEnabled, guards: guardDialogBlocked | guardDomainPolicy},
+		{pattern: "GET /checked", root: h.HandleGetChecked, tab: h.HandleTabGetChecked, guards: guardDialogBlocked | guardDomainPolicy},
 		{pattern: "GET /pdf", root: h.HandlePDF, tab: h.HandleTabPDF, guards: guardDialogBlocked | guardDomainPolicy},
 		{pattern: "POST /pdf", root: h.HandlePDF, tab: h.HandleTabPDF, guards: guardDialogBlocked | guardDomainPolicy},
 		{pattern: "POST /action", root: h.HandleAction, tab: h.HandleTabAction, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
-		{pattern: "POST /actions", root: h.HandleActions, tab: h.HandleTabActions, guards: guardDomainPolicy}, // handoff-pause enforced PER STEP inside the batch loop, not as a request gate
+		{pattern: "POST /actions", root: h.HandleActions, tab: h.HandleTabActions, guards: guardDialogBlocked | guardDomainPolicy}, // handoff-pause enforced PER STEP inside the batch loop, not as a request gate; the dialog guard gates the request and is re-checked per step
 		{pattern: "POST /dialog", root: h.HandleDialog, tab: h.HandleTabDialog, guards: guardHandoffPause},
-		{pattern: "POST /wait", root: h.HandleWait, tab: h.HandleTabWait, guards: guardDomainPolicy},
-		{pattern: "POST /find", root: h.HandleFind, tab: h.HandleFind, guards: guardDomainPolicy},
+		{pattern: "POST /wait", root: h.HandleWait, tab: h.HandleTabWait, guards: guardDialogBlocked | guardDomainPolicy},
+		{pattern: "POST /find", root: h.HandleFind, tab: h.HandleFind, guards: guardDialogBlocked | guardDomainPolicy},
+		{pattern: "POST /extract", root: h.HandleExtract, tab: h.HandleTabExtract, guards: guardDialogBlocked | guardDomainPolicy},
 		{pattern: "POST /tab", root: h.HandleTab, guards: guardNone},
 		{pattern: "POST /close", root: h.HandleClose, tab: h.HandleTabClose, guards: guardNone},
 		{pattern: "POST /lock", root: h.HandleTabLock, tab: h.HandleTabLockByID, guards: guardNone},
@@ -380,6 +380,10 @@ func (h *Handlers) bridgeBindings() []routeBinding {
 		{pattern: "DELETE /cookies", root: h.HandleClearCookies, tab: h.HandleTabClearCookies, guards: guardNone},
 		{pattern: "GET /metrics", root: h.HandleMetrics, tab: h.HandleTabMetrics, guards: guardNone},
 		{pattern: "GET /timing", root: h.HandleTiming, tab: h.HandleTabTiming, guards: guardDialogBlocked | guardDomainPolicy},
+		{pattern: "GET /memory", root: h.HandleMemory, tab: h.HandleTabMemory, guards: guardDialogBlocked | guardDomainPolicy},
+		{pattern: "POST /memory/snapshot", root: h.HandleMemorySnapshot, tab: h.HandleTabMemorySnapshot, guards: guardDialogBlocked | guardDomainPolicy},
+		{pattern: "GET /memory/snapshot/{snapshotId}/summary", root: h.HandleMemorySnapshotSummary, guards: guardNone},
+		{pattern: "GET /memory/compare", root: h.HandleMemoryCompare, guards: guardNone},
 		{pattern: "GET /a11y/audit", root: h.HandleA11yAudit, tab: h.HandleTabA11yAudit, guards: guardDialogBlocked | guardDomainPolicy},
 		{pattern: "POST /audit/page", root: h.HandleAuditPage, guards: guardNone},
 		{pattern: "POST /audit", root: h.HandleAudit, guards: guardNone},
@@ -402,35 +406,35 @@ func (h *Handlers) bridgeBindings() []routeBinding {
 		{pattern: "POST /clipboard/copy", root: h.HandleClipboardCopy, guards: guardNone},
 		{pattern: "GET /clipboard/paste", root: h.HandleClipboardPaste, guards: guardNone},
 		{pattern: "GET /stealth/status", root: h.HandleStealthStatus, guards: guardNone},
-		{pattern: "POST /fingerprint/rotate", root: h.HandleFingerprintRotate, guards: guardDomainPolicy | guardHandoffPause},
+		{pattern: "POST /fingerprint/rotate", root: h.HandleFingerprintRotate, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
 		{pattern: "GET /solvers", root: h.HandleListSolvers, guards: guardNone},
 		{pattern: "GET /config/autosolver", root: h.HandleAutoSolverConfig, guards: guardNone},
-		{pattern: "POST /solve", root: h.HandleSolve, tab: h.HandleTabSolve, guards: guardDomainPolicy | guardHandoffPause},
-		{pattern: "POST /solve/{name}", root: h.HandleSolve, tab: h.HandleTabSolve, guards: guardDomainPolicy | guardHandoffPause},
+		{pattern: "POST /solve", root: h.HandleSolve, tab: h.HandleTabSolve, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
+		{pattern: "POST /solve/{name}", root: h.HandleSolve, tab: h.HandleTabSolve, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
 		// No handoff pause: vision is the way on after an auto-solve parked the tab.
-		{pattern: "POST /vision", root: h.HandleVision, tab: h.HandleTabVision, guards: guardDomainPolicy},
-		{pattern: "POST /emulation/viewport", root: h.HandleSetViewport, tab: h.HandleTabSetViewport, guards: guardDomainPolicy | guardHandoffPause},
-		{pattern: "POST /emulation/geolocation", root: h.HandleSetGeolocation, tab: h.HandleTabSetGeolocation, guards: guardDomainPolicy | guardHandoffPause},
-		{pattern: "POST /emulation/offline", root: h.HandleSetOffline, tab: h.HandleTabSetOffline, guards: guardDomainPolicy | guardHandoffPause},
-		{pattern: "POST /emulation/headers", root: h.HandleSetHeaders, tab: h.HandleTabSetHeaders, guards: guardDomainPolicy | guardHandoffPause},
-		{pattern: "POST /emulation/credentials", root: h.HandleSetCredentials, tab: h.HandleTabSetCredentials, guards: guardDomainPolicy | guardHandoffPause},
-		{pattern: "POST /emulation/media", root: h.HandleSetMedia, tab: h.HandleTabSetMedia, guards: guardDomainPolicy | guardHandoffPause},
+		{pattern: "POST /vision", root: h.HandleVision, tab: h.HandleTabVision, guards: guardDialogBlocked | guardDomainPolicy},
+		{pattern: "POST /emulation/viewport", root: h.HandleSetViewport, tab: h.HandleTabSetViewport, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
+		{pattern: "POST /emulation/geolocation", root: h.HandleSetGeolocation, tab: h.HandleTabSetGeolocation, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
+		{pattern: "POST /emulation/offline", root: h.HandleSetOffline, tab: h.HandleTabSetOffline, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
+		{pattern: "POST /emulation/headers", root: h.HandleSetHeaders, tab: h.HandleTabSetHeaders, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
+		{pattern: "POST /emulation/credentials", root: h.HandleSetCredentials, tab: h.HandleTabSetCredentials, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
+		{pattern: "POST /emulation/media", root: h.HandleSetMedia, tab: h.HandleTabSetMedia, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
 		{pattern: "POST /cache/clear", root: h.HandleCacheClear, guards: guardNone},
 		{pattern: "GET /cache/status", root: h.HandleCacheStatus, guards: guardNone},
-		{pattern: "POST /storage", root: h.HandleStorage, tab: h.HandleTabStorageSet, guards: guardDomainPolicy | guardHandoffPause},
-		{pattern: "DELETE /storage", root: h.HandleStorage, tab: h.HandleTabStorageDelete, guards: guardDomainPolicy | guardHandoffPause},
-		{pattern: "GET /storage", root: h.HandleStorage, tab: h.HandleTabStorageGet, guards: guardDomainPolicy}, // no handoff-pause: read probe; the POST/DELETE siblings carry it
-		{pattern: "GET /state", root: h.HandleStateCurrent, guards: guardDomainPolicy},                          // no handoff-pause: captures a snapshot, writes nothing to the tab
+		{pattern: "POST /storage", root: h.HandleStorage, tab: h.HandleTabStorageSet, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
+		{pattern: "DELETE /storage", root: h.HandleStorage, tab: h.HandleTabStorageDelete, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
+		{pattern: "GET /storage", root: h.HandleStorage, tab: h.HandleTabStorageGet, guards: guardDialogBlocked | guardDomainPolicy}, // no handoff-pause: read probe; the POST/DELETE siblings carry it
+		{pattern: "GET /state", root: h.HandleStateCurrent, guards: guardDialogBlocked | guardDomainPolicy},                          // no handoff-pause: captures a snapshot, writes nothing to the tab
 		{pattern: "GET /state/list", root: h.HandleStateList, guards: guardNone},
 		{pattern: "GET /state/show", root: h.HandleStateShow, guards: guardNone},
-		{pattern: "POST /state/save", root: h.HandleStateSave, guards: guardDomainPolicy}, // no handoff-pause: POST writes a file, not the tab; /state/load is the write and carries it
-		{pattern: "POST /state/load", root: h.HandleStateLoad, guards: guardDomainPolicy | guardHandoffPause},
+		{pattern: "POST /state/save", root: h.HandleStateSave, guards: guardDialogBlocked | guardDomainPolicy}, // no handoff-pause: POST writes a file, not the tab; /state/load is the write and carries it
+		{pattern: "POST /state/load", root: h.HandleStateLoad, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
 		{pattern: "DELETE /state", root: h.HandleStateDelete, guards: guardNone},
 		{pattern: "POST /state/clean", root: h.HandleStateClean, guards: guardNone},
-		{pattern: "POST /evaluate", root: h.HandleEvaluate, tab: h.HandleTabEvaluate, guards: guardDomainPolicy | guardHandoffPause},
-		{pattern: "POST /macro", root: h.HandleMacro, guards: guardDomainPolicy}, // handoff-pause enforced PER STEP inside the macro loop, not as a request gate
-		{pattern: "GET /download", root: h.HandleDownload, tab: h.HandleTabDownload, guards: guardDomainPolicy | guardHandoffPause},
-		{pattern: "POST /upload", root: h.HandleUpload, tab: h.HandleTabUpload, guards: guardDomainPolicy | guardHandoffPause},
+		{pattern: "POST /evaluate", root: h.HandleEvaluate, tab: h.HandleTabEvaluate, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
+		{pattern: "POST /macro", root: h.HandleMacro, guards: guardDialogBlocked | guardDomainPolicy}, // handoff-pause enforced PER STEP inside the macro loop, not as a request gate
+		{pattern: "GET /download", root: h.HandleDownload, tab: h.HandleTabDownload, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
+		{pattern: "POST /upload", root: h.HandleUpload, tab: h.HandleTabUpload, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
 		{pattern: "GET /screencast", root: h.HandleScreencast, guards: guardDomainPolicy},
 		{pattern: "GET /screencast/tabs", root: h.HandleScreencastAll, guards: guardNone},
 		{pattern: "POST /record/start", root: h.HandleRecordStart, guards: guardNone},
@@ -470,6 +474,7 @@ var specialCaseRoutes = []string{
 	"GET /action",
 	"GET /tabs/{id}/state",
 	"POST /shutdown",
+	"POST " + SessionTabsClosePath,
 }
 
 // registerBridgeRoutes registers the bridge API surface by walking the shared
@@ -519,6 +524,7 @@ func (h *Handlers) registerSpecialRoutes(mux muxRegistrar, doShutdown func()) {
 	// is the ungated lightweight tab-runtime readiness view, so it is not a
 	// TabScoped catalog entry and is registered explicitly here.
 	mux.HandleFunc("GET /tabs/{id}/state", h.HandleTabState)
+	mux.HandleFunc("POST "+SessionTabsClosePath, h.HandleSessionTabsClose)
 	if doShutdown != nil {
 		mux.HandleFunc("POST /shutdown", h.HandleShutdown(doShutdown))
 	}

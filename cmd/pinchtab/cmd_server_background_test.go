@@ -14,6 +14,7 @@ import (
 	"github.com/pinchtab/pinchtab/internal/config"
 	"github.com/pinchtab/pinchtab/internal/daemon"
 	"github.com/pinchtab/pinchtab/internal/server"
+	"github.com/spf13/pflag"
 )
 
 func TestDetachedDaemonOwnershipTreatsUnsupportedOSAsNotInstalled(t *testing.T) {
@@ -404,18 +405,22 @@ func TestPortBusyErrorForeignListener(t *testing.T) {
 }
 
 func TestPortBusyErrorReadyPinchTab(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok","mode":"dashboard","version":"dev"}`))
-	}))
-	defer srv.Close()
+	for _, status := range []string{"ok", "degraded"} {
+		t.Run(status, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"status":"` + status + `","mode":"dashboard","version":"dev"}`))
+			}))
+			defer srv.Close()
 
-	err := portBusyError(srv.URL, "/tmp/config.json")
-	if err == nil {
-		t.Fatal("expected an error for a busy port")
-	}
-	if !strings.Contains(err.Error(), "server already running") || !strings.Contains(err.Error(), "pinchtab server stop") {
-		t.Errorf("ready-server message lacks the stop command:\n%s", err)
+			err := portBusyError(srv.URL, "/tmp/config.json")
+			if err == nil {
+				t.Fatal("expected an error for a busy port")
+			}
+			if !strings.Contains(err.Error(), "server already running") || !strings.Contains(err.Error(), "pinchtab server stop") {
+				t.Errorf("ready-server message lacks the stop command:\n%s", err)
+			}
+		})
 	}
 }
 
@@ -447,5 +452,79 @@ func TestBackgroundServerArgsLogLevelForwarding(t *testing.T) {
 	want := []string{"server", "--background-child", "marker-123", "--log-level", "warn"}
 	if !reflect.DeepEqual(explicit, want) {
 		t.Errorf("backgroundServerArgs() = %#v, want %#v", explicit, want)
+	}
+}
+
+func TestEveryFlagTheServerDeclaresTravelsToTheDetachedChild(t *testing.T) {
+	notForwarded := map[string]string{
+		"background":            "the flag that spawns the child; forwarding it would fork forever",
+		backgroundChildFlagName: "the child marker, passed positionally by backgroundServerArgs itself",
+	}
+	freshServerFlags := func() *pflag.FlagSet {
+		fs := pflag.NewFlagSet("server", pflag.ContinueOnError)
+		serverCmd.LocalFlags().VisitAll(func(f *pflag.Flag) {
+			switch f.Value.Type() {
+			case "bool":
+				fs.BoolP(f.Name, f.Shorthand, false, "")
+			case "string":
+				fs.StringP(f.Name, f.Shorthand, "", "")
+			case "stringArray":
+				fs.StringArrayP(f.Name, f.Shorthand, nil, "")
+			default:
+				t.Fatalf("--%s has flag type %q the census cannot drive", f.Name, f.Value.Type())
+			}
+		})
+		return fs
+	}
+
+	parent := freshServerFlags()
+	var argv []string
+	parent.VisitAll(func(f *pflag.Flag) {
+		if _, exempt := notForwarded[f.Name]; exempt {
+			return
+		}
+		if f.Value.Type() == "bool" {
+			argv = append(argv, "--"+f.Name)
+			return
+		}
+		argv = append(argv, "--"+f.Name, "value-of-"+f.Name)
+		if f.Value.Type() == "stringArray" {
+			argv = append(argv, "--"+f.Name, "second-value-of-"+f.Name)
+		}
+	})
+	if err := parent.Parse(argv); err != nil {
+		t.Fatalf("parse parent argv %v: %v", argv, err)
+	}
+
+	childArgv := backgroundServerArgs("marker", serverBackgroundOptionsFromFlags(parent))
+	child := freshServerFlags()
+	if err := child.Parse(childArgv[1:]); err != nil {
+		t.Fatalf("parse child argv %v: %v", childArgv, err)
+	}
+
+	checked := 0
+	parent.VisitAll(func(f *pflag.Flag) {
+		if _, exempt := notForwarded[f.Name]; exempt {
+			return
+		}
+		checked++
+		got := child.Lookup(f.Name)
+		if !got.Changed || got.Value.String() != f.Value.String() {
+			t.Errorf("--%s=%s is declared by the server subcommand and applied by the parent, but the detached child parses it as %q (set=%v)", f.Name, f.Value, got.Value, got.Changed)
+		}
+	})
+	if checked < 6 {
+		t.Fatalf("checked only %d forwarded flags; this census would prove little", checked)
+	}
+	if got := child.Lookup(backgroundChildFlagName).Value.String(); got != "marker" {
+		t.Errorf("child marker = %q, want %q", got, "marker")
+	}
+	if child.Changed("background") {
+		t.Errorf("the detached child was handed --background and would fork again: %v", childArgv)
+	}
+	for _, inherited := range []string{"server", "agent-id"} {
+		if serverCmd.LocalFlags().Lookup(inherited) != nil {
+			t.Errorf("--%s is a root persistent flag yet reads as one the server declares; the census would then demand a client-side flag be forwarded to the server itself", inherited)
+		}
 	}
 }

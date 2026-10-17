@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "properties": {
+    "plans": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "plan name"
+          },
+          "price": {
+            "type": "number",
+            "description": "price in USD per user per month"
+          }
+        }
+      }
+    },
+    "lfsPrice": {
+      "type": "number",
+      "description": "Git Large File Storage price per month"
+    }
+  }
+}

@@ -4,6 +4,7 @@
 > The engine has been replaced by the **browser provider** model. Use `browsers.default`
 > in your config with providers: `chrome`, `cloak`, or `ghost-chrome`.
 > See [terminology](../architecture/terminology.md) for details.
+> None of the code below exists at HEAD: `internal/engine` (Router, rules, `LiteEngine`), the `server.engine` key (now a config validation error) and the `X-Engine` header were removed. The Gost-DOM static path now lives in `internal/browsers/ghostchrome/staticfetch`, used by the `ghost-chrome` provider before it escalates to Chrome.
 
 PinchTab includes a **Lite Engine** that performs DOM capture — navigate, snapshot,
 text extraction, click, and type — without requiring Chrome or Chromium.  It is

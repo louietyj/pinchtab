@@ -24,7 +24,7 @@ type frameRequest struct {
 }
 
 func (h *Handlers) frameScopes() frameScopeAPI {
-	scopes, _ := h.Bridge.(frameScopeAPI)
+	scopes, _ := bridgeAs[frameScopeAPI](h.Bridge)
 	return scopes
 }
 
@@ -433,7 +433,9 @@ func (h *Handlers) HandleFrame(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	go httpx.CancelOnClientDone(r.Context(), cancel)
 
+	vocabBefore := h.tabVocab(resolvedTabID)
 	scope, resetToMain, err := h.resolveFrameScope(tCtx, resolvedTabID, req.Target)
+	h.publishVocabIfReepoched(w, resolvedTabID, vocabBefore)
 	if err != nil {
 		httpx.Error(w, 400, err)
 		return

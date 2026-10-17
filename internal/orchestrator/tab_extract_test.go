@@ -81,14 +81,14 @@ func TestExtractExplicitTabID_BodySkippedWhenOversized(t *testing.T) {
 	}
 }
 
-func TestExtractExplicitTabID_BodySkippedWhenUnknownLength(t *testing.T) {
+func TestExtractExplicitTabID_BodyReadWhenUnknownLength(t *testing.T) {
 	r := httptest.NewRequest("POST", "/x", bytes.NewReader([]byte(`{"tabId":"streaming"}`)))
 	r.Header.Set("Content-Type", "application/json")
 	r.ContentLength = -1
 
-	got, _ := ExtractExplicitTabID(r)
-	if got != "" {
-		t.Fatalf("unknown-length body should be skipped, got %q", got)
+	got, src := ExtractExplicitTabID(r)
+	if got != "streaming" || src != TabIDSourceBody {
+		t.Fatalf("an unknown-length body is a chunked client body and must route by its tabId; got %q/%q", got, src)
 	}
 }
 

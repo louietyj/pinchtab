@@ -126,12 +126,17 @@ func newCLIHTTPClient(agentID string) *http.Client {
 
 func resolveCLIBase(cfg *config.RuntimeConfig) string {
 	defaultBase := resolveDefaultCLIBase(cfg)
-	resolved := resolveBaseURL(defaultBase)
+	resolved, err := resolveBaseURL(defaultBase)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "pinchtab: %v\n", err)
+		osExit(2)
+		return ""
+	}
 	if resolved == defaultBase {
 		if serverURL != "" {
-			output.Hint("--server " + resolved + " is the default and can be omitted")
+			output.Advisory("--server " + resolved + " is the default and can be omitted")
 		} else if os.Getenv("PINCHTAB_SERVER") != "" {
-			output.Hint("PINCHTAB_SERVER=" + resolved + " is the default and can be omitted")
+			output.Advisory("PINCHTAB_SERVER=" + resolved + " is the default and can be omitted")
 		}
 	}
 	return resolved
@@ -156,24 +161,31 @@ func resolveDefaultCLIBase(cfg *config.RuntimeConfig) string {
 // machine; the probe simply learns less.
 var resolveTabStateEndpoint = func() (base, token string) {
 	cfg := config.Load()
-	base = resolveBaseURL(resolveDefaultCLIBase(cfg))
-	token, err := resolveCLIToken(cfg, base)
+	base, err := resolveBaseURL(resolveDefaultCLIBase(cfg))
+	if err != nil {
+		return "", ""
+	}
+	token, err = resolveCLIToken(cfg, base)
 	if err != nil {
 		return base, ""
 	}
 	return base, token
 }
 
-// resolveBaseURL returns the server base URL from flag/env/default.
-// Shared by both the full CLI runtime path and the lightweight tab probe.
-func resolveBaseURL(defaultBase string) string {
-	if serverURL != "" {
-		return strings.TrimRight(serverURL, "/")
+func resolveBaseURL(defaultBase string) (string, error) {
+	source, value := "--server", serverURL
+	if value == "" {
+		source, value = "PINCHTAB_SERVER", os.Getenv("PINCHTAB_SERVER")
 	}
-	if u := os.Getenv("PINCHTAB_SERVER"); u != "" {
-		return strings.TrimRight(u, "/")
+	if value == "" {
+		return defaultBase, nil
 	}
-	return defaultBase
+	base := strings.TrimRight(value, "/")
+	u, err := url.Parse(base)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", fmt.Errorf("%s must be an absolute http(s) URL, e.g. http://127.0.0.1:9867: got %q", source, value)
+	}
+	return base, nil
 }
 
 func canAutoStartServerForCLI(cfg *config.RuntimeConfig, baseURL string) bool {
@@ -272,7 +284,7 @@ func (t agentHeaderTransport) RoundTrip(req *http.Request) (*http.Response, erro
 	cloned := req.Clone(req.Context())
 	cloned.Header = req.Header.Clone()
 	apiclient.ApplyExtraHeaders(cloned.Header)
-	cloned.Header.Set(activity.HeaderPTSource, "client")
+	cloned.Header.Set(activity.HeaderPTSource, activity.SourceClient)
 	if id := normalizeCLIAgentID(t.agentID); id != "" {
 		cloned.Header.Set(activity.HeaderAgentID, id)
 	}

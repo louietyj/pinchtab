@@ -84,8 +84,8 @@ func TestDefaultFileConfig(t *testing.T) {
 	if !fc.Security.IDPI.Enabled {
 		t.Errorf("DefaultFileConfig.Security.IDPI.Enabled = %v, want true", fc.Security.IDPI.Enabled)
 	}
-	if len(fc.Security.AllowedDomains) != 3 || fc.Security.AllowedDomains[0] != "127.0.0.1" {
-		t.Errorf("DefaultFileConfig.Security.AllowedDomains = %v, want local-only allowlist", fc.Security.AllowedDomains)
+	if len(fc.Security.AllowedDomains) != 0 {
+		t.Errorf("DefaultFileConfig.Security.AllowedDomains = %v, want none", fc.Security.AllowedDomains)
 	}
 	if !fc.Security.IDPI.StrictMode {
 		t.Errorf("DefaultFileConfig.Security.IDPI.StrictMode = %v, want true", fc.Security.IDPI.StrictMode)
@@ -380,6 +380,36 @@ func TestTabPolicyDefaultsFromRuntime(t *testing.T) {
 	}
 }
 
+func TestFreezeIdleRoundTripsThroughFileConfigFromRuntime(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		delay     time.Duration
+		wantDelay *int
+	}{
+		{"default delay", 5 * time.Minute, nil},
+		{"custom delay", 90 * time.Second, intPtr(90)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rt := &RuntimeConfig{TabLifecyclePolicy: "freeze_idle", TabCloseDelay: tc.delay}
+
+			fc := FileConfigFromRuntime(rt)
+			got := fc.InstanceDefaults.TabPolicy
+			if got == nil || got.Lifecycle != "freeze_idle" {
+				t.Fatalf("tabPolicy = %#v, want lifecycle=freeze_idle", got)
+			}
+			if (got.CloseDelaySec == nil) != (tc.wantDelay == nil) || (got.CloseDelaySec != nil && *got.CloseDelaySec != *tc.wantDelay) {
+				t.Fatalf("closeDelaySec = %v, want %v", got.CloseDelaySec, tc.wantDelay)
+			}
+
+			back := &RuntimeConfig{TabCloseDelay: 5 * time.Minute}
+			ApplyFileConfigToRuntime(back, &fc)
+			if back.TabLifecyclePolicy != "freeze_idle" || back.TabCloseDelay != tc.delay {
+				t.Fatalf("round trip = %q %v, want freeze_idle %v", back.TabLifecyclePolicy, back.TabCloseDelay, tc.delay)
+			}
+		})
+	}
+}
+
 func TestDefaultFileConfigJSON(t *testing.T) {
 	fc := DefaultFileConfig()
 	data, err := json.MarshalIndent(fc, "", "  ")
@@ -462,8 +492,8 @@ func TestDefaultFileConfigJSON(t *testing.T) {
 	if !parsed.Security.IDPI.Enabled {
 		t.Errorf("round-trip Security.IDPI.Enabled = %v, want true", parsed.Security.IDPI.Enabled)
 	}
-	if len(parsed.Security.AllowedDomains) != 3 || parsed.Security.AllowedDomains[0] != "127.0.0.1" {
-		t.Errorf("round-trip Security.AllowedDomains = %v, want local-only allowlist", parsed.Security.AllowedDomains)
+	if len(parsed.Security.AllowedDomains) != 0 {
+		t.Errorf("round-trip Security.AllowedDomains = %v, want none", parsed.Security.AllowedDomains)
 	}
 	if !parsed.Security.IDPI.StrictMode {
 		t.Errorf("round-trip Security.IDPI.StrictMode = %v, want true", parsed.Security.IDPI.StrictMode)

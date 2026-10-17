@@ -8,7 +8,7 @@ This is the canonical contributor and development guide for PinchTab.
 
 | Requirement | Version | Purpose |
 |------------|---------|---------|
-| Go | 1.25+ | Build language |
+| Go | 1.26+ (`go.mod`) | Build language |
 | golangci-lint | Latest | Linting (required for pre-commit hooks) |
 | Chrome/Chromium | Latest | Browser automation |
 | macOS, Linux, or WSL2 | Current | OS support |
@@ -38,7 +38,7 @@ cd pinchtab
 
 # 3. Build and run
 go build ./cmd/pinchtab
-./pinchtab
+./pinchtab server
 ```
 
 **Example output:**
@@ -79,7 +79,7 @@ If you decline, it shows the manual install command instead.
 **macOS (Homebrew):**
 ```bash
 brew install go
-go version  # Verify: go version go1.25.0
+go version  # Verify: go1.26.0 or newer
 ```
 
 **Linux (Ubuntu/Debian):**
@@ -152,7 +152,7 @@ cd pinchtab
 ```
 
 Doctor checks your environment and **asks before installing** anything:
-- Go 1.25+ and golangci-lint (offers `brew install` or `go install`)
+- Go 1.26+ and golangci-lint (offers `brew install` or `go install`)
 - Git hooks (copies pre-commit hook)
 - Go dependencies (`go mod download`)
 - Node.js, Bun, and dashboard deps (optional, for dashboard development)
@@ -196,11 +196,7 @@ ls -la pinchtab
 ./pinchtab server
 ```
 
-**Expected output:**
-```
-🦀 PINCH! PINCH! port=9867
-auth disabled (set PINCHTAB_TOKEN to enable)
-```
+The server listens on `127.0.0.1:9867` and requires the `server.token` from your config on every request (`./pinchtab config token --stdout` prints it). Add `-v` for the full startup banner.
 
 ### Start (Headed Mode)
 
@@ -229,7 +225,9 @@ URL/token without log scraping. For a longer-lived install, use
 ### Health Check
 
 ```bash
-curl http://localhost:9867/health
+./pinchtab health
+# or, with the token:
+curl -H "Authorization: Bearer $(./pinchtab config token --stdout)" http://localhost:9867/health
 ```
 
 ### Try CLI
@@ -252,7 +250,7 @@ go test ./... -v -coverprofile=coverage.out
 go tool cover -html=coverage.out           # View coverage
 ./dev e2e                                 # Run the default extended E2E suite
 ./dev e2e basic                           # Run API + CLI + Infra basic tests
-./dev smoke ci                            # Run CI smoke scenarios + host Docker smoke checks
+./dev e2e smoke                           # Run CI smoke scenarios + host Docker smoke checks
 ./dev smoke                               # Run all local smoke categories
 ./dev smoke --browser=cloak              # Run all local CloakBrowser smoke categories
 ./dev e2e api                             # Run API basic tests
@@ -442,7 +440,7 @@ This will tell you exactly what's missing or misconfigured.
 ### Common Issues
 
 **"Go version too old"**
-- Install Go 1.25+ from https://go.dev/dl/
+- Install Go 1.26+ from https://go.dev/dl/
 - Verify: `go version`
 
 **"golangci-lint: command not found"**
@@ -474,6 +472,6 @@ Issues? Check:
 1. Run `./dev doctor` first
 2. All dependencies installed and correct versions?
 3. Port 9867 available?
-4. Check logs: `tail -f pinchtab.log`
+4. Check logs: a foreground server logs to its terminal; `pinchtab server --background` writes `<server.stateDir>/server.log`; the daemon writes `~/.pinchtab/logs/daemon.err.log`
 
 See `docs/` for guides and examples.

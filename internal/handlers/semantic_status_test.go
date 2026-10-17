@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -195,30 +196,97 @@ func TestTheStatusSurvivesRewordingTheMessage(t *testing.T) {
 		{"not-configured wording alone buys nothing", errors.New("semantic selectors require a matcher (not configured)"), http.StatusInternalServerError},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := statusForElementErr(tc.err); got != tc.want {
-				t.Errorf("statusForElementErr(%v) = %d, want %d", tc.err, got, tc.want)
+			if got := selectorFailureStatus(tc.err); got != tc.want {
+				t.Errorf("selectorFailureStatus(%v) = %d, want %d", tc.err, got, tc.want)
 			}
 		})
 	}
 }
 
-// Criterion three, structurally: both paths must REACH the one mapper. The inspect path
-// and the action path each mapped selector failures themselves, and the two switches
-// drifted — semantic misses answered 404 on /action and 500 on all six read endpoints.
+// Criterion three, structurally: every path must REACH the one mapper. The inspect
+// path and the action path each mapped selector failures themselves, and the two
+// switches drifted — semantic misses answered 404 on /action and 500 on all six read
+// endpoints, while the capture endpoints hardcoded 400 and the inspect ones 500.
 //
 // This pins the call sites; TestBothPathsAgreeOnTheStatusForTheSameFailure pins the
 // outcome. Both are needed: a census cannot see a second mapper under a new name, and an
 // agreement test cannot see a caller that stops mapping at all.
-func TestOneMapperServesBothTheInspectAndActionPaths(t *testing.T) {
+//
+// The census reads BOTH spellings, because a site either asks the mapper for a status
+// it must carry itself (the screenshot clip path returns a statusError) or hands the
+// whole refusal to respondSelectorFailure, which asks the same owner.
+// A status literal sitting in the same call as the selector-failure wrapper:
+// `httpx.Error(w, 400, frameScopedSelectorError(...))` and
+// `&statusError{500, frameScopedSelectorError(...)}` were both live before this card.
+var statusLiteralBesideSelectorFailure = regexp.MustCompile(`[,{]\s*[45]\d\d\s*,`)
+
+// The other way to answer with the right status and the wrong code: ask the owner for
+// the status and hand it to the generic writer, which hardcodes code "error". A handler
+// with several exits satisfies a presence check on respondSelectorFailure while one
+// branch still writes this way, so the ban is on the shape itself, across line breaks.
+var ownerStatusWrittenGenerically = regexp.MustCompile(`(?s)httpx\.Error(?:Code)?\(\s*\w+\s*,\s*selectorFailureStatus\(`)
+
+func ownerStatusWrittenGenericallyAt(text string) []int {
+	var lines []int
+	for _, match := range ownerStatusWrittenGenerically.FindAllStringIndex(text, -1) {
+		lines = append(lines, 1+strings.Count(text[:match[0]], "\n"))
+	}
+	return lines
+}
+
+func TestOneMapperServesEverySelectorResolvingPath(t *testing.T) {
 	pkg := srccensus.Load(t, ".", 20)
 
 	callers := map[string]bool{}
-	for _, site := range pkg.Calls(t, "statusForElementErr") {
-		callers[site.Func] = true
+	for _, name := range []string{"selectorFailureStatus", "respondSelectorFailure"} {
+		for _, site := range pkg.Calls(t, name) {
+			callers[site.Func] = true
+		}
 	}
-	for _, required := range []string{"inspectElement", "resolveActionRequestSelectorInScope"} {
+	exits := map[string]bool{}
+	for _, site := range pkg.Calls(t, "respondSelectorFailure") {
+		exits[site.Func] = true
+	}
+	for _, required := range []string{"HandleText", "HandleSnapshot", "handleInspect"} {
+		if !exits[required] {
+			t.Errorf("%s does not answer a selector failure through respondSelectorFailure; asking the owner for a status and writing it with httpx.Error answers the right status with the generic code", required)
+		}
+	}
+	for _, required := range []string{
+		"inspectElement", "resolveActionRequestSelectorInScope", "handleInspect",
+		"resolveScreenshotClip", "HandleText", "HandleSnapshot",
+	} {
 		if !callers[required] {
-			t.Errorf("%s no longer maps its selector failures through statusForElementErr; a second copy of the status switch is how the inspect and action paths drifted apart", required)
+			t.Errorf("%s no longer maps its selector failures through the one owner; a second copy of the status switch is how the read paths came to give five different answers", required)
+		}
+	}
+
+	// The deleted twin must not come back: it read the raw no-match sentinel while
+	// this one reads the wrapped one, and they agreed on 404 by coincidence.
+	if _, found := pkg.Func("selectorResolutionHTTPStatus"); found {
+		t.Error("selectorResolutionHTTPStatus is back; one question needs one mapper, and a second one reading a different sentinel is how these statuses drifted")
+	}
+
+	// The shape this card removed, banned so a verb added later cannot bring it
+	// back: a selector failure written out beside a status LITERAL. Building the
+	// wrapper and returning it is fine — that is what a producer does, and its
+	// caller answers through the owner — so the ban is on the answering line, which
+	// is where /screenshot said 400 and /html said 500 for the same condition.
+	for _, file := range srccensus.Tree(t, ".", 20) {
+		for i, line := range strings.Split(file.Text, "\n") {
+			if !strings.Contains(line, "frameScopedSelectorError(") {
+				continue
+			}
+			if statusLiteralBesideSelectorFailure.MatchString(line) {
+				t.Errorf("%s:%d answers a selector failure with a hardcoded status: %s\nask selectorFailureStatus, or hand the whole refusal to respondSelectorFailure",
+					file.Name, i+1, strings.TrimSpace(line))
+			}
+		}
+	}
+
+	for _, file := range srccensus.Tree(t, ".", 20) {
+		for _, line := range ownerStatusWrittenGenericallyAt(file.Text) {
+			t.Errorf("%s:%d asks selectorFailureStatus for the status and writes it with the generic writer, which answers the right status with code \"error\"; hand the whole refusal to respondSelectorFailure", file.Name, line)
 		}
 	}
 
@@ -226,5 +294,26 @@ func TestOneMapperServesBothTheInspectAndActionPaths(t *testing.T) {
 	// changes whenever a sentence is reworded, and these messages are reworded often.
 	if _, found := pkg.Func("semanticSelectorHTTPStatus"); found {
 		t.Error("semanticSelectorHTTPStatus is back; the semantic statuses come from sentinels now, so a message-matching mapper would silently re-key them on wording")
+	}
+}
+
+func TestTheGenericWriterBanRedsOnTheShapeItExistsFor(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		src  string
+		want []int
+	}{
+		{"one line", "\thttpx.Error(w, selectorFailureStatus(err), err)\n", []int{1}},
+		{"with the code writer", "\n\thttpx.ErrorCode(w, selectorFailureStatus(err), \"x\", msg, false, nil)\n", []int{2}},
+		{"split across lines", "\thttpx.Error(\n\t\tw,\n\t\tselectorFailureStatus(err),\n\t\terr)\n", []int{1}},
+		{"the one exit", "\trespondSelectorFailure(w, err)\n", nil},
+		{"a producer carrying the status", "\treturn &statusError{selectorFailureStatus(err), err}\n", nil},
+		{"a literal status", "\thttpx.Error(w, 500, err)\n", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ownerStatusWrittenGenericallyAt(tc.src); fmt.Sprint(got) != fmt.Sprint(tc.want) {
+				t.Errorf("flagged lines %v, want %v for %q", got, tc.want, tc.src)
+			}
+		})
 	}
 }

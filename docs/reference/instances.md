@@ -18,7 +18,7 @@ curl http://localhost:9867/instances
 
 # CLI Alternative (human-readable by default)
 pinchtab instance list
-# Output: inst_0a89  9999  headed  running
+# Output (tab-separated): inst_0a89a5bb  9999  headed  running
 
 pinchtab instance list --json          # Full JSON response
 ```
@@ -32,11 +32,14 @@ Response shape:
   {
     "id": "inst_0a89a5bb",
     "profileId": "prof_278be873",
-    "profileName": "instance-1741410000000",
+    "profileName": "instance-1741410000000000000-3fa9c2d1",
     "port": "9999",
     "mode": "headed",
     "headless": false,
     "status": "running",
+    "startTime": "2026-03-08T05:00:00Z",
+    "attached": false,
+    "responsiveness": "responsive",
     "securityPolicy": {
       "allowedDomains": ["127.0.0.1", "localhost", "::1", "wikipedia.org"]
     }
@@ -45,6 +48,8 @@ Response shape:
 ```
 
 `GET /instances` returns a bare JSON array, not an envelope like `{"instances":[...]}`. Each instance response includes both `mode` (`"headless"` or `"headed"`) and the legacy-compatible `headless` boolean.
+Optional fields appear when they apply: `url` (bridge-backed instances), `error` (when `status` is `error`), `attachType` and `cdpUrl`
+(attached instances), `browser`, `fallbackFrom`/`fallbackReason` (a launch that fell back to another target), and `crashes`.
 
 ## Start An Instance
 
@@ -66,6 +71,10 @@ Request body:
 - `mode`: optional; use `headed` for a visible browser, anything else is treated as headless
 - `port`: optional
 - `securityPolicy.allowedDomains`: optional additive instance-scoped IDPI/domain allowlist entries
+- `browser`: optional provider or `browser.targets` name (CLI `--browser`)
+- `fallbackTargets`: optional ordered target names to try if the first launch fails (CLI `--browser-fallback`, repeatable)
+
+The response is `201` with the instance object.
 
 Notes:
 
@@ -74,7 +83,8 @@ Notes:
 - the CLI flag is `--profile`, even though the API field is `profileId`
 - `securityPolicy.allowedDomains` is merged with the server-level `security.allowedDomains` baseline for that instance only
 - you can widen a single instance without changing the server default. For example, `{"securityPolicy":{"allowedDomains":["*"]}}` makes that instance unrestricted while other instances still use the server baseline
-- request-supplied extension paths are rejected; configure `browser.extensionPaths` on the server instead. By default, PinchTab uses the local `extensions/` directory under its state/config folder.
+- request-supplied extension paths are rejected (so `pinchtab instance start --extension` fails with `400`);
+  configure `browser.extensionPaths` on the server instead. By default, PinchTab uses the local `extensions/` directory under its state/config folder.
 
 ### `POST /instances/launch`
 
@@ -92,6 +102,7 @@ Request body:
 - `mode`: optional; `headed` or headless by default
 - `port`: optional
 - `securityPolicy.allowedDomains`: optional additive instance-scoped IDPI/domain allowlist entries
+- `browser`, `fallbackTargets`: optional, as for `/instances/start`
 
 Important:
 
@@ -117,6 +128,7 @@ Instance responses include:
 
 - `mode`: `"headless"` or `"headed"`
 - `headless`: boolean kept for compatibility
+- `responsiveness`: whether the instance's browser routes answer, measured by the latest completed probe of the instance's `/tabs` under a short budget, which a front-door `/health` or monitoring snapshot starts and waits for at most 250ms; a slower probe is reported by the next read. `responsive` when it answered, `unresponsive` when its `/health` answered but `/tabs` did not within the budget, `unknown` when it has not been probed yet or the probe could not connect. It never changes `status`, which stays `running` for an unresponsive instance, and it triggers no restart. The front door's `/health` degrades while any instance is `unresponsive`
 
 ## Get Instance Logs
 
@@ -137,6 +149,21 @@ pinchtab instance stop inst_ea2e747f
 ```
 
 Stopping an instance preserves the profile unless it was a temporary auto-generated profile.
+The response is `{"status":"stopped","id":"<instanceId>"}`.
+
+## Restart Or Start An Instance By ID
+
+```bash
+curl -X POST http://localhost:9867/instances/inst_ea2e747f/restart
+# CLI Alternative
+pinchtab instance restart inst_ea2e747f
+```
+
+`POST /instances/{id}/restart` soft-restarts the browser process of a running instance
+(`503` when it is not running). `POST /instances/{id}/start` starts a known, stopped
+instance again with its previous profile, port and mode (`201` with the instance), or
+ensures the browser of one that is still active; attached CDP instances cannot be started
+this way (`409`).
 
 ## Start By Profile
 
@@ -149,6 +176,8 @@ curl -X POST http://localhost:9867/profiles/prof_278be873/start \
 ```
 
 This route accepts a profile ID or profile name in the path. Unlike `/instances/start` and `/instances/launch`, its request body uses `headless` instead of `mode`.
+`headless` defaults to `false`, so a request without it starts a headed browser. The body also accepts
+`browser` and `fallbackTargets`.
 
 ## Open A Tab In An Instance
 
@@ -164,7 +193,7 @@ There is no dedicated instance-scoped `tab open` CLI command. The CLI shortcut i
 pinchtab instance navigate inst_ea2e747f https://pinchtab.com
 ```
 
-That command opens a blank tab for the instance and then navigates it.
+That command opens a tab for the instance already on the URL, in one `tabs/open` call.
 
 ## List Tabs For One Instance
 
@@ -180,11 +209,17 @@ curl http://localhost:9867/instances/tabs
 
 This is the fleet-wide tab listing endpoint. It is different from `GET /tabs`, which is shorthand or bridge scoped.
 
+Both routes return a bare JSON array of `{"id","instanceId","url","title"}` objects, cached per
+instance; add `?fresh=1` to refetch. `GET /instances/{id}/tabs` answers `503` when the instance is not running.
+
 ## List Metrics Across Instances
 
 ```bash
 curl http://localhost:9867/instances/metrics
 ```
+
+`GET /instances/{id}/metrics` returns one instance's own request counters; the bare
+`GET /metrics` on the server answers with the server's counters (see [Metrics](./metrics.md)).
 
 ## Attach An Existing Browser (CDP)
 

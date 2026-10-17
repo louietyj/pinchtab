@@ -1,0 +1,7 @@
+{
+  "site": "Quotes to Scrape",
+  "usernameLabel": "Username",
+  "passwordLabel": "Password",
+  "submit": "Login",
+  "quotesSource": "GoodReads.com"
+}

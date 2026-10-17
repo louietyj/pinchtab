@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
+	"github.com/pinchtab/pinchtab/internal/activity"
 	"github.com/pinchtab/pinchtab/internal/bridge"
 	"github.com/pinchtab/pinchtab/internal/config"
 	"github.com/pinchtab/pinchtab/internal/selector"
@@ -263,20 +265,6 @@ func (h *Handlers) executeActionResilient(ctx context.Context, req *bridge.Actio
 			if errors.Is(recErr, ErrStaleSubmitTarget) {
 				return nil, "", nil, recErr
 			}
-			// The action RAN: the click landed and moved the page, and the guard reports
-			// that navigation from inside the callback. Wrapping it as "ref not found and
-			// recovery failed" asserted two false things about a dispatch that happened,
-			// and the natural retry then repeats it. The navigation is passed through
-			// unwrapped so this answers what the same click answers with a fresh ref.
-			//
-			// The recovery record IS published here, unlike on the refusal above: it was
-			// built on the original page before the click, and it is the only disclosure
-			// of WHICH element received a click the caller aimed at a different ref.
-			// Suppressing it would leave the navigation reported with no way to learn the
-			// dispatch went somewhere else.
-			if errors.Is(recErr, bridge.ErrUnexpectedNavigation) {
-				return nil, "", &rr, recErr
-			}
 			return nil, "", &rr, refNotFound(req.Ref)
 		}
 		return recRes, "", &rr, nil
@@ -457,6 +445,33 @@ func (h *Handlers) refreshRefCache(ctx context.Context, tabID string) {
 	flat, _ := bridge.BuildSnapshot(nodes, bridge.FilterInteractive, -1)
 	_ = bridge.EnrichA11yNodesWithDOMMetadata(ctx, flat)
 	h.Bridge.SetRefCache(tabID, bridge.EpochRefs(h.Bridge.GetRefCache(tabID), flat))
+}
+
+func publishVocab(w http.ResponseWriter, tabID, vocab string) {
+	if vocab == "" {
+		return
+	}
+	if tabID != "" {
+		w.Header().Set(activity.HeaderPTTabID, tabID)
+	}
+	w.Header().Set(vocabHeader, vocab)
+}
+
+func (h *Handlers) tabVocab(tabID string) string {
+	if cache := h.Bridge.GetRefCache(tabID); cache != nil {
+		return cache.DomEpoch
+	}
+	return ""
+}
+
+func (h *Handlers) publishTabVocab(w http.ResponseWriter, tabID string) {
+	publishVocab(w, tabID, h.tabVocab(tabID))
+}
+
+func (h *Handlers) publishVocabIfReepoched(w http.ResponseWriter, tabID, before string) {
+	if vocab := h.tabVocab(tabID); vocab != before {
+		publishVocab(w, tabID, vocab)
+	}
 }
 
 func isTimeoutWithPendingDialog(err error, tabID string, b bridge.BridgeAPI) bool {

@@ -73,6 +73,7 @@
         "screenshotPath": "",
         "timingMetrics": {}
       },
+      "statusCode": 200,
       "title": "Audit Fixture Site",
       "url": "http://fixtures/audit-site/index.html"
     },
@@ -146,6 +147,7 @@
         "screenshotPath": "",
         "timingMetrics": {}
       },
+      "statusCode": 200,
       "title": "Broken Assets — Audit Fixture Site",
       "url": "http://fixtures/audit-site/broken-assets.html"
     },
@@ -185,6 +187,7 @@
         "screenshotPath": "",
         "timingMetrics": {}
       },
+      "statusCode": 200,
       "title": "Console Errors — Audit Fixture Site",
       "url": "http://fixtures/audit-site/console-errors.html"
     },
@@ -226,6 +229,7 @@
         "screenshotPath": "",
         "timingMetrics": {}
       },
+      "statusCode": 200,
       "title": "Accessibility Issues — Audit Fixture Site",
       "url": "http://fixtures/audit-site/a11y-issues.html"
     },
@@ -260,6 +264,7 @@
         "screenshotPath": "",
         "timingMetrics": {}
       },
+      "statusCode": 200,
       "title": "Clean Page — Audit Fixture Site",
       "url": "http://fixtures/audit-site/clean.html"
     },
@@ -306,6 +311,7 @@
           "url": "http://fixtures/audit-site/forms.html"
         }
       ],
+      "statusCode": 200,
       "title": "Forms — Audit Fixture Site",
       "url": "http://fixtures/audit-site/forms.html"
     },
@@ -337,6 +343,7 @@
         "screenshotPath": "",
         "timingMetrics": {}
       },
+      "statusCode": 200,
       "title": "Cookie Echo — Audit Fixture Site",
       "url": "http://fixtures/audit-site/cookie-echo.html"
     },
@@ -363,6 +370,7 @@
         "screenshotPath": "",
         "timingMetrics": {}
       },
+      "statusCode": 200,
       "title": "Product 1 — Audit Fixture Site",
       "url": "http://fixtures/audit-site/products/p1.html"
     },
@@ -389,6 +397,7 @@
         "screenshotPath": "",
         "timingMetrics": {}
       },
+      "statusCode": 200,
       "title": "Product 2 — Audit Fixture Site",
       "url": "http://fixtures/audit-site/products/p2.html"
     },
@@ -415,6 +424,7 @@
         "screenshotPath": "",
         "timingMetrics": {}
       },
+      "statusCode": 200,
       "title": "Product 3 — Audit Fixture Site",
       "url": "http://fixtures/audit-site/products/p3.html"
     },
@@ -441,6 +451,7 @@
         "screenshotPath": "",
         "timingMetrics": {}
       },
+      "statusCode": 200,
       "title": "Product 4 — Audit Fixture Site",
       "url": "http://fixtures/audit-site/products/p4.html"
     },
@@ -467,6 +478,7 @@
         "screenshotPath": "",
         "timingMetrics": {}
       },
+      "statusCode": 200,
       "title": "Product 5 — Audit Fixture Site",
       "url": "http://fixtures/audit-site/products/p5.html"
     }

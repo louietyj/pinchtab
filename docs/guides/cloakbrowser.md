@@ -216,7 +216,7 @@ pinchtab doctor --check binary_exists # run a single check by name
 ```
 
 Exit codes: `0` all checks passed or skipped, `1` at least one check failed,
-`2` config or usage error. See the [Troubleshooting](#troubleshooting) section
+`2` usage error (for example an unknown check name). See the [Troubleshooting](#troubleshooting) section
 below for how to react to specific failures.
 
 ## Verify CloakBrowser Is Active
@@ -224,7 +224,7 @@ below for how to react to specific failures.
 Check `/stealth/status` after the managed browser instance starts:
 
 ```bash
-TOKEN="$(pinchtab config get server.token)"
+TOKEN="$(pinchtab config token --stdout)"
 curl -sS -H "Authorization: Bearer ${TOKEN}" \
   http://127.0.0.1:9867/stealth/status
 ```
@@ -330,10 +330,10 @@ Project maintainers can validate the Docker integration with:
 
 That command swaps the runtime browser to `browsers.default=cloak`
 (`/opt/cloakbrowser/chrome`, `fingerprintSeed=42069`,
-`disableDefaultStealthArgs=true`), reuses the prebuilt
-`pinchtab-cloakbrowser:test` image (build it once via
-`tests/tools/docker/cloakbrowser-smoke.Dockerfile` — the runner does not
-auto-build it), asserts `/stealth/status` reports
+`disableDefaultStealthArgs=true`), builds the
+`pinchtab-cloakbrowser:test` image from
+`tests/tools/docker/cloakbrowser-smoke.Dockerfile` (set `SKIP_BUILD=1` to
+reuse an existing image instead), asserts `/stealth/status` reports
 `provider=cloak, native=true, pinchtabOverlaysDisabled=true,
 fingerprintSeed=42069`, and runs the full E2E suite against the cloak
 container.
@@ -352,19 +352,19 @@ around the external endpoint and exposes the standard API on a local port.
 
 ```bash
 curl -X POST http://localhost:9867/instances/attach \
+  -H "Authorization: Bearer $(pinchtab config token --stdout)" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "cloak-manager-profile",
     "cdpUrl": "ws://127.0.0.1:9222/devtools/browser/abc123",
-    "provider": "cloak",
-    "browser": "cloak-1"
+    "browser": "cloak"
   }'
 ```
 
 For a remote CloakBrowser attach:
 
-- `browser` should name a CloakBrowser target (or the `cloak` provider) when `browser.targets` is configured; if omitted, the configured default target is used
-- `provider` in the JSON body must be `cloak` when no browser target is configured, or must match the selected target when both fields are present
+- `browser` (or its alias `provider`) takes the provider name `cloak`, not a target name; when `browser.targets` is configured there must be a target with provider `cloak`, and an omitted value attaches with the default target's provider
+- without `browser` or `provider` and without targets, the attach defaults to `chrome`; if you pass both fields they must agree
 - `/stealth/status` reports `provider=cloak`, `launchMode=remote-cdp`,
   `native=true`, and `pinchtabOverlaysDisabled=true` — PinchTab does not inject
   its JS fingerprint overlays, on the assumption the external browser owns
@@ -396,8 +396,10 @@ pinchtab config set browser.binary /absolute/path/to/cloakbrowser/chrome
 pinchtab config set browser.targets.cloak-eu.binary /absolute/path/to/cloakbrowser/chrome
 ```
 
-PinchTab does not search `$PATH` for CloakBrowser. Use the absolute path
-reported by `python -m cloakbrowser info` or `cloakbrowser.binaryInfo()`.
+Discovery only looks for an executable named `cloakbrowser` on `$PATH`, then
+`/opt/cloakbrowser/chrome` and `~/.cloakbrowser/chrome` (Linux and macOS). An
+installer that puts `chrome` anywhere else is not found, so use the absolute
+path reported by `python -m cloakbrowser info` or `cloakbrowser.binaryInfo()`.
 
 ### Unsupported platform build
 
@@ -420,18 +422,19 @@ x86_64 (or vice versa) the inner CloakBrowser binary will fail the same way.
 Symptom: launch fails with `profile in use`, or PinchTab logs a warning that
 the profile lock is held.
 
-PinchTab's stale-`SingletonLock` recovery (P3b) automatically removes the
-lock when the owning PID no longer exists:
+PinchTab's stale-`SingletonLock` recovery automatically clears the lock when
+no running PinchTab owns the profile:
 
-- if the lock points to a live non-PinchTab process, PinchTab refuses to
-  steal the profile and logs `chrome profile lock appears active and owned by another pinchtab; leaving singleton files in place`
-- if the lock points to a dead process, PinchTab logs `chrome profile lock appears active but pinchtab owner is dead` and cleans up the stale files
-- if the lock points to a live process owned by another PinchTab, PinchTab
-  refuses to steal it
+- if a running PinchTab owns the profile, PinchTab refuses to steal it and logs
+  `browser profile lock appears active and owned by another pinchtab; leaving singleton files in place`
+- if the lock PID is alive but its PinchTab owner is gone, PinchTab logs
+  `browser profile lock appears active but pinchtab owner is dead; proceeding with stale cleanup`
+- if browser processes still hold the profile with no PinchTab owner, PinchTab
+  logs `browser profile lock appears active but no pinchtab owner found; killing stale processes`
+  and then removes the singleton files
 
 If recovery does not happen automatically, check the container or host
-logs for the `chrome profile lock appears active but pinchtab owner is dead`
-line:
+logs for those `browser profile lock` lines:
 
 ```bash
 docker logs pinchtab-cloak | grep "profile lock"

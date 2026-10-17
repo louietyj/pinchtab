@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -94,6 +95,9 @@ func TestLaunchdManagerPreflightRequiresGUIDomain(t *testing.T) {
 }
 
 func TestLaunchdManagerLogsFallsBackToLegacyPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("launchd legacy log paths are Unix-only")
+	}
 	root := t.TempDir()
 	legacyLogPath := "/tmp/pinchtab.err.log"
 	legacyContent, legacyErr := os.ReadFile(legacyLogPath)

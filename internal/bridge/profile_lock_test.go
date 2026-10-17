@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -359,7 +360,7 @@ func TestQuarantineCorruptedProfile_WaitsForBrowserExit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("recreated profile dir missing: %v", err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o700 {
+	if perm := info.Mode().Perm(); runtime.GOOS != "windows" && perm != 0o700 {
 		t.Fatalf("recreated profile dir perms = %o, want 0700", perm)
 	}
 }

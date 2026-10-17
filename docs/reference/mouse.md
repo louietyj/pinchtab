@@ -42,7 +42,7 @@ pinchtab drag e5 400,320
 
 Notes:
 
-- All `mouse` subcommands and `drag` accept `--humanize` to opt the action into the humanized bezier+jitter input path (overrides `instanceDefaults.humanize`).
+- All `mouse` subcommands accept `--humanize` to opt the action into the humanized bezier+jitter input path (overrides `instanceDefaults.humanize`). `drag` has no `--humanize` flag.
 - `mouse move` accepts either coordinates or a unified selector.
 - `mouse down` and `mouse up` accept an optional selector. Without one, they use the current pointer position.
 - `mouse wheel` accepts either a delta form (`<dy> [--dx <n>]`) or an optional selector. Without a selector, it uses the current pointer position.
@@ -140,7 +140,7 @@ curl -X POST http://localhost:9867/tabs/<tabId>/action \
 - POST coordinate bodies work with plain `x` and `y`; no extra `hasXY` flag is required.
 - `mouse-down`, `mouse-up`, and `mouse-wheel` use per-tab current-pointer state when you omit a fresh target.
 - If no current pointer position is known yet, `mouse-down` and `mouse-up` fail with a clear error. Use `mouse-move` first or pass an explicit target.
-- If no current pointer position is known yet, `mouse-wheel` and page `scroll` use the viewport center as a deterministic fallback.
+- If no current pointer position is known yet, `mouse-wheel` uses the viewport center as a deterministic fallback. Page `scroll` without `x`/`y` always targets the viewport center.
 - `mouse-wheel` defaults to vertical scrolling when only `deltaY` is provided.
 - The CDP-to-DOM move fallback only handles renderer acknowledgement timeouts. Other CDP errors and caller cancellation are returned to the caller.
 

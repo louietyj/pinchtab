@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "amount": {"type": "number", "description": "price"}
+        }
+      }
+    }
+  }
+}

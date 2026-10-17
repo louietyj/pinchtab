@@ -32,11 +32,7 @@ func handleNetwork(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.C
 		if bufSize, ok := optFloat(r, "bufferSize"); ok {
 			q.Set("bufferSize", fmt.Sprintf("%d", int(bufSize)))
 		}
-		body, code, err := c.Get(ctx, "/network", q)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return resultFromBytes(body, code)
+		return toolResult(c.Get(ctx, "/network", q))
 	}
 }
 
@@ -54,11 +50,7 @@ func handleNetworkDetail(c *Client) func(context.Context, mcp.CallToolRequest) (
 			q.Set("body", "true")
 		}
 		path := "/network/" + url.PathEscape(requestID)
-		body, code, err := c.Get(ctx, path, q)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return resultFromBytes(body, code)
+		return toolResult(c.Get(ctx, path, q))
 	}
 }
 
@@ -68,11 +60,7 @@ func handleNetworkClear(c *Client) func(context.Context, mcp.CallToolRequest) (*
 		if tabID := optString(r, "tabId"); tabID != "" {
 			q.Set("tabId", tabID)
 		}
-		body, code, err := c.Post(ctx, "/network/clear?"+q.Encode(), nil)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return resultFromBytes(body, code)
+		return toolResult(c.Post(ctx, "/network/clear?"+q.Encode(), nil))
 	}
 }
 
@@ -109,12 +97,8 @@ func handleNetworkRoute(c *Client) func(context.Context, mcp.CallToolRequest) (*
 			payload["method"] = method
 		}
 
-		path := "/tabs/" + url.PathEscape(tabID) + "/network/route"
-		respBody, code, err := c.Post(ctx, path, payload)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return resultFromBytes(respBody, code)
+		path := tabNetworkRoutePath(tabID)
+		return toolResult(c.Post(ctx, path, payload))
 	}
 }
 
@@ -128,11 +112,22 @@ func handleNetworkUnroute(c *Client) func(context.Context, mcp.CallToolRequest) 
 		if pattern := optString(r, "pattern"); pattern != "" {
 			q.Set("pattern", pattern)
 		}
-		path := "/tabs/" + url.PathEscape(tabID) + "/network/route"
-		respBody, code, err := c.Delete(ctx, path, q)
+		path := tabNetworkRoutePath(tabID)
+		return toolResult(c.Delete(ctx, path, q))
+	}
+}
+
+func handleNetworkRules(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		tabID, err := r.RequireString("tabId")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		return resultFromBytes(respBody, code)
+		path := tabNetworkRoutePath(tabID)
+		return toolResult(c.Get(ctx, path, nil))
 	}
+}
+
+func tabNetworkRoutePath(tabID string) string {
+	return tabRoutePath(tabID, "network/route")
 }

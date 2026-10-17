@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -124,6 +125,9 @@ func TestWriteProviderComposeOverrideFailsOnMissingConfig(t *testing.T) {
 }
 
 func TestEnsureCloakImageBuildsByDefault(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake Docker executable is a POSIX shell script")
+	}
 	tmp := t.TempDir()
 	logPath := filepath.Join(tmp, "docker.log")
 	fakeDocker := filepath.Join(tmp, "docker")

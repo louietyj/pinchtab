@@ -73,7 +73,9 @@ curl -X POST http://localhost:9867/tabs/{tabId}/solve \
 | `tabId`      | string | —       | Tab ID (optional, uses default tab)      |
 | `solver`     | string | —       | Solver name (optional, auto-detect)      |
 | `maxAttempts`| int    | config (`autoSolver.maxAttempts`, default 8) | Maximum solve attempts |
-| `timeout`    | float  | auto-estimated (minimum 30000) | Overall timeout in milliseconds |
+| `timeout`    | float  | auto-estimated from the solver chain (never below 30000) | Overall timeout in milliseconds; an explicit value is used as-is |
+
+The path form (`/solve/{name}`) overrides a body `solver`. On `/tabs/{id}/solve`, a body `tabId` that disagrees with the path is rejected.
 
 ## Response
 
@@ -96,14 +98,17 @@ curl -X POST http://localhost:9867/tabs/{tabId}/solve \
 | `challengeType` | string | Challenge variant (`turnstile`, `recaptcha-v2`, `hcaptcha`) or broad intent (`captcha`, `blocked`) |
 | `attempts`      | int    | Number of attempts made                        |
 | `title`         | string | Final page title                               |
+| `handoff`       | string | `paused_handoff` when a challenge was detected but not solved — the tab is paused for [handoff](./handoff.md) |
+| `hint`          | string | Present with `handoff`: return control to the user, then resume the tab |
 
 ## Error Responses
 
 | Code | Meaning                                |
 |------|----------------------------------------|
-| 400  | Invalid body or unknown solver name    |
+| 400  | Invalid body; `unknown_solver` for an unregistered name; `solver_key_missing` for `capsolver`/`twocaptcha` without their API key |
 | 404  | Tab not found                          |
-| 423  | Tab locked by another owner            |
+| 409  | `dialog_blocked` (a JavaScript dialog is open) or `tab_paused_handoff` |
+| 423  | `tab_locked`: tab leased by another owner |
 | 500  | CDP/Chrome error                       |
 
 ## Built-In Solvers
@@ -133,7 +138,7 @@ Handles Cloudflare Turnstile and interstitial challenges.
 
 **Click strategy**: The solver uses human-like mouse input (Bezier curve movement, random delays, press/release offset) to click the Turnstile checkbox. Click coordinates are computed relative to the widget dimensions (not hardcoded pixel offsets) with randomised jitter.
 
-**Stealth requirement**: The Cloudflare solver works best with `stealthLevel: "full"` in the PinchTab config. Cloudflare evaluates browser fingerprints (CDP detection, WebGL, canvas, navigator properties) before and after the checkbox interaction. Without full stealth, the solver may click correctly but the challenge can still fail fingerprint verification. Check stealth status with `GET /stealth/status`.
+**Stealth requirement**: The Cloudflare solver works best with `instanceDefaults.stealthLevel: "full"` in the PinchTab config. Cloudflare evaluates browser fingerprints (CDP detection, WebGL, canvas, navigator properties) before and after the checkbox interaction. Without full stealth, the solver may click correctly but the challenge can still fail fingerprint verification. Check stealth status with `GET /stealth/status`.
 
 ### External Solvers
 
@@ -210,4 +215,4 @@ func (s *MyGatewaySolver) Solve(ctx context.Context, page autosolver.Page, exec 
 }
 ```
 
-Then add it to the handler autosolver registry setup.
+Then add it to `buildAll` in `internal/autosolver/catalog/catalog.go`, which the handler registry setup reads through `catalog.Registrable`.

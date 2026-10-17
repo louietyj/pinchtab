@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -11,10 +12,67 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/pinchtab/pinchtab/internal/config"
+
 	"github.com/pinchtab/pinchtab/internal/activity"
 	"github.com/pinchtab/pinchtab/internal/bridge"
+	"github.com/pinchtab/pinchtab/internal/handlers"
 	"github.com/pinchtab/pinchtab/internal/session"
 )
+
+func TestFindRunningInstanceByTabID_SeesTransientTabs(t *testing.T) {
+	cases := []struct {
+		name string
+		url  func(port string) string
+	}{
+		{name: "about:blank", url: func(string) string { return "about:blank" }},
+		{name: "file", url: func(string) string { return "file:///tmp/page.html" }},
+		{name: "own port", url: func(port string) string { return "http://localhost:" + port + "/dashboard" }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			orig := processAliveFunc
+			processAliveFunc = func(int) bool { return true }
+			defer func() { processAliveFunc = orig }()
+
+			o := NewOrchestrator(t.TempDir())
+			addInstance := func(id string, tabURL func(port string) string) {
+				var port atomic.Value
+				backend, p := startLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path != "/tabs" {
+						http.NotFound(w, r)
+						return
+					}
+					own, _ := port.Load().(string)
+					u := tabURL(own)
+					tabs := []map[string]string{}
+					if r.URL.Query().Get(handlers.IncludeTransientTabsQuery) == "1" || !bridge.IsTransientURL(u, own) {
+						tabs = append(tabs, map[string]string{"id": id + "-tab", "url": u})
+					}
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(w).Encode(map[string]any{"tabs": tabs})
+				}))
+				t.Cleanup(backend.Close)
+				port.Store(p)
+				o.instances[id] = &InstanceInternal{
+					Instance: bridge.Instance{ID: id, Status: "running", Port: p},
+					URL:      "http://localhost:" + p,
+					cmd:      &mockCmd{pid: 1234, isAlive: true},
+				}
+			}
+			addInstance("inst_real", func(string) string { return "https://example.com/" })
+			addInstance("inst_transient", tc.url)
+
+			inst, err := o.findRunningInstanceByTabID("inst_transient-tab")
+			if err != nil {
+				t.Fatalf("findRunningInstanceByTabID: %v", err)
+			}
+			if inst.ID != "inst_transient" {
+				t.Fatalf("owner = %q, want inst_transient", inst.ID)
+			}
+		})
+	}
+}
 
 func TestProxyResponseTracksOnlySuccessfullyCreatedSessionTabs(t *testing.T) {
 	o := NewOrchestrator(t.TempDir())
@@ -133,7 +191,7 @@ func TestRegisterHandlers_TabCloseUsesGenericProxyAndInvalidatesCache(t *testing
 
 	o := NewOrchestrator(t.TempDir())
 	o.client = backend.Client()
-	o.childAuthToken = "child-token"
+	o.ApplyRuntimeConfig(&config.RuntimeConfig{Token: "child-token"})
 	inst := bridge.Instance{ID: "inst_1", Status: "running", URL: backend.URL}
 	o.instances["inst_1"] = &InstanceInternal{
 		Instance: inst,
@@ -290,7 +348,7 @@ func TestProxyToTarget_InjectsChildAuthAndStripsCookie(t *testing.T) {
 
 	o := NewOrchestrator(t.TempDir())
 	o.client = backend.Client()
-	o.childAuthToken = "child-token"
+	o.ApplyRuntimeConfig(&config.RuntimeConfig{Token: "child-token"})
 	o.instances["inst_1"] = &InstanceInternal{
 		Instance: bridge.Instance{ID: "inst_1", Status: "running"},
 		URL:      backend.URL,

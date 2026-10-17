@@ -57,7 +57,7 @@ func CookiesSet(client *http.Client, base, token string, cmd *cobra.Command, nam
 		body["url"] = target
 	}
 
-	result := requireMap(apiclient.DoPost(client, base, token, "/cookies", body), 1, "Failed to set cookie")
+	result := requireMap(apiclient.DoPostQuiet(client, base, token, "/cookies", body), 1, "Failed to set cookie")
 	if !cookieWriteConfirmed(result) {
 		fmt.Fprintf(os.Stderr, "ERROR: cookies: %q was not set (%v)\n", name, jsonLine(result))
 		os.Exit(2)
@@ -67,7 +67,7 @@ func CookiesSet(client *http.Client, base, token string, cmd *cobra.Command, nam
 
 // CookiesClear clears all browser cookies.
 func CookiesClear(client *http.Client, base, token string, cmd *cobra.Command) {
-	result := apiclient.DoDelete(client, base, token, "/cookies", nil)
+	result := apiclient.DoDelete(client, base, token, "/cookies", nil, apiclient.Quiet())
 	if result == nil {
 		fmt.Fprintln(os.Stderr, "ERROR: cookies: clear failed")
 		os.Exit(2)

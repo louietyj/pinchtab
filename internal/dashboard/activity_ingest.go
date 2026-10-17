@@ -96,9 +96,9 @@ func (d *Dashboard) IngestPersistedAgentActivity(rec activity.Recorder, since ti
 	}
 
 	events, err := rec.Query(activity.Filter{
-		Source: "client",
-		Since:  since,
-		Limit:  persistedAgentBootstrapLimit,
+		Sources: activity.DashboardAgentSources(),
+		Since:   since,
+		Limit:   persistedAgentBootstrapLimit,
 	})
 	if err != nil {
 		return since, err
@@ -106,7 +106,7 @@ func (d *Dashboard) IngestPersistedAgentActivity(rec activity.Recorder, since ti
 
 	latest := since
 	for _, evt := range events {
-		if evt.Timestamp.After(latest) {
+		if activity.IsDashboardAgentActivity(evt) && evt.Timestamp.After(latest) {
 			latest = evt.Timestamp
 		}
 	}
@@ -115,12 +115,12 @@ func (d *Dashboard) IngestPersistedAgentActivity(rec activity.Recorder, since ti
 	return latest, nil
 }
 
-// ingestActivityBatch filters persisted activity to the trackable client subset,
-// converts to live events, and records them.
+// ingestActivityBatch filters persisted activity to the dashboard agent-activity
+// subset, converts to live events, and records them.
 func (d *Dashboard) ingestActivityBatch(events []activity.Event) {
 	batch := make([]apiTypes.ActivityEvent, 0, len(events))
 	for _, evt := range events {
-		if !shouldTrackPersistedAgentActivity(evt) {
+		if !activity.IsDashboardAgentActivity(evt) {
 			continue
 		}
 		batch = append(batch, activityEventToLiveEvent(evt))
@@ -150,10 +150,6 @@ func (d *Dashboard) IngestTail(tr *activity.TailReader) (int, error) {
 func (d *Dashboard) LoadPersistedAgentActivity(rec activity.Recorder) error {
 	_, err := d.IngestPersistedAgentActivity(rec, time.Time{})
 	return err
-}
-
-func shouldTrackPersistedAgentActivity(evt activity.Event) bool {
-	return evt.Source == "client"
 }
 
 func (d *Dashboard) rememberEventIDLocked(id string) {

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -501,6 +502,9 @@ func TestWriteGitHubActionsMetadataAddsRunnerFailureWithoutSuiteResults(t *testi
 }
 
 func TestBuildSharedStackRetriesNoCacheOnBuildKitSnapshotFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("compose retry test uses a POSIX shell script stub")
+	}
 	tmp := t.TempDir()
 	callsPath := filepath.Join(tmp, "calls.txt")
 	scriptPath := filepath.Join(tmp, "compose.sh")
@@ -553,6 +557,9 @@ exit 0
 }
 
 func TestBuildSharedStackDoesNotRetryNonCacheFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("compose retry test uses a POSIX shell script stub")
+	}
 	tmp := t.TempDir()
 	callsPath := filepath.Join(tmp, "calls.txt")
 	scriptPath := filepath.Join(tmp, "compose.sh")
@@ -606,7 +613,7 @@ func TestBringUpSharedStackCloakBuildsSupportImagesOnly(t *testing.T) {
 		},
 	}
 
-	if code := r.bringUpSharedStack("compose.yml", []string{"pinchtab", "fixtures"}); code != 0 {
+	if code := r.bringUpSharedStack("compose.yml", []string{"pinchtab", "fixtures"}, nil); code != 0 {
 		t.Fatalf("bringUpSharedStack returned %d, stderr: %s", code, stderr.String())
 	}
 
@@ -645,7 +652,7 @@ func TestBringUpSharedStackCloakBuildsStockImageForGhostChrome(t *testing.T) {
 	// even under cloak, so the stock pinchtab image must be built or the
 	// `up --no-build` fails with "No such image: e2e-pinchtab:latest".
 	services := []string{"pinchtab", "pinchtab-ghostchrome", "fixtures"}
-	if code := r.bringUpSharedStack("compose.yml", services); code != 0 {
+	if code := r.bringUpSharedStack("compose.yml", services, nil); code != 0 {
 		t.Fatalf("bringUpSharedStack returned %d, stderr: %s", code, stderr.String())
 	}
 
@@ -1258,6 +1265,9 @@ exit 0
 }
 
 func TestLaneFailsOnSuiteRegisteredOnlyInDefs(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("synthetic lane runner uses POSIX shell stubs")
+	}
 	cases := []struct {
 		lane     lane
 		extended bool
@@ -1297,6 +1307,9 @@ func TestLaneFailsOnSuiteRegisteredOnlyInDefs(t *testing.T) {
 }
 
 func TestLanePassesWhenEverySuiteSucceeds(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("synthetic lane runner uses POSIX shell stubs")
+	}
 	var stdout, stderr bytes.Buffer
 	r := newSyntheticLaneRunner(t, newSyntheticLaneRepo(t), 0, &stdout, &stderr)
 

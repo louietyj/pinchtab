@@ -6,11 +6,7 @@ PinchTab offers three levels of agent identification, from simple to fully manag
 
 Every PinchTab server has a bearer token configured in `server.token`. This is the baseline authentication method — it proves the caller is authorized to use the server, but says nothing about *which* agent is making the request.
 
-```bash
-pinchtab --token "your-server-token" nav https://example.com
-```
-
-Or via environment variable:
+The CLI reads it from the local config automatically. To supply it explicitly (for example against another server), use the environment variable — there is no `--token` flag:
 
 ```bash
 export PINCHTAB_TOKEN=your-server-token
@@ -77,7 +73,7 @@ Modes:
 |------|----------|
 | `off` | Agent sessions disabled |
 | `preferred` | Both bearer and session auth accepted (default when enabled) |
-| `required` | Only session auth accepted for agents |
+| `required` | Not implemented; refused at config load (see [Configuration](#configuration)) |
 
 ### Create a Session
 
@@ -141,11 +137,11 @@ curl -X POST http://localhost:9867/sessions/ses_e6ac8132fe7e7016/revoke \
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `sessions.agent.enabled` | `true` | Enable agent sessions |
-| `sessions.agent.mode` | `preferred` | Auth mode: `off`, `preferred`, `required` |
+| `sessions.agent.mode` | `preferred` | Auth mode. `preferred` serves agent sessions alongside the server token; `off` disables them exactly as `enabled: false` does. `required` is **not implemented** and is refused at config load — the bearer token and the dashboard cookie still authenticate, so the value cannot deliver the session-only auth it names |
 | `sessions.agent.idleTimeoutSec` | `1800` (30m) | Session expires after this many seconds of inactivity |
 | `sessions.agent.maxLifetimeSec` | `86400` (24h) | Hard session expiry |
 
-If a session record carries explicit grants, those grants narrow which endpoint groups the session may call. If a session has no explicit grants, it can use the normal non-admin automation API by default, while dashboard/admin routes remain blocked. That default is meant for trusted automation only.
+If a session record carries explicit grants, those grants narrow which endpoint groups the session may call. Grants are set when the session is created — `pinchtab session create --agent-id <id> --grant browse`, or the `grants` field on `POST /sessions` — and are reported by `session list` and `session info`. If a session has no explicit grants, it can use the normal non-admin automation API by default, while dashboard/admin routes remain blocked. That default is meant for trusted automation only. A grant never widens: server-level capability gates still apply on top of it.
 
 ## Choosing the Right Level
 

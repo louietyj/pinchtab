@@ -315,3 +315,79 @@ func TestAuditSummaryLines(t *testing.T) {
 		t.Errorf("headline still calls the accessibility mean a summary score: %q", lines[0])
 	}
 }
+
+// A page whose own document is 4xx/5xx used to read `· ok` with 0 failed pages
+// (only p.Error was counted) while the document doubled as a broken asset. This
+// audits a 404 URL, a plain 200 URL, and a 200 URL with a broken sub-resource
+// through the real audit path and asserts the summary now distinguishes them.
+func TestAuditSummaryDistinguishesA4xxDocumentFromA200(t *testing.T) {
+	const url404 = "http://x/missing404.html"
+	const url200 = "http://x/ok.html"
+	const urlBrokenImg = "http://x/broken-image.html"
+
+	auditor := func(u string, _ audit.PageOptions) audit.PageAudit {
+		pa := audit.PageAudit{URL: u}
+		switch u {
+		case url404:
+			pa.BrowserPageData = audit.BrowserPageData{
+				NetworkRequests: []audit.NetworkRequest{{URL: u, ResourceType: "Document", Status: 404, Failed: true}},
+				// The document itself is captured as a broken asset today; the fix
+				// must drop it so the page failure is not also counted as broken.
+				BrokenAssets: []audit.BrokenAsset{{URL: u, ResourceType: "document", Status: 404}},
+			}
+		case urlBrokenImg:
+			img := u + "?img"
+			pa.BrowserPageData = audit.BrowserPageData{
+				NetworkRequests: []audit.NetworkRequest{
+					{URL: u, ResourceType: "Document", Status: 200},
+					{URL: img, ResourceType: "Image", Status: 404, Failed: true},
+				},
+				BrokenAssets: []audit.BrokenAsset{{URL: img, ResourceType: "image", Status: 404}},
+			}
+		default:
+			pa.BrowserPageData = audit.BrowserPageData{
+				NetworkRequests: []audit.NetworkRequest{{URL: u, ResourceType: "Document", Status: 200}},
+			}
+		}
+		return pa
+	}
+
+	input := audit.AuditInput{URLs: []string{url404, url200, urlBrokenImg}}
+	report, err := audit.RunAudit(input, nil, audit.RunOptions{Page: audit.PageOptions{Network: true}}, nil, auditor)
+	if err != nil {
+		t.Fatalf("RunAudit: %v", err)
+	}
+
+	lines := auditSummaryLines(report)
+	// One failed page (the 404), one broken asset (the image on the 200 page —
+	// the 404 document must NOT be counted as broken).
+	if !strings.Contains(lines[0], "1 failed page(s)") {
+		t.Errorf("headline failed count wrong: %q", lines[0])
+	}
+	if !strings.Contains(lines[0], "1 broken asset(s)") {
+		t.Errorf("headline broken count wrong (document double-counted?): %q", lines[0])
+	}
+
+	status := map[string]audit.PageResult{}
+	for _, p := range report.Pages {
+		status[p.URL] = p
+	}
+	if got := audit.PageStatus(status[url404]); got != "HTTP 404" {
+		t.Errorf("404 page status = %q, want HTTP 404", got)
+	}
+	if got := status[url404].StatusCode; got != 404 {
+		t.Errorf("404 page StatusCode = %d, want 404", got)
+	}
+	if n := len(status[url404].Browser.BrokenAssets); n != 0 {
+		t.Errorf("404 page still lists its own document as a broken asset: %+v", status[url404].Browser.BrokenAssets)
+	}
+	if got := audit.PageStatus(status[url200]); got != "ok" {
+		t.Errorf("200 page status = %q, want ok", got)
+	}
+	if got := audit.PageStatus(status[urlBrokenImg]); got != "ok" {
+		t.Errorf("200 page with a broken image status = %q, want ok (a sub-resource 404 is not a page failure)", got)
+	}
+	if n := len(status[urlBrokenImg].Browser.BrokenAssets); n != 1 {
+		t.Errorf("the 200 page's broken image was dropped: %+v", status[urlBrokenImg].Browser.BrokenAssets)
+	}
+}

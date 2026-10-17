@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chromedp/cdproto"
 	"github.com/chromedp/cdproto/input"
 	"github.com/chromedp/chromedp"
 )
@@ -422,11 +423,24 @@ func jsClickIfLink(ctx context.Context, nodeID int64) error {
 			el = el.parentElement;
 		}
 	}`
-	return chromedp.FromContext(ctx).Target.Execute(ctx,
+	err := chromedp.FromContext(ctx).Target.Execute(ctx,
 		"Runtime.callFunctionOn", map[string]any{
 			"functionDeclaration": js,
 			"objectId":            obj.Object.ObjectID,
 		}, nil)
+	if linkContextGone(err) {
+		// The trusted press already followed the link and the old document's
+		// context is gone: the click landed, so there is nothing left to do.
+		return nil
+	}
+	return err
+}
+
+func linkContextGone(err error) bool {
+	var protocolErr *cdproto.Error
+	return errors.As(err, &protocolErr) && protocolErr.Code == -32000 &&
+		(protocolErr.Message == "Cannot find context with specified id" ||
+			protocolErr.Message == "Execution context was destroyed.")
 }
 
 func DoubleClickByCoordinate(ctx context.Context, x, y float64) error {

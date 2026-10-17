@@ -812,6 +812,12 @@ type escalatingChromeAPI struct {
 	bridge.BridgeAPI // nil — panics on unimplemented methods
 	esc              *escalatingChromeBridge
 	closedTabs       []string
+	focusedTabs      []string
+}
+
+func (c *escalatingChromeAPI) FocusTab(tabID string) error {
+	c.focusedTabs = append(c.focusedTabs, tabID)
+	return nil
 }
 
 func (c *escalatingChromeAPI) GetRefCache(string) *bridge.RefCache  { return nil }
@@ -900,6 +906,30 @@ func TestAdapterCloseTab_EscalatedTab_NoResurrection(t *testing.T) {
 	// The closed tab must stay closed: no re-escalation from stale state.
 	if _, _, err := adapter.TabContext(res.TabID); err == nil {
 		t.Fatal("closed escalated tab resurrected via stale mapping")
+	}
+}
+
+func TestAdapterFocusTab_EscalatedLiteTabFocusesItsChromeTab(t *testing.T) {
+	ts := newRichTestServer()
+	defer ts.Close()
+
+	lite := staticfetch.NewBrowser()
+	defer func() { _ = lite.Close() }()
+	adapter, _, api := newEscalatingAdapter(t, lite)
+
+	res, err := lite.Navigate(context.Background(), ts.URL)
+	if err != nil {
+		t.Fatalf("static Navigate: %v", err)
+	}
+	if _, _, err := adapter.TabContext(res.TabID); err != nil {
+		t.Fatalf("TabContext (escalate): %v", err)
+	}
+
+	if err := adapter.FocusTab(res.TabID); err != nil {
+		t.Fatalf("FocusTab: %v", err)
+	}
+	if len(api.focusedTabs) != 1 || api.focusedTabs[0] != "chrome-tab" {
+		t.Fatalf("focusedTabs = %v, want [chrome-tab]", api.focusedTabs)
 	}
 }
 

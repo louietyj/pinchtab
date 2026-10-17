@@ -5,7 +5,10 @@ PinchTab instances can run Chrome in two modes:
 - **Headless**: no visible browser window
 - **Headed**: visible browser window
 
-You usually run one server with `pinchtab`, then start instances in either mode through the API or CLI.
+You usually run one server with `pinchtab server`, then start instances in either mode through the API or CLI.
+
+The HTTP API requires the server token. The `curl` examples on this page omit it for brevity;
+add `-H "Authorization: Bearer $PINCHTAB_TOKEN"` after `export PINCHTAB_TOKEN=$(pinchtab config token --stdout)`.
 
 ---
 
@@ -23,7 +26,7 @@ pinchtab instance start
 {
   "id": "inst_0a89a5bb",
   "profileId": "prof_278be873",
-  "profileName": "instance-1741400000000000000",
+  "profileName": "instance-1741400000000000000-9f3c2a1b",
   "port": "9868",
   "mode": "headless",
   "headless": true,
@@ -59,7 +62,7 @@ pinchtab instance start --mode headed
 {
   "id": "inst_1b9a5dcc",
   "profileId": "prof_278be873",
-  "profileName": "instance-1741400000000000001",
+  "profileName": "instance-1741400000000000001-4d7e0c52",
   "port": "9869",
   "mode": "headed",
   "headless": false,
@@ -191,7 +194,7 @@ curl http://localhost:9867/tabs/CDP_TARGET_ID/text | jq .
 ```
 
 ```bash
-curl http://localhost:9867/tabs/CDP_TARGET_ID/screenshot > page.jpg
+curl "http://localhost:9867/tabs/CDP_TARGET_ID/screenshot?raw=true" > page.jpg
 ```
 
 ---
@@ -207,10 +210,10 @@ Headed mode works with the native desktop session.
 ### Linux
 
 Headless works anywhere.
-Headed mode needs X11 or Wayland.
+Headed mode needs X11 or Wayland. Chrome is launched by the server, so the display must be available to `pinchtab server`, not to the CLI that starts the instance:
 
 ```bash
-ssh -X user@server 'pinchtab instance start --mode headed'
+ssh -X user@server 'pinchtab server'
 ```
 
 ### Windows
@@ -224,7 +227,7 @@ Prefer direct local runs with `pinchtab server` or `pinchtab bridge`; the daemon
 Headless is the normal choice in containers:
 
 ```bash
-docker run -d -p 9867:9867 pinchtab/pinchtab
+docker run -d -p 127.0.0.1:9867:9867 pinchtab/pinchtab
 curl -X POST http://localhost:9867/instances/start \
   -H "Content-Type: application/json" \
   -d '{"mode":"headless"}'

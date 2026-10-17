@@ -2,18 +2,43 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/pinchtab/pinchtab/internal/activity"
 	"github.com/pinchtab/pinchtab/internal/config"
 )
+
+// ActivitySink records one activity event per dispatched task into the process
+// recorder that feeds the dashboard stream.
+type ActivitySink interface {
+	Enabled() bool
+	Record(activity.Event) error
+}
 
 // InstanceResolver finds the localhost port for a given tab ID.
 type InstanceResolver interface {
 	ResolveTabInstance(tabID string) (port string, err error)
+}
+
+// RequestAuthorizer applies per-instance hop auth (bearer token, plus the internal token on
+// trusted child hops) to a request bound for the instance that owns tabID, so the instance
+// honors the X-PinchTab-* identity headers instead of stripping them at ingress. The
+// orchestrator implements it; the scheduler must not read the token itself. A resolver that
+// does not implement it leaves the request unauthorized and the action records as "client".
+type RequestAuthorizer interface {
+	AuthorizeTabRequest(tabID string, req *http.Request) error
+}
+
+// NewActionExecutor builds the executor that dispatches a task to an instance's action
+// endpoint, using resolver for port resolution and, when it also implements RequestAuthorizer,
+// for hop auth. Exposed so a test can drive a scheduler-executed action with a real resolver.
+func NewActionExecutor(resolver InstanceResolver) TaskExecutor {
+	return &actionEndpointExecutor{resolver: resolver, client: &http.Client{Timeout: 60 * time.Second}}
 }
 
 // Config holds scheduler tuning knobs.
@@ -93,6 +118,7 @@ type Scheduler struct {
 	queue    *TaskQueue
 	results  *ResultStore
 	executor TaskExecutor
+	activity ActivitySink
 	metrics  *Metrics
 
 	// tracks all live tasks (queued + in-flight) for lookup by ID.
@@ -111,15 +137,17 @@ type Scheduler struct {
 	noAutoStart bool // testing only: suppress ensureRunning from Submit
 }
 
-// New creates a scheduler with the given config and instance resolver.
-func New(cfg Config, resolver InstanceResolver) *Scheduler {
+// New creates a scheduler with the given config, instance resolver, and activity
+// sink. A nil sink disables per-task activity recording.
+func New(cfg Config, resolver InstanceResolver, sink ActivitySink) *Scheduler {
 	withDefaults(&cfg)
 
 	return &Scheduler{
 		cfg:      cfg,
 		queue:    NewTaskQueue(cfg.MaxQueueSize, cfg.MaxPerAgent),
 		results:  NewResultStore(cfg.ResultTTL),
-		executor: &actionEndpointExecutor{resolver: resolver, client: &http.Client{Timeout: 60 * time.Second}},
+		executor: NewActionExecutor(resolver),
+		activity: sink,
 		metrics:  newMetrics(),
 		live:     make(map[string]*Task),
 		cancels:  make(map[string]context.CancelFunc),
@@ -331,6 +359,15 @@ func (s *Scheduler) worker(id int) {
 }
 
 func (s *Scheduler) dispatch(t *Task) {
+	// The in-flight slot belongs to the dequeue that produced this task, so it is
+	// released here and nowhere else: finishTask also runs for tasks that expired
+	// or were cancelled while QUEUED, which never took a slot, and for a running
+	// task that was cancelled, whose slot this dispatch is still holding. Releasing
+	// there decremented another task's count, and the count is what bounds both
+	// MaxPerAgentFlight and MaxInflight. Deferred so every exit path — including a
+	// panic in an executor — gives the slot back.
+	defer s.queue.Complete(t.AgentID)
+
 	dispatchStart := timeNow()
 
 	if err := t.SetState(StateAssigned); err != nil {
@@ -383,12 +420,46 @@ func (s *Scheduler) dispatch(t *Task) {
 		slog.Info("task completed", "task", t.ID, "agent", t.AgentID, "action", t.Action, "latencyMs", latency.Milliseconds())
 	}
 
+	s.recordActivity(t, execErr, latency)
 	s.finishTask(t)
 }
 
+func (s *Scheduler) recordActivity(t *Task, execErr error, latency time.Duration) {
+	if s.activity == nil || !s.activity.Enabled() {
+		return
+	}
+	status := http.StatusOK
+	var errMsg string
+	if execErr != nil {
+		status = http.StatusBadGateway
+		errMsg = execErr.Error()
+		var upstream *InstanceError
+		if errors.As(execErr, &upstream) {
+			status = upstream.Status
+		}
+	}
+	if err := s.activity.Record(activity.Event{
+		Timestamp:  timeNow().UTC(),
+		Source:     activity.SourceScheduler,
+		AgentID:    t.AgentID,
+		Method:     http.MethodPost,
+		Path:       fmt.Sprintf("/tabs/%s/action", t.TabID),
+		Status:     status,
+		DurationMs: latency.Milliseconds(),
+		TabID:      t.TabID,
+		Action:     t.Action,
+		Ref:        t.Ref,
+		Error:      errMsg,
+	}); err != nil {
+		slog.Warn("scheduler activity recording failed", "task", t.ID, "err", err)
+	}
+}
+
+// finishTask publishes a task's terminal state. It does NOT release an in-flight
+// slot: it is reached from the deadline reaper and from Cancel for tasks that were
+// still queued, and dispatch owns the slot for the ones that were not.
 func (s *Scheduler) finishTask(t *Task) {
 	s.results.Store(t)
-	s.queue.Complete(t.AgentID)
 
 	s.liveMu.Lock()
 	delete(s.live, t.ID)

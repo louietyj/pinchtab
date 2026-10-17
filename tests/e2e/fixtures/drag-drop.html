@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>E2E Test - Drag Drop</title>
+  <style>
+    body { font-family: sans-serif; padding: 32px; }
+    #drag, #drop { width: 160px; height: 80px; border: 2px solid #2d6cdf; margin: 16px 0; }
+    #drag { background: #eef4ff; cursor: grab; }
+    #drop { background: #fafcff; }
+  </style>
+</head>
+<body>
+  <h1 id="label">Drag Drop Fixture</h1>
+  <p id="marker">Tab marker: <span id="marker-value">none</span></p>
+  <div id="drag" draggable="true">Drag me</div>
+  <div id="drop">empty</div>
+  <p>Down count: <span id="down-count">0</span> Up count: <span id="up-count">0</span></p>
+
+  <script>
+    // ?label=X names the page so two tabs on this fixture read differently.
+    const label = new URLSearchParams(location.search).get('label') || 'none';
+    document.getElementById('marker-value').textContent = 'marker-' + label;
+
+    window.dragDropState = { down: 0, up: 0, dropped: false };
+    const drop = document.getElementById('drop');
+    function markDropped() {
+      window.dragDropState.dropped = true;
+      drop.textContent = 'dropped';
+    }
+    drop.addEventListener('dragover', (e) => e.preventDefault());
+    drop.addEventListener('drop', (e) => { e.preventDefault(); markDropped(); });
+    drop.addEventListener('mouseup', markDropped);
+    document.getElementById('drag').addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', 'drag');
+    });
+    document.addEventListener('mousedown', () => {
+      window.dragDropState.down += 1;
+      document.getElementById('down-count').textContent = String(window.dragDropState.down);
+    });
+    document.addEventListener('mouseup', () => {
+      window.dragDropState.up += 1;
+      document.getElementById('up-count').textContent = String(window.dragDropState.up);
+    });
+  </script>
+</body>
+</html>

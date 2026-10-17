@@ -271,6 +271,9 @@ func (b *Bridge) EnsureBrowser(cfg *config.RuntimeConfig) error {
 	}
 
 	slog.Info("starting browser with confirmed profile", "headless", cfg.Headless, "profile", cfg.ProfileDir)
+	// Chrome reopens the previous session's tabs on launch. They arrive untracked,
+	// and once they fill maxTabs the first new tab cannot open.
+	ClearChromeSessions(cfg.ProfileDir)
 	b.ensureStealthBundle()
 	allocCtx, allocCancel, browserCtx, browserCancel, launchMode, err := InitBrowser(cfg, b.StealthBundle)
 	if err != nil {

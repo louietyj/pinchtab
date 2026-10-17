@@ -22,7 +22,7 @@ RUN go mod download
 COPY . .
 COPY --from=dashboard /build/dist/ internal/dashboard/dashboard/
 RUN mv internal/dashboard/dashboard/index.html internal/dashboard/dashboard/dashboard.html
-RUN go build -ldflags="-s -w" -o pinchtab ./cmd/pinchtab
+RUN --mount=type=cache,target=/root/.cache/go-build go build -ldflags="-s -w" -o pinchtab ./cmd/pinchtab
 
 # Stage 3: Download CloakBrowser through its official Python package.
 FROM python:3.12-slim AS cloakbrowser-binary

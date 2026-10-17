@@ -28,6 +28,8 @@ func (o *Orchestrator) Allows(cap routes.Capability) bool {
 		return o.AllowsStateExport()
 	case routes.CapNetworkIntercept:
 		return o.AllowsNetworkIntercept()
+	case routes.CapMemory:
+		return o.AllowsMemory()
 	default:
 		return false
 	}

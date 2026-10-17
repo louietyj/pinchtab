@@ -2,6 +2,10 @@ package dashboard
 
 import (
 	"encoding/json"
+	"maps"
+	"path/filepath"
+	"slices"
+	"strings"
 
 	"github.com/pinchtab/pinchtab/internal/config"
 )
@@ -62,21 +66,15 @@ func sensitiveConfigChanges(current, next *config.FileConfig) sensitiveConfigCha
 }
 
 func changedTargetProxyNames(current, next config.BrowserTargetsConfig) []string {
-	seen := make(map[string]struct{}, len(current)+len(next))
-	names := make([]string, 0, len(current)+len(next))
+	union := make(map[string]struct{}, len(current)+len(next))
 	for name := range current {
-		if _, ok := seen[name]; !ok {
-			seen[name] = struct{}{}
-			names = append(names, name)
-		}
+		union[name] = struct{}{}
 	}
 	for name := range next {
-		if _, ok := seen[name]; !ok {
-			seen[name] = struct{}{}
-			names = append(names, name)
-		}
+		union[name] = struct{}{}
 	}
-	var changed []string
+	names := slices.Sorted(maps.Keys(union))
+	changed := names[:0]
 	for _, name := range names {
 		if !sameConfigSection(current[name].Proxy, next[name].Proxy) {
 			changed = append(changed, name)
@@ -86,20 +84,18 @@ func changedTargetProxyNames(current, next config.BrowserTargetsConfig) []string
 }
 
 func (c *ConfigAPI) restartReasonsFor(next config.FileConfig) []string {
-	reasons := make([]string, 0, 6)
+	reasons := make([]string, 0, 8)
 
-	// The IDPI guard, allowlist, and sensitive-endpoint policy are snapshotted
-	// from the boot config when the server starts and are not rebuilt on a config
-	// edit, so any change to the security block only takes effect after a restart.
-	// Surfacing it here is what lets `pinchtab security`/`health` warn that the
-	// running server is enforcing stale policy instead of silently diverging.
 	if !sameConfigSection(c.boot.Security, next.Security) {
 		reasons = append(reasons, "Security policy")
 	}
 	if c.boot.Server.Port != next.Server.Port || c.boot.Server.Bind != next.Server.Bind {
 		reasons = append(reasons, "Server address")
 	}
-	if c.boot.Profiles.BaseDir != next.Profiles.BaseDir {
+	if c.boot.Server.StateDir != next.Server.StateDir {
+		reasons = append(reasons, "Server state directory (server.stateDir)")
+	}
+	if effectiveProfilesDir(c.boot) != effectiveProfilesDir(next) {
 		reasons = append(reasons, "Profiles directory")
 	}
 	if c.boot.MultiInstance.Strategy != next.MultiInstance.Strategy {
@@ -108,19 +104,19 @@ func (c *ConfigAPI) restartReasonsFor(next config.FileConfig) []string {
 	if c.boot.InstanceDefaults.StealthLevel != next.InstanceDefaults.StealthLevel {
 		reasons = append(reasons, "Stealth level")
 	}
-	if !sameIntPtr(c.boot.MultiInstance.Restart.MaxRestarts, next.MultiInstance.Restart.MaxRestarts) ||
-		!sameIntPtr(c.boot.MultiInstance.Restart.InitBackoffSec, next.MultiInstance.Restart.InitBackoffSec) ||
-		!sameIntPtr(c.boot.MultiInstance.Restart.MaxBackoffSec, next.MultiInstance.Restart.MaxBackoffSec) ||
-		!sameIntPtr(c.boot.MultiInstance.Restart.StableAfterSec, next.MultiInstance.Restart.StableAfterSec) {
+	if !c.boot.Sessions.AgentEnabled() && next.Sessions.AgentEnabled() {
+		reasons = append(reasons, "Agent sessions")
+	}
+	if !sameConfigSection(c.boot.MultiInstance.Restart, next.MultiInstance.Restart) {
 		reasons = append(reasons, "Restart policy")
 	}
 
 	return reasons
 }
 
-func sameIntPtr(a, b *int) bool {
-	if a == nil || b == nil {
-		return a == b
+func effectiveProfilesDir(fc config.FileConfig) string {
+	if baseDir := strings.TrimSpace(fc.Profiles.BaseDir); baseDir != "" {
+		return filepath.Clean(baseDir)
 	}
-	return *a == *b
+	return filepath.Join(strings.TrimSpace(fc.Server.StateDir), "profiles")
 }

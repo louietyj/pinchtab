@@ -262,9 +262,21 @@ assert_ref_json_jq() {
   assert_json_jq "$(_e2e_default_ref_json)" "$expr" "$success_desc" "$fail_desc" "$@"
 }
 
+SCENARIO_TAB_BASELINE="${SCENARIO_TAB_BASELINE:-}"
+SCENARIO_TAB_BASELINE_OK="${SCENARIO_TAB_BASELINE_OK:-0}"
+
+record_scenario_tab_baseline() {
+  if declare -F _e2e_record_tab_baseline >/dev/null 2>&1; then
+    _e2e_record_tab_baseline
+  fi
+}
+
 run_scenario_cleanup() {
   if declare -F scenario_cleanup >/dev/null 2>&1; then
     scenario_cleanup
+  fi
+  if declare -F _e2e_close_leaked_tabs >/dev/null 2>&1; then
+    _e2e_close_leaked_tabs
   fi
   return 0
 }

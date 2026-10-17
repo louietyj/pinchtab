@@ -165,13 +165,7 @@ func DetectChallengeIntent(title, url, html string) *Intent {
 		}
 	}
 
-	// Words alone are what an article about captchas is made of ("CAPTCHA -
-	// Wikipedia"). Only a title that asks the visitor something counts by
-	// itself; the rest needs a page with little text, as challenge pages are.
-	if containsAny(lowerTitle, "verify you are human", "i am not a robot") ||
-		((containsAny(lowerTitle, "captcha") || containsAny(lowerURL, "captcha") ||
-			containsAny(lowerHTML, "verify you are human", "i am not a robot", "check if you are a robot")) &&
-			visibleTextLen(html) < challengePageMaxText) {
+	if isGenericCaptcha(lowerTitle, lowerURL, lowerHTML) {
 		return &Intent{
 			Type:          IntentCaptcha,
 			Confidence:    0.7,
@@ -183,19 +177,74 @@ func DetectChallengeIntent(title, url, html string) *Intent {
 	return nil
 }
 
+// isGenericCaptcha is the last rung: no vendor was identified, so all that is left
+// is the word itself. It applies the same rule the vendor checks above do — the
+// title and the URL are guesses, and a guess is only worth making when there is no
+// page to check it against.
+//
+// Every branch used to be sufficient on its own, and the URL branch listed
+// "turnstile", which is a word about stadiums as often as about Cloudflare. An
+// operations report at /ops/turnstile-report, or an article at
+// /blog/how-recaptcha-works, was a captcha challenge as far as this was concerned.
+//
+// With the page in hand, a title asking the visitor something counts by itself.
+// Otherwise the page must have little text, as challenge pages do, and either ask
+// the same in its body or carry "captcha" as the title's own word ("Captcha
+// Interception", not "How reCAPTCHA works").
+func isGenericCaptcha(title, url, html string) bool {
+	if html == "" {
+		return containsAny(title, "captcha", "verify you are human", "i am not a robot") ||
+			containsAny(url, "captcha", "turnstile")
+	}
+	if containsAny(title, "verify you are human", "i am not a robot") {
+		return true
+	}
+	return visibleTextLen(html) < challengePageMaxText &&
+		(captchaWordRe.MatchString(title) ||
+			containsAny(html, "verify you are human", "i am not a robot", "check if you are a robot"))
+}
+
+var captchaWordRe = regexp.MustCompile(`\bcaptcha\b`)
+
 func isTurnstileChallenge(title, url, html string) bool {
-	return containsAny(title,
-		"just a moment",
-		"attention required",
-		"checking your browser",
-	) || containsAny(url,
+	if containsAny(url,
 		"cdn-cgi/challenge-platform",
 		"/cdn-cgi/challenge",
 	) || containsAny(html,
 		"challenges.cloudflare.com/turnstile",
 		"cf-turnstile",
 		"turnstile.render(",
-	)
+		// An interstitial is served AT the address that was asked for, so the
+		// challenge-platform script shows up in the markup while the URL still
+		// looks like the site. Matching it only in the URL meant the real page
+		// was recognised by its title and not by the thing running it.
+		"cdn-cgi/challenge-platform",
+		"__cf_chl_",
+		"cf-browser-verification",
+	) {
+		return true
+	}
+
+	// The title is a guess, and it is only worth making when there is no page to
+	// check it against. "Attention required" and "just a moment" are ordinary
+	// English: a legal notice headed "Attention Required Before You Sign", or a
+	// support page saying "Just a moment while we finish setup", was being called
+	// a Cloudflare interstitial at 0.95 confidence and sent to the solver instead
+	// of being read.
+	//
+	// An interstitial that reached us WITH its markup always carries a marker
+	// above — the challenge-platform script is what runs it. So once html is in
+	// hand, a bare title match is a coincidence. With no html there is nothing to
+	// corroborate against and the title is all the caller has, which is the mode
+	// heuristics.go asks for by passing url and html empty.
+	if html == "" {
+		return containsAny(title,
+			"just a moment",
+			"attention required",
+			"checking your browser",
+		)
+	}
+	return false
 }
 
 func isRecaptchaV3Challenge(url, html string) bool {

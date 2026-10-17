@@ -25,6 +25,7 @@ func (f *fakeMonSource) List() []bridge.Instance {
 func (f *fakeMonSource) AllTabs() []bridge.InstanceTab { return []bridge.InstanceTab{} }
 
 func (f *fakeMonSource) AllMetrics() []apiTypes.InstanceMetrics { return f.metrics }
+func (f *fakeMonSource) RefreshCrashes()                        {}
 
 func (f *fakeMonSource) calls() int {
 	f.mu.Lock()

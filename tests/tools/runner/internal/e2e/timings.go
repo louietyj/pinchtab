@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -40,8 +42,152 @@ type suiteTimings struct {
 	ComparisonFloorMs int64           `json:"comparisonFloorMs"`
 	Tests             int             `json:"tests"`
 	TotalMs           int64           `json:"totalMs"`
+	Memory            *suiteMemory    `json:"memory,omitempty"`
 	Scenarios         []scenarioTotal `json:"scenarios"`
 	Records           []timingRecord  `json:"records"`
+}
+
+type suiteMemory struct {
+	Provider   string            `json:"provider"`
+	Containers []containerMemory `json:"containers"`
+}
+
+type containerMemory struct {
+	Container string  `json:"container"`
+	PeakMiB   float64 `json:"peakMiB"`
+	FinalMiB  float64 `json:"finalMiB"`
+	PeakPids  int     `json:"peakPids"`
+}
+
+type memorySample struct {
+	ID   string
+	Name string
+	MiB  float64
+	Pids int
+}
+
+type memoryAccumulator struct {
+	order []string
+	seen  map[string]bool
+	peak  map[string]float64
+	final map[string]float64
+	pids  map[string]int
+}
+
+func newMemoryAccumulator() *memoryAccumulator {
+	return &memoryAccumulator{
+		seen:  map[string]bool{},
+		peak:  map[string]float64{},
+		final: map[string]float64{},
+		pids:  map[string]int{},
+	}
+}
+
+func (a *memoryAccumulator) add(s memorySample) {
+	if !a.seen[s.Name] {
+		a.seen[s.Name] = true
+		a.order = append(a.order, s.Name)
+	}
+	if s.MiB > a.peak[s.Name] {
+		a.peak[s.Name] = s.MiB
+	}
+	a.final[s.Name] = s.MiB
+	if s.Pids > a.pids[s.Name] {
+		a.pids[s.Name] = s.Pids
+	}
+}
+
+func (a *memoryAccumulator) reduce() []containerMemory {
+	out := make([]containerMemory, 0, len(a.order))
+	for _, name := range a.order {
+		out = append(out, containerMemory{
+			Container: name,
+			PeakMiB:   round1(a.peak[name]),
+			FinalMiB:  round1(a.final[name]),
+			PeakPids:  a.pids[name],
+		})
+	}
+	return out
+}
+
+func round1(v float64) float64 {
+	return math.Round(v*10) / 10
+}
+
+func parseDockerStatsLine(line string) (memorySample, bool) {
+	fields := strings.Split(strings.TrimSpace(line), ",")
+	if len(fields) != 4 {
+		return memorySample{}, false
+	}
+	id := strings.TrimSpace(fields[0])
+	name := strings.TrimSpace(fields[1])
+	mib, ok := parseMemUsageMiB(fields[2])
+	if id == "" || name == "" || !ok {
+		return memorySample{}, false
+	}
+	pids, err := strconv.Atoi(strings.TrimSpace(fields[3]))
+	if err != nil {
+		pids = 0
+	}
+	return memorySample{ID: id, Name: name, MiB: mib, Pids: pids}, true
+}
+
+func selectStackSamples(statsOutput string, stackIDs map[string]bool) []memorySample {
+	var out []memorySample
+	for _, line := range strings.Split(strings.TrimSpace(statsOutput), "\n") {
+		s, ok := parseDockerStatsLine(line)
+		if !ok || !containerIDMatches(s.ID, stackIDs) || !isPinchtabBrowserContainer(s.Name) {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+func containerIDMatches(statsID string, stackIDs map[string]bool) bool {
+	if stackIDs[statsID] {
+		return true
+	}
+	for id := range stackIDs {
+		if strings.HasPrefix(id, statsID) || strings.HasPrefix(statsID, id) {
+			return true
+		}
+	}
+	return false
+}
+
+func parseMemUsageMiB(field string) (float64, bool) {
+	used := field
+	if idx := strings.Index(field, "/"); idx >= 0 {
+		used = field[:idx]
+	}
+	used = strings.TrimSpace(used)
+
+	split := 0
+	for split < len(used) && (used[split] == '.' || (used[split] >= '0' && used[split] <= '9')) {
+		split++
+	}
+	if split == 0 {
+		return 0, false
+	}
+	value, err := strconv.ParseFloat(used[:split], 64)
+	if err != nil {
+		return 0, false
+	}
+	switch strings.TrimSpace(used[split:]) {
+	case "B", "":
+		return value / (1024 * 1024), true
+	case "KiB":
+		return value / 1024, true
+	case "MiB":
+		return value, true
+	case "GiB":
+		return value * 1024, true
+	case "TiB":
+		return value * 1024 * 1024, true
+	default:
+		return 0, false
+	}
 }
 
 // stackLabel names the compose file the suite ran under. Run-to-run comparisons
@@ -120,11 +266,8 @@ func buildSuiteTimings(suite, stack, provider, timestamp string, results []suite
 }
 
 func (r *Runner) writeSuiteTimings(def suiteDef, data suiteReportData, timestamp string) {
-	provider := r.args.Provider
-	if provider == "" {
-		provider = defaultProvider
-	}
-	timings := buildSuiteTimings(def.Name, stackLabel(def.Compose), provider, timestamp, data.Results)
+	timings := buildSuiteTimings(def.Name, stackLabel(def.Compose), r.provider(), timestamp, data.Results)
+	timings.Memory = r.mem
 
 	encoded, err := json.MarshalIndent(timings, "", "  ")
 	if err != nil {
@@ -172,6 +315,13 @@ func renderSlowest(timings suiteTimings, top int) string {
 	fmt.Fprintf(&out, "\nper-scenario totals\n")
 	for _, scenario := range timings.Scenarios {
 		fmt.Fprintf(&out, "  %9s  %-32s %s\n", formatMs(scenario.Ms), scenario.Scenario, pluralTests(scenario.Tests))
+	}
+
+	if timings.Memory != nil && len(timings.Memory.Containers) > 0 {
+		fmt.Fprintf(&out, "\ncontainer memory (browser: %s)\n", timings.Memory.Provider)
+		for _, c := range timings.Memory.Containers {
+			fmt.Fprintf(&out, "  peak %7.0f MiB  final %7.0f MiB  peak pids %3d  %s\n", c.PeakMiB, c.FinalMiB, c.PeakPids, c.Container)
+		}
 	}
 
 	fmt.Fprintf(&out, "\nGate on the totals above, not on per-test ratios: run-to-run swing is ~16%%.\n")

@@ -26,16 +26,13 @@ For Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.
   "mcpServers": {
     "pinchtab": {
       "command": "pinchtab",
-      "args": ["mcp"],
-      "env": {
-        "PINCHTAB_PORT": "9867"
-      }
+      "args": ["mcp"]
     }
   }
 }
 ```
 
-`pinchtab mcp` auto-starts the local PinchTab server if needed, then proxies requests to the HTTP API at `localhost:9867` by default. Explicit `--server` targets are used as-is and are not auto-started.
+`pinchtab mcp` auto-starts the local PinchTab server if needed, then proxies requests to the HTTP API at `localhost:9867` by default. An explicit `--server` (or `PINCHTAB_SERVER` in `env`) is used as-is and is not auto-started.
 
 > [!CAUTION]
 > Widening MCP browsing beyond local or explicitly trusted domains is a security-reducing choice. If IDPI allowlists or strict protections are relaxed, `pinchtab_snapshot` and `pinchtab_get_text` may surface hostile instructions from untrusted pages.
@@ -48,14 +45,16 @@ For Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.
 
 All tool names are prefixed with `pinchtab_`.
 
+A tool refuses any argument it does not declare: the error names the unknown key, the nearest declared name when one is close, and the tool's declared arguments, and nothing runs. Time budgets are milliseconds (`timeoutMs`) everywhere except `pinchtab_scrape`'s crawl budget `timeoutSeconds`.
+
 ### Navigation
 | Tool | Description |
 |------|-------------|
-| `pinchtab_navigate` | Navigate to a URL. Required param: `url`. Optional: `tabId`. |
+| `pinchtab_navigate` | Navigate to a URL. Required param: `url`. Optional: `tabId`, `newTab` (open in a new tab instead of reusing the current one; the returned `tabId` targets it), `snap`. |
 | `pinchtab_snapshot` | Accessibility tree. Optional: `interactive`, `compact`, `format` (`compact` or `text`), `diff`, `selector`, `maxTokens`, `depth`, `noAnimations`, `tabId`. |
 | `pinchtab_screenshot` | Capture screenshot. Optional: `format` (`jpeg` default, `png`), `quality`, `selector`, `scale`, `annotate`, `beyondViewport`, `browser`, `tabId`. Returns an MCP image content block (rendered inline by clients) plus a stable JSON text block `{"format", "annotations": [...]}`; `annotations` is `[]` by default and is populated with `{ref, role, name, tag, box {x,y,w,h}}` entries when `annotate=true` so refs in the picture map back to selectors. `beyondViewport=true` captures the full scrollable page (ignored when `selector` is set) and returns document-relative box coords. `browser` selects the browser (e.g. `chrome`, `cloak`). |
 | `pinchtab_capture` | Paired screenshot + accessibility snapshot from the same DOM epoch. Optional: `selector`, `filter`, `format`, `quality`, `depth`, `wait` (`stable`/`load`/`none`), `withBounds`, `beyondViewport`, `requirePair`, `noAnimations`, `browser`, `tabId`. Returns an MCP image content block plus a JSON envelope with `epoch.domEpoch`, `pairing.navigated`, `image.coordinateSpace`, and per-node `boundingBox`. `browser` selects the browser (e.g. `chrome`, `cloak`); the static ghost-chrome runtime cannot paint, so it falls back to chrome. Use this instead of `pinchtab_screenshot` + `pinchtab_snapshot` when the model reads pixels AND acts on refs in the same turn. |
-| `pinchtab_get_text` | Extract readable page text. Optional: `raw`, `format`, `maxChars`, `tabId`. |
+| `pinchtab_get_text` | Extract page text. Optional: `mode` (`readability` default, `raw`, `markdown`), `raw`, `format`, `maxChars`, `tabId`. Use `mode:"markdown"` for article-shaped pages — it preserves links and tables; `mode` supersedes the boolean `raw`. Example: `pinchtab_get_text {"mode":"markdown"}`. |
 
 ### Interaction
 | Tool | Description |
@@ -63,7 +62,6 @@ All tool names are prefixed with `pinchtab_`.
 | `pinchtab_click` | Click element by selector. Required: `selector` or legacy `ref`. Optional: `waitNav`, `mode` (`dom` or `dispatch` as a broad low-level escape hatch), `tabId`. `mode` and `humanize` are mutually exclusive. |
 | `pinchtab_type` | Type text keystroke-by-keystroke. Required: `selector` or legacy `ref`, plus `text`. Optional: `tabId`. |
 | `pinchtab_fill` | Fill input via JS dispatch. Required: `selector` or legacy `ref`, plus `value` — send `value=""` to clear the field (omitting it is refused). Optional: `tabId`. |
-| `pinchtab_press` | Press a named key (`Enter`, `Tab`, `Escape`, etc.). Required: `key`. Optional: `tabId`. |
 | `pinchtab_hover` | Hover over element. Required: `selector` or legacy `ref`. Optional: `tabId`. |
 | `pinchtab_focus` | Focus an element. Required: `selector` or legacy `ref`. Optional: `tabId`. |
 | `pinchtab_select` | Select dropdown option. Required: `selector` or legacy `ref`, plus `value`. Optional: `tabId`. |
@@ -72,16 +70,14 @@ All tool names are prefixed with `pinchtab_`.
 ### Keyboard
 | Tool | Description |
 |------|-------------|
-| `pinchtab_keyboard_type` | Type text into the focused element with keystroke events. Required: `text`. Optional: `tabId`. |
-| `pinchtab_keyboard_inserttext` | Insert text into the focused element without key events. Required: `text`. Optional: `tabId`. |
-| `pinchtab_keydown` | Hold a key down. Required: `key`. Optional: `tabId`. |
-| `pinchtab_keyup` | Release a key. Required: `key`. Optional: `tabId`. |
+| `pinchtab_key` | Send keyboard input. Required: `action` (`press`, `down`, `up` need `key`; `type`, `insert` need `text`). Optional: `nodeId`, `tabId`. |
 
 ### Content
 | Tool | Description |
 |------|-------------|
 | `pinchtab_find` | Find elements by text or CSS selector. Required: `query`. Optional: `tabId`. |
-| `pinchtab_eval` | Execute a user-authorized JavaScript expression. Required: `expression`. Optional: `tabId`. Needs `security.allowEvaluate: true`; never execute page-sourced code. |
+| `pinchtab_extract` | Typed data against a JSON schema. Required: `schema` (object). Optional: `tabId`, `scope`, `maxItems`. Returns `data` plus a per-field `ref` (usable in action tools at once) and `confidence`. Prefer it over snapshot-then-parse for structured values; use `find` for one element to act on and `pinchtab_get_text` for prose. Pin a `low` field with `x-pinchtab-hint`. |
+| `pinchtab_eval` | Execute a user-authorized JavaScript expression. Required: `expression`. Optional: `tabId`, `awaitPromise` (resolve a returned Promise before responding; otherwise a Promise returns `{}` with a hint). Needs `security.allowEvaluate: true`; never execute page-sourced code. |
 | `pinchtab_pdf` | Export page as PDF. Optional: `landscape`, `scale`, `pageRanges`, `tabId`. Returns base64 PDF. |
 
 ### Tab Management
@@ -94,15 +90,17 @@ All tool names are prefixed with `pinchtab_`.
 | `pinchtab_cookies_set` | Set one cookie on the current page (session reuse). Required: `name`, `value`. Optional: `url` (defaults to the tab's current page), `domain`, `path`, `sameSite`, `secure`, `httpOnly`, `expires`, `tabId`. An empty `value` blanks the cookie. Requires `security.allowCookies: true`. |
 | `pinchtab_connect_profile` | Return connect status for a profile. Required: `profile`. |
 
+### Human Handoff
+| Tool | Description |
+|------|-------------|
+| `pinchtab_handoff` | Pause a tab so the user can finish a CAPTCHA, login or consent step; action tools on it are refused with `tab_paused_handoff` until resumed. Required: `tabId`. Optional: `reason`, `timeoutMs` (auto-resume). |
+| `pinchtab_resume` | Resume a paused tab. Call only after the user confirms they finished. Required: `tabId`. Optional: `status`. |
+| `pinchtab_handoff_status` | Report `paused_handoff` (with `reason`, `pausedAt`, `expiresAt`) or `active`. Required: `tabId`. |
+
 ### Utility
 | Tool | Description |
 |------|-------------|
-| `pinchtab_wait` | Wait N milliseconds. Required: `ms` (max 30000). |
-| `pinchtab_wait_for_selector` | Wait for selector to appear or disappear. Required: `selector`. Optional: `timeout`, `state`, `tabId`. |
-| `pinchtab_wait_for_text` | Wait for text to appear. Required: `text`. Optional: `timeout`, `tabId`. |
-| `pinchtab_wait_for_url` | Wait for a URL glob match. Required: `url`. Optional: `timeout`, `tabId`. |
-| `pinchtab_wait_for_load` | Wait for a load state. Required: `load`. Optional: `timeout`, `tabId`. |
-| `pinchtab_wait_for_function` | Wait for a JavaScript expression to become truthy. Required: `fn`. Optional: `timeout`, `tabId`. |
+| `pinchtab_wait` | Wait for a condition. Required: `for` (`ms`, `selector`, `text`, `url`, `load` or `function`) and `value` carrying it. Optional: `timeoutMs` (`timeout` is a deprecated alias), `state`, `tabId`. |
 
 ### Network
 | Tool | Description |
@@ -110,18 +108,33 @@ All tool names are prefixed with `pinchtab_`.
 | `pinchtab_network` | List recent captured network requests. Optional: `tabId`, `filter`, `method`, `status`, `type`, `limit`, `bufferSize`. |
 | `pinchtab_network_detail` | Get one request's details. Required: `requestId`. Optional: `tabId`, `body`; inspect bodies only with explicit user approval. |
 | `pinchtab_network_clear` | Clear captured network data. Optional: `tabId`. |
-| `pinchtab_network_export` | Export captured data as HAR or NDJSON file. Optional: `tabId`, `format` (har/ndjson), `body`, `filter`, `method`, `status`, `type`, `limit`. Obtain explicit approval, preserve redaction, and delete the artifact after use. Returns `{path, entries, format}`. |
 
 ### Dialog
 | Tool | Description |
 |------|-------------|
 | `pinchtab_dialog` | Accept or dismiss a pending JavaScript dialog. Required: `action`. Optional: `text`, `tabId`. |
 
+### More tools
+| Tool | Description |
+|------|-------------|
+| `pinchtab_back` / `pinchtab_forward` / `pinchtab_reload` | History navigation; returns the tab ID and the URL landed on. Optional: `snap`, `tabId`. |
+| `pinchtab_frame` | Get or set the frame scope for selector-based actions and snapshots. Optional: `target`, `tabId`. |
+| `pinchtab_scroll_into_view` | Scroll an element into view and return its geometry. Target by `ref`/`selector`/`query`. |
+| `pinchtab_console` / `pinchtab_errors` | Captured console logs / uncaught JS errors for the tab — check when clicks do nothing. Optional: `clear`, `tabId`. |
+| `pinchtab_network_route` / `_unroute` / `_rules` | Install, remove or list request interception rules (`abort`, `fulfill`, `continue`). Required: `tabId` (+ `pattern` to route). |
+| `pinchtab_record` | Start/stop recording. Required: `action`; needs `security.allowScreencast`. |
+| `pinchtab_scrape` | Crawl a site into a markdown page tree. Required: `url`; budget `timeoutSeconds`. |
+| `pinchtab_a11y_audit` | Accessibility audit; `engine="axe"` runs axe-core. Optional: `rules`, `tags`, `tabId`. |
+| `pinchtab_memory` | JS heap usage and DOM counters. Optional: `gc`, `tabId`. |
+| `pinchtab_memory_snapshot` / `pinchtab_memory_compare` | Heap snapshot to a server-side file; compare two by constructor growth (`base`, `head`, `retained`). Need `security.allowMemory`. |
+
+The tool schemas returned by MCP `tools/list` are the authoritative parameter reference.
+
 ---
 
 ## Element Refs
 
-`pinchtab_snapshot` returns an accessibility tree with element refs like `e5`, `e12`. These refs can be passed as the `selector` value on interaction tools, and legacy `ref` is still accepted on the element-action tools.
+`pinchtab_snapshot` returns an accessibility tree with element refs like `e5`, `e12`. These refs can be passed as the `selector` value on interaction tools, and the deprecated aliases `ref`, `element` and `target` are still accepted on the element-action tools.
 
 **A ref denotes a DOM node, not a row.** Within one page the same node keeps the same ref across every read of it — a full snapshot, an `interactive` filter, a `selector` scope, a `depth` limit, a different token budget, an annotated screenshot, or an internal stale-ref recovery all return the same `e5` for the same element. This means a **filtered view is sparse**: dropping the non-interactive nodes returns `e0, e1, e6`, not a fresh `e0, e1, e2` run. Do not assume refs are contiguous or that the highest ref equals the node count.
 
@@ -137,7 +150,7 @@ The MCP surface is intentionally scoped to browser automation. The following are
 
 | Capability | Status | Alternative |
 |------------|--------|-------------|
-| Create/edit/delete profiles | ❌ Not available | Use `pinchtab profiles`, `pinchtab instance start --profile <name>`, or the HTTP API |
+| Create/edit/delete profiles | ❌ Not available | Human setup uses `pinchtab profiles create <name>`, authenticates it headed, then starts/reuses it with `pinchtab instance start --profile <name>` |
 | Configure the scheduler | ❌ Not available | Use the HTTP API/configuration surface |
 | CAPTCHA or human verification | ❌ Not available | Hand the step to the user |
 | Modify stealth or fingerprint settings | ❌ Not available | Not part of an agent workflow |
@@ -176,14 +189,16 @@ MCP tools surface errors as tool errors (not protocol-level errors). Common case
 |-------|-------|-----|
 | Connection refused | PinchTab not running | Run `pinchtab mcp` locally, or start with `pinchtab server` / `pinchtab daemon start` |
 | `ref not found` | Stale element ref | Re-run `pinchtab_snapshot` |
-| `evaluate not allowed` (403) | `security.allowEvaluate` is false | Enable in config or use `find`/`snap` instead |
-| `cookies disabled` (403) | `security.allowCookies` is false | Enable only for an explicitly approved cookie-inspection task |
+| `evaluate_disabled` (403) | `security.allowEvaluate` is false | Enable in config and restart, or use `find`/`snap` instead |
+| `cookies_disabled` (403) | `security.allowCookies` is false | Enable only for an explicitly approved cookie-inspection task, then restart |
+| `dialog_blocked` (409) | A JavaScript dialog is open on the tab | Answer it with `pinchtab_dialog`, then retry |
+| `vocab_superseded` (409) | The tab's refs were renumbered since your snapshot | Re-run `pinchtab_snapshot` and use the new refs |
 | `invalid URL` | Missing `http://` or `https://` | Include full scheme in URL |
 
 ---
 
 ## Related
 
-- MCP Tools Full Parameter Reference: see `pinchtab mcp --help` for available tools and parameters
+- MCP Tools Full Parameter Reference: the MCP `tools/list` schemas, or `docs/reference/mcp-tools.md`
 - [API Reference](api.md)
 - [Agent Optimization Playbook](agent-optimization.md)

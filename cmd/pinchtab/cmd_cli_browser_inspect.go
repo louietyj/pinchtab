@@ -271,6 +271,17 @@ var findCmd = &cobra.Command{
 	},
 }
 
+var extractCmd = &cobra.Command{
+	Use:   "extract --schema <file|->",
+	Short: "Extract schema-typed data from the page as JSON",
+	Args:  cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		runCLI(func(rt cliRuntime) {
+			browseractions.Extract(rt.client, rt.base, rt.token, cmd)
+		})
+	},
+}
+
 var waitCmd = &cobra.Command{
 	Use:   "wait [selector|ms]",
 	Short: "Wait for element, text, URL, network idle, JS expression, or fixed duration",

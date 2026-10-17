@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -27,7 +28,14 @@ func Capture(client *http.Client, base, token string, cmd *cobra.Command) {
 
 	format, _ := cmd.Flags().GetString("format")
 	if format == "" {
-		format = "jpeg"
+		// Infer from the -o extension when --format is unset, matching screenshot,
+		// so `capture -o x.png` writes a real PNG rather than JPEG-in-.png. An
+		// explicit --format stays authoritative because it makes format non-empty.
+		if strings.EqualFold(filepath.Ext(outFile), ".png") {
+			format = "png"
+		} else {
+			format = "jpeg"
+		}
 	}
 	if format != "jpeg" {
 		params.Set("format", format)
@@ -66,7 +74,7 @@ func Capture(client *http.Client, base, token string, cmd *cobra.Command) {
 		params.Set("tabId", v)
 	}
 
-	raw := apiclient.DoGetRaw(client, base, token, "/capture", params)
+	raw := apiclient.DoGetRaw(client, base, token, "/capture", params, apiclient.CaptureVocab(params.Get("tabId") == ""))
 	if raw == nil {
 		return
 	}

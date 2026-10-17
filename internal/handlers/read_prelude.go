@@ -39,7 +39,7 @@ func (h *Handlers) resolveReadRouting(w http.ResponseWriter, r *http.Request, ta
 // defer in this registration order so the LIFO semantics hold (cancel runs
 // before auto-close arming):
 //
-//	defer h.armAutoCloseIfEnabled(resolvedTabID)
+//	defer h.armIdleLifecycle(resolvedTabID)
 //	defer cancel()
 func (h *Handlers) resolveReadContext(w http.ResponseWriter, r *http.Request, tabID string, actionTimeout time.Duration) (resolvedTabID string, tCtx context.Context, cancel context.CancelFunc, ok bool) {
 	ctx, resolvedTabID, ok := h.guardedTabContextWithHeader(w, r, tabID, guardDialogBlocked|guardDomainPolicy)

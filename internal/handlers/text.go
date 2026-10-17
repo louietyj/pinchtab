@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,11 +17,13 @@ import (
 	"github.com/pinchtab/pinchtab/internal/browsers"
 	"github.com/pinchtab/pinchtab/internal/config"
 	"github.com/pinchtab/pinchtab/internal/httpx"
+	"github.com/pinchtab/pinchtab/internal/scrape"
 	"github.com/pinchtab/pinchtab/internal/selector"
 	"unicode/utf8"
 )
 
 // @Endpoint GET /text
+// @Param mode string query Extraction mode: "" default Readability, "raw"/"full" whole-page innerText, "markdown" seaportal Markdown of the rendered page (falls back to raw text as "markdown_fallback" when the converter yields nothing); any other value is a 400 (optional)
 func (h *Handlers) HandleText(w http.ResponseWriter, r *http.Request) {
 	tabID := r.URL.Query().Get("tabId")
 	effectiveCfg, textRoute, ok := h.resolveReadRouting(w, r, tabID, "text", browsers.ShapeRenderedRead)
@@ -49,7 +52,7 @@ func (h *Handlers) HandleText(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	defer h.armAutoCloseIfEnabled(resolvedTabID)
+	defer h.armIdleLifecycle(resolvedTabID)
 	defer cancel()
 
 	targetFrameID := h.resolveTargetFrameID(r, resolvedTabID)
@@ -68,7 +71,7 @@ func (h *Handlers) HandleText(w http.ResponseWriter, r *http.Request) {
 		if !ghostRoute {
 			modalNodeID, modalOpen, err = bridge.TopmostModalNodeID(tCtx, targetFrameID)
 			if err != nil {
-				httpx.Error(w, selectorResolutionHTTPStatus(err), err)
+				respondSelectorFailure(w, err)
 				return
 			}
 		}
@@ -89,7 +92,7 @@ func (h *Handlers) HandleText(w http.ResponseWriter, r *http.Request) {
 		if !ghostRoute {
 			afterNodeID, afterOpen, scopeErr := bridge.TopmostModalNodeID(tCtx, targetFrameID)
 			if scopeErr != nil {
-				httpx.Error(w, selectorResolutionHTTPStatus(scopeErr), fmt.Errorf("recheck topmost dialog: %w", scopeErr))
+				respondSelectorFailure(w, fmt.Errorf("recheck topmost dialog: %w", scopeErr))
 				return
 			}
 			stable = modalNodeID == afterNodeID && modalOpen == afterOpen
@@ -98,12 +101,11 @@ func (h *Handlers) HandleText(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if err != nil {
-			status := http.StatusInternalServerError
 			if selectorParam != "" || refParam != "" {
-				status = selectorResolutionHTTPStatus(err)
-				err = fmt.Errorf("element text extract: %w", err)
+				respondSelectorFailure(w, fmt.Errorf("element text extract: %w", err))
+				return
 			}
-			httpx.Error(w, status, err)
+			httpx.Error(w, http.StatusInternalServerError, err)
 			return
 		}
 		scopeInfo := h.frameDisclosureFor(tCtx, resolvedTabID, targetFrameID)
@@ -137,9 +139,10 @@ const rawTextScript = `document.body.innerText`
 // to readability, so a caller who read the CLI help and wrote ?mode=full against the
 // API got the filtered output while believing they had asked for innerText.
 var textModes = map[string]string{
-	"":     "",
-	"raw":  "raw",
-	"full": "raw",
+	"":         "",
+	"raw":      "raw",
+	"full":     "raw",
+	"markdown": "markdown",
 }
 
 // resolveTextMode maps a requested mode onto the extraction that runs, and REFUSES an
@@ -173,7 +176,17 @@ const (
 	extractionReadability         = "readability"
 	extractionRaw                 = "raw"
 	extractionReadabilityFallback = "readability_fallback"
+	extractionMarkdown            = "markdown"
+	extractionMarkdownFallback    = "markdown_fallback"
 )
+
+// isMarkdownExtraction reports whether an extraction came from the markdown
+// mode, so the writer serves text/markdown and truncates on line boundaries.
+// The fallback is included: the caller asked for markdown, and raw text is
+// still valid Markdown.
+func isMarkdownExtraction(mode string) bool {
+	return mode == extractionMarkdown || mode == extractionMarkdownFallback
+}
 
 // Readability is an article heuristic; on a layout it does not recognise as an
 // article (landing page, dashboard, docs index) it returns the single block it
@@ -194,10 +207,12 @@ const headerTextExtraction = "X-PT-Text-Extraction"
 // the mode that actually ran and the length of the raw document it was measured
 // against (RawKnown is false when the baseline extraction itself failed).
 type textExtraction struct {
-	Text      string
-	Mode      string
-	RawLength int
-	RawKnown  bool
+	Text        string
+	Mode        string
+	RawLength   int
+	RawKnown    bool
+	Title       string
+	Description string
 }
 
 // extractDocumentText reads the document's text (readability unless mode=="raw")
@@ -205,6 +220,9 @@ type textExtraction struct {
 // output that covers too little of the raw document is discarded in favour of
 // the raw text, reported as extractionReadabilityFallback.
 func (h *Handlers) extractDocumentText(tCtx context.Context, mode, targetFrameID string) (textExtraction, error) {
+	if mode == extractionMarkdown {
+		return h.extractDocumentMarkdown(tCtx, targetFrameID)
+	}
 	if mode == "raw" {
 		text, err := h.extractText(tCtx, rawTextScript, targetFrameID)
 		if err != nil {
@@ -227,6 +245,38 @@ func (h *Handlers) extractDocumentText(tCtx context.Context, mode, targetFrameID
 		return textExtraction{Text: raw, Mode: extractionReadabilityFallback, RawLength: rawLen, RawKnown: true}, nil
 	}
 	return textExtraction{Text: text, Mode: extractionReadability, RawLength: rawLen, RawKnown: true}, nil
+}
+
+// extractDocumentMarkdown converts the frame-scoped rendered document to
+// Markdown through the shared seaportal helper, reusing the same HTML read the
+// /html inspect path uses so the frame scope is honoured identically. An empty
+// conversion falls back to the raw document text, echoed as markdown_fallback.
+func (h *Handlers) extractDocumentMarkdown(tCtx context.Context, targetFrameID string) (textExtraction, error) {
+	payload, err := h.inspectDocument(tCtx, targetFrameID, inspectKindHTML)
+	if err != nil {
+		return textExtraction{}, err
+	}
+	md := scrape.ToMarkdown(payload.HTML, payload.URL)
+	if md.Markdown == "" {
+		raw, rawErr := h.extractText(tCtx, rawTextScript, targetFrameID)
+		if rawErr != nil {
+			return textExtraction{}, rawErr
+		}
+		return textExtraction{
+			Text:        raw,
+			Mode:        extractionMarkdownFallback,
+			RawLength:   utf8.RuneCountInString(raw),
+			RawKnown:    true,
+			Title:       md.Title,
+			Description: md.Description,
+		}, nil
+	}
+	return textExtraction{
+		Text:        md.Markdown,
+		Mode:        extractionMarkdown,
+		Title:       md.Title,
+		Description: md.Description,
+	}, nil
 }
 
 func readabilityCollapsed(extractedLen, rawLen int) bool {
@@ -261,17 +311,98 @@ func truncateChars(s string, limit int) (string, bool) {
 	return s, false
 }
 
+// truncateCharsLine cuts s to at most limit characters, keeping whole lines
+// while they fit and then rune-cutting the first line that overruns. A cut never
+// splits a Markdown table row or link: a table row (starts with '|') that does
+// not fit is dropped whole, and a cut that would land inside a [..](..) link is
+// pulled back to before the link. Reports whether it cut. This differs from
+// truncateChars, which cuts at the exact rune regardless of line structure.
+func truncateCharsLine(s string, limit int) (string, bool) {
+	if limit < 0 || utf8.RuneCountInString(s) <= limit {
+		return s, false
+	}
+	var b strings.Builder
+	count := 0
+	for i, line := range strings.Split(s, "\n") {
+		sep := 0
+		if i > 0 {
+			sep = 1 // the newline joining this line to the previous
+		}
+		lineLen := utf8.RuneCountInString(line)
+		if count+sep+lineLen <= limit {
+			if i > 0 {
+				b.WriteByte('\n')
+			}
+			b.WriteString(line)
+			count += sep + lineLen
+			continue
+		}
+		// This line overruns. Keep a rune-cut of it unless its shape forbids
+		// splitting, in which case the whole line is dropped.
+		budget := limit - count - sep
+		if budget > 0 && !strings.HasPrefix(line, "|") {
+			if partial, ok := cutLineForMarkdown(line, budget); ok {
+				if i > 0 {
+					b.WriteByte('\n')
+				}
+				b.WriteString(partial)
+			}
+		}
+		break
+	}
+	return b.String(), true
+}
+
+// markdownLinkRe matches a whole [text](url) link so a truncation can refuse to
+// cut through one.
+var markdownLinkRe = regexp.MustCompile(`\[[^\]]*\]\([^)]*\)`)
+
+// cutLineForMarkdown returns the leading runes of line (at most budget) for use
+// as the final partial line of a truncation. A cut that would fall inside a
+// [..](..) link is pulled back to the link's start so no half-open link escapes,
+// then trailing whitespace is trimmed. ok is false only when nothing survives —
+// the line began with the link that the budget split.
+func cutLineForMarkdown(line string, budget int) (string, bool) {
+	cut := len(line)
+	count := 0
+	for off := range line {
+		if count == budget {
+			cut = off
+			break
+		}
+		count++
+	}
+	for _, loc := range markdownLinkRe.FindAllStringIndex(line, -1) {
+		if loc[0] < cut && cut < loc[1] {
+			cut = loc[0]
+			break
+		}
+	}
+	partial := strings.TrimRight(line[:cut], " \t")
+	if partial == "" {
+		return "", false
+	}
+	return partial, true
+}
+
 // writeTextResponse truncates, IDPI-scans, and writes the document text as
 // plain text (format text/plain) or the JSON envelope.
 func (h *Handlers) writeTextResponse(w http.ResponseWriter, r *http.Request, tCtx context.Context, extraction textExtraction, maxChars int, format string, route *browserops.RouteMetadata, scope *frameDisclosure) {
 	text := extraction.Text
 	truncated := false
 	if maxChars > -1 {
-		text, truncated = truncateChars(text, maxChars)
+		if isMarkdownExtraction(extraction.Mode) {
+			text, truncated = truncateCharsLine(text, maxChars)
+		} else {
+			text, truncated = truncateChars(text, maxChars)
+		}
 	}
 
 	url, _ := h.Bridge.CurrentURL(tCtx)
 	title, _ := h.Bridge.CurrentTitle(tCtx)
+	if extraction.Title != "" {
+		title = extraction.Title
+	}
 	h.recordResolvedURL(r, url)
 
 	// IDPI: scan extracted text for injection patterns and optionally wrap.
@@ -285,7 +416,11 @@ func (h *Handlers) writeTextResponse(w http.ResponseWriter, r *http.Request, tCt
 	w.Header().Set(headerTextExtraction, extraction.Mode)
 
 	if format == "text" || format == "plain" {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		contentType := "text/plain; charset=utf-8"
+		if isMarkdownExtraction(extraction.Mode) {
+			contentType = "text/markdown; charset=utf-8"
+		}
+		w.Header().Set("Content-Type", contentType)
 		w.WriteHeader(200)
 		_, _ = w.Write([]byte(text))
 		return
@@ -303,6 +438,9 @@ func (h *Handlers) writeTextResponse(w http.ResponseWriter, r *http.Request, tCt
 	if extraction.RawKnown {
 		resp["rawLength"] = extraction.RawLength
 	}
+	if extraction.Description != "" {
+		resp["description"] = extraction.Description
+	}
 	if result.Warning != "" {
 		resp["idpiWarning"] = result.Warning
 	}
@@ -310,6 +448,7 @@ func (h *Handlers) writeTextResponse(w http.ResponseWriter, r *http.Request, tCt
 }
 
 // @Endpoint GET /tabs/{id}/text
+// @Param mode string query Extraction mode: "" default Readability, "raw"/"full" whole-page innerText, "markdown" seaportal Markdown of the rendered page (falls back to raw text as "markdown_fallback" when the converter yields nothing); any other value is a 400 (optional)
 func (h *Handlers) HandleTabText(w http.ResponseWriter, r *http.Request) {
 	h.withPathTabID(w, r, h.HandleText)
 }

@@ -1,11 +1,12 @@
 package orchestrator
 
 import (
-	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/pinchtab/pinchtab/internal/httpx"
 )
 
 // maxBodyPeek caps how much of an inbound JSON request body the orchestrator
@@ -62,10 +63,7 @@ func peekBodyTabID(r *http.Request) string {
 }
 
 func peekBodyStringField(r *http.Request, field string) string {
-	if r == nil || r.Body == nil || r.Body == http.NoBody {
-		return ""
-	}
-	if r.ContentLength <= 0 || r.ContentLength > maxBodyPeek {
+	if r == nil || !httpx.MayHaveBody(r) || r.ContentLength > maxBodyPeek {
 		return ""
 	}
 	ct := r.Header.Get("Content-Type")
@@ -79,14 +77,10 @@ func peekBodyStringField(r *http.Request, field string) string {
 		return ""
 	}
 
-	buf, err := io.ReadAll(io.LimitReader(r.Body, maxBodyPeek+1))
-	if err != nil {
-		// Body may already be partially consumed; do not attempt to repair.
-		return ""
-	}
-	// Always restore the body so downstream handlers see the full payload.
-	r.Body = io.NopCloser(bytes.NewReader(buf))
-	if len(buf) > maxBodyPeek {
+	original := r.Body
+	buf, err := io.ReadAll(io.LimitReader(original, maxBodyPeek+1))
+	r.Body = httpx.ReplayBody(buf, original)
+	if err != nil || len(buf) > maxBodyPeek {
 		return ""
 	}
 

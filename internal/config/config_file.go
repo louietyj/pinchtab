@@ -124,11 +124,12 @@ func DefaultFileConfig() FileConfig {
 	allowDownload := false
 	allowCookies := false
 	allowNetworkIntercept := false
+	allowMemory := false
 	downloadMaxBytes := DefaultDownloadMaxBytes
+	memorySnapshotMaxBytes := DefaultMemorySnapshotMaxBytes
 	allowUpload := false
 	allowClipboard := false
 	allowStateExport := false
-	enableActionGuards := true
 	uploadMaxRequestBytes := DefaultUploadMaxRequestBytes
 	uploadMaxFiles := DefaultUploadMaxFiles
 	uploadMaxFileBytes := DefaultUploadMaxFileBytes
@@ -187,13 +188,13 @@ func DefaultFileConfig() FileConfig {
 			AllowDownload:          &allowDownload,
 			AllowCookies:           &allowCookies,
 			AllowNetworkIntercept:  &allowNetworkIntercept,
-			AllowedDomains:         append([]string(nil), defaultLocalAllowedDomains...),
+			AllowMemory:            &allowMemory,
 			DownloadAllowedDomains: []string{},
 			DownloadMaxBytes:       &downloadMaxBytes,
+			MemorySnapshotMaxBytes: &memorySnapshotMaxBytes,
 			AllowUpload:            &allowUpload,
 			AllowClipboard:         &allowClipboard,
 			AllowStateExport:       &allowStateExport,
-			EnableActionGuards:     &enableActionGuards,
 			UploadMaxRequestBytes:  &uploadMaxRequestBytes,
 			UploadMaxFiles:         &uploadMaxFiles,
 			UploadMaxFileBytes:     &uploadMaxFileBytes,
@@ -206,7 +207,7 @@ func DefaultFileConfig() FileConfig {
 				AllowSchemes:     []string{"ws", "wss", "http", "https"},
 				ForwardProxyAuth: &attachForwardProxyAuth,
 			},
-			IDPI: IDPIConfig{
+			IDPI: &IDPIConfig{
 				Enabled:        true,
 				StrictMode:     true,
 				ScanContent:    true,

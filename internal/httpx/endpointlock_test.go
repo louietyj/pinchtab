@@ -41,8 +41,14 @@ func TestDisabledEndpointHandlerIncludesHintAndRemedy(t *testing.T) {
 	if remedy == "" {
 		t.Fatal("expected non-empty remedy in details")
 	}
-	if remedy != "pinchtab config set security.allowScreencast true && pinchtab server restart" {
-		t.Fatalf("remedy = %q, want the config set AND the restart that applies it", remedy)
+	if remedy != "pinchtab config set security.allowScreencast true" {
+		t.Fatalf("remedy = %q, want the mode-neutral config write with no `server restart`", remedy)
+	}
+	if strings.Contains(remedy, "pinchtab server restart") {
+		t.Fatalf("remedy names the server-only restart, which destroys a bridge: %q", remedy)
+	}
+	if !strings.Contains(strings.ToLower(hint), "restart pinchtab") {
+		t.Fatalf("hint does not carry the mode-neutral restart guidance: %q", hint)
 	}
 }
 
@@ -99,8 +105,8 @@ func TestDisabledEndpointHandlerKeepsSettingHintAndRemedy(t *testing.T) {
 	}
 	for key, want := range map[string]string{
 		"setting": "security.allowStateExport",
-		"hint":    "Enable security.allowStateExport to use this feature.",
-		"remedy":  "pinchtab config set security.allowStateExport true && pinchtab server restart",
+		"hint":    "Enable security.allowStateExport to use this feature, then restart PinchTab to apply the change.",
+		"remedy":  "pinchtab config set security.allowStateExport true",
 	} {
 		if got, _ := resp.Details[key].(string); got != want {
 			t.Fatalf("details[%q] = %q, want %q", key, got, want)
@@ -108,38 +114,34 @@ func TestDisabledEndpointHandlerKeepsSettingHintAndRemedy(t *testing.T) {
 	}
 }
 
-// The defect this pins: the remedy used to stop at the config write. Writing the
-// setting is a successful no-op for the caller — the security block is read at
-// boot, so the very same 403 comes back — and the caller reading this refusal is
-// an agent that has no other instruction to try. The properties, not the
-// sentence: both commands present, the config write FIRST, joined so a shell can
-// run the string verbatim, and no prose asking the reader to interpret anything.
-func TestDisabledEndpointRemedyIsOneRunnableLineEndingInTheRestart(t *testing.T) {
+// This gate answers on a bridge as well as a server, and `pinchtab server restart`
+// stops a bridge and silently swaps it for a server. So the executable remedy must
+// carry ONLY the mode-neutral config write — no server-restart verb a bridge user
+// could run verbatim — and the restart, which is what actually applies the change
+// (the security block is read at boot), is stated in the hint as mode-neutral prose
+// the caller applies for their own mode. This supersedes the old contract that put
+// `&& pinchtab server restart` in the executable remedy.
+func TestDisabledEndpointRemedyIsModeNeutralConfigWriteWithRestartInTheHint(t *testing.T) {
 	for _, setting := range []string{"security.allowCookies", "security.allowStateExport", "security.allowClipboard"} {
-		remedy, _ := DisabledEndpointDetails(setting)["remedy"].(string)
+		details := DisabledEndpointDetails(setting)
+		remedy, _ := details["remedy"].(string)
+		hint, _ := details["hint"].(string)
 
 		configCmd := "pinchtab config set " + setting + " true"
-		restartCmd := "pinchtab server restart"
-
+		if remedy != configCmd {
+			t.Errorf("remedy for %s = %q, want exactly the mode-neutral config write %q", setting, remedy, configCmd)
+		}
+		if strings.Contains(remedy, "pinchtab server restart") {
+			t.Errorf("remedy for %s names the server-only restart, which destroys a bridge if run: %q", setting, remedy)
+		}
 		if strings.Contains(remedy, "\n") {
 			t.Errorf("remedy for %s spans lines, so it cannot be run verbatim: %q", setting, remedy)
 		}
-		if !strings.Contains(remedy, configCmd) {
-			t.Errorf("remedy for %s does not enable the setting: %q", setting, remedy)
+		if !strings.Contains(strings.ToLower(hint), "restart pinchtab") {
+			t.Errorf("hint for %s does not tell the caller to restart PinchTab to apply the change: %q", setting, hint)
 		}
-		if !strings.Contains(remedy, restartCmd) {
-			t.Errorf("remedy for %s omits the restart, so following it verbatim returns the identical 403: %q", setting, remedy)
-		}
-		if strings.Index(remedy, configCmd) > strings.Index(remedy, restartCmd) {
-			t.Errorf("remedy for %s restarts before writing the setting, so the restart applies nothing: %q", setting, remedy)
-		}
-		if !strings.Contains(remedy, "&&") {
-			t.Errorf("remedy for %s joins its two commands with prose rather than a shell operator: %q", setting, remedy)
-		}
-		for _, prose := range []string{" then", "then:", "after that", "first ", "next "} {
-			if strings.Contains(remedy, prose) {
-				t.Errorf("remedy for %s contains prose %q an agent would have to interpret: %q", setting, prose, remedy)
-			}
+		if strings.Contains(hint, "pinchtab server restart") {
+			t.Errorf("hint for %s names the server-only restart command, wrong on a bridge: %q", setting, hint)
 		}
 	}
 }

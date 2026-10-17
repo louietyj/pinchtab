@@ -230,3 +230,58 @@ func TestPageStatus(t *testing.T) {
 		})
 	}
 }
+
+// ToPageResult populates the page's own StatusCode from the main document and
+// removes that document from BrokenAssets — but a NESTED document (an iframe)
+// that 404s is a real sub-resource and stays a broken asset.
+func TestToPageResultDropsMainDocumentButKeepsAnIframeDocument(t *testing.T) {
+	const page = "http://x/page.html"
+	const iframe = "http://x/frame.html"
+	pa := PageAudit{
+		URL: page,
+		BrowserPageData: BrowserPageData{
+			NetworkRequests: []NetworkRequest{
+				{URL: page, ResourceType: "Document", Status: 404, Failed: true},
+				{URL: iframe, ResourceType: "Document", Status: 404, Failed: true},
+			},
+			BrokenAssets: []BrokenAsset{
+				{URL: page, ResourceType: "document", Status: 404},
+				{URL: iframe, ResourceType: "document", Status: 404},
+			},
+		},
+	}
+
+	pr := pa.ToPageResult()
+	if pr.StatusCode != 404 {
+		t.Errorf("StatusCode = %d, want 404 (the main document)", pr.StatusCode)
+	}
+	if len(pr.Browser.BrokenAssets) != 1 || pr.Browser.BrokenAssets[0].URL != iframe {
+		t.Errorf("BrokenAssets = %+v, want only the iframe document kept", pr.Browser.BrokenAssets)
+	}
+	if got := PageStatus(pr); got != "HTTP 404" {
+		t.Errorf("PageStatus = %q, want HTTP 404", got)
+	}
+}
+
+// A 200 main document leaves the page ok and its status set, and does not touch
+// sub-resource broken assets.
+func TestToPageResultKeepsA200PageOk(t *testing.T) {
+	const page = "http://x/ok.html"
+	pa := PageAudit{
+		URL: page,
+		BrowserPageData: BrowserPageData{
+			NetworkRequests: []NetworkRequest{{URL: page, ResourceType: "Document", Status: 200}},
+			BrokenAssets:    []BrokenAsset{{URL: page + "?img", ResourceType: "image", Status: 404}},
+		},
+	}
+	pr := pa.ToPageResult()
+	if pr.StatusCode != 200 {
+		t.Errorf("StatusCode = %d, want 200", pr.StatusCode)
+	}
+	if got := PageStatus(pr); got != "ok" {
+		t.Errorf("PageStatus = %q, want ok", got)
+	}
+	if len(pr.Browser.BrokenAssets) != 1 {
+		t.Errorf("a 200 page's sub-resource broken asset was dropped: %+v", pr.Browser.BrokenAssets)
+	}
+}

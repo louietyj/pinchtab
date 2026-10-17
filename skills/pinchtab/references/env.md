@@ -10,10 +10,14 @@ For agent workflows, most runtime behavior should be configured through `config.
 |---|---|---|
 | `PINCHTAB_TOKEN` | Authenticate CLI or MCP requests to a protected server | Sent as `Authorization: Bearer ...` |
 | `PINCHTAB_CONFIG` | Override the config file path | Prefer this over ad hoc env overrides when automating |
+| `PINCHTAB_SESSION` | Agent session token | Sent as `Authorization: Session ...`; takes precedence over `PINCHTAB_TOKEN` |
+| `PINCHTAB_SERVER` | Same as `--server` | Targets that server instead of auto-starting a local one |
+| `PINCHTAB_AGENT_ID` | Same as `--agent-id` | Scopes the current tab per agent |
+| `PINCHTAB_HINTS` | `off` silences CLI advisory hints | |
 
 ## Targeting remote servers
 
-Use the `--server` CLI flag instead of environment variables, and pair it with that host's credential — without one, the CLI falls back to `PINCHTAB_TOKEN` or the local config's `server.token`, which the remote host rejects as `bad_token`:
+Use the `--server` CLI flag instead of environment variables, and pair it with that host's credential — the CLI never sends the local config's `server.token` to a remote host, so without `PINCHTAB_TOKEN` (or `PINCHTAB_SESSION`) it exits with an error:
 
 ```bash
 PINCHTAB_TOKEN=<that-host-token> pinchtab --server http://192.168.1.50:9867 snap
@@ -49,5 +53,7 @@ PINCHTAB_SESSION=ses_...
 ```
 
 When `PINCHTAB_SESSION` is set, the CLI uses `Authorization: Session <token>` instead of bearer auth. The session maps to a specific agentId server-side and can be revoked independently.
+
+A session token cannot use admin routes (`/instances*`, `/profiles*`, `/sessions*`, config): start instances and create profiles with `PINCHTAB_TOKEN` before exporting `PINCHTAB_SESSION`. Sessions exist only on `pinchtab server`, not on a standalone `pinchtab bridge`; there, use `--agent-id` / `PINCHTAB_AGENT_ID` for a per-agent current tab.
 
 Everything else should be handled through config, profiles, instances, and the `--server` flag.

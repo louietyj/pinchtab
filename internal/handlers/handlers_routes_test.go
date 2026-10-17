@@ -321,6 +321,7 @@ func TestEveryCapabilityGatedRouteRefusesOnTheBridgeFrontWhenDisabled(t *testing
 // is not a failure.
 func TestNoCapabilityGatedRouteRefusesWhenTheCapabilityIsEnabled(t *testing.T) {
 	enabled := &config.RuntimeConfig{
+		StateDir:              t.TempDir(),
 		AllowEvaluate:         true,
 		AllowMacro:            true,
 		AllowScreencast:       true,
@@ -329,6 +330,7 @@ func TestNoCapabilityGatedRouteRefusesWhenTheCapabilityIsEnabled(t *testing.T) {
 		AllowNetworkIntercept: true,
 		AllowUpload:           true,
 		AllowStateExport:      true,
+		AllowMemory:           true,
 	}
 
 	for _, ep := range gatedCatalogRoutes(t) {

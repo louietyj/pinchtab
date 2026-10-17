@@ -160,6 +160,51 @@ func IsolatedContextID(ctx context.Context, frameID string) (int64, error) {
 	return resp.ExecutionContextID, nil
 }
 
+// EvaluateInIsolatedWorld runs expression in the isolated world of frameID (the
+// top frame when frameID is empty) and unmarshals the returned value into
+// result. Unlike the bridge's EvaluateInFrame — which falls back to the MAIN
+// world for the top frame — this always runs in the PinchTab isolated world, so
+// page script that redefines globals or DOM prototypes cannot alter the run. It
+// awaits a returned promise, so a script whose last expression is a thenable
+// (axe.run) resolves before the value is read.
+func EvaluateInIsolatedWorld(ctx context.Context, frameID, expression string, result any) error {
+	execID, err := IsolatedContextID(ctx, frameID)
+	if err != nil {
+		return err
+	}
+
+	var raw json.RawMessage
+	if err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
+		return chromedp.FromContext(ctx).Target.Execute(ctx, "Runtime.evaluate", map[string]any{
+			"expression":    expression,
+			"contextId":     execID,
+			"returnByValue": true,
+			"awaitPromise":  true,
+		}, &raw)
+	})); err != nil {
+		return err
+	}
+
+	var parsed struct {
+		Result struct {
+			Value json.RawMessage `json:"value"`
+		} `json:"result"`
+		ExceptionDetails *struct {
+			Text string `json:"text"`
+		} `json:"exceptionDetails,omitempty"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return fmt.Errorf("evaluate in isolated world parse: %w", err)
+	}
+	if parsed.ExceptionDetails != nil && parsed.ExceptionDetails.Text != "" {
+		return fmt.Errorf("%s", parsed.ExceptionDetails.Text)
+	}
+	if result == nil || len(parsed.Result.Value) == 0 {
+		return nil
+	}
+	return json.Unmarshal(parsed.Result.Value, result)
+}
+
 // topFrameID reads the top frame's id, the frame IsolatedContextID falls back to
 // when the caller names none.
 func topFrameID(ctx context.Context) (string, error) {

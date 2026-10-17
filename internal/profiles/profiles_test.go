@@ -91,16 +91,19 @@ func TestProfileManagerImportNormalizesSourcePath(t *testing.T) {
 	dir := t.TempDir()
 	pm := NewProfileManager(dir)
 
-	srcRoot := t.TempDir()
+	srcRoot, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", srcRoot)
+	t.Setenv("USERPROFILE", srcRoot)
 	src := filepath.Join(srcRoot, "chrome-src")
 	_ = os.MkdirAll(filepath.Join(src, "Default"), 0755)
 	_ = os.WriteFile(filepath.Join(src, "Default", "Preferences"), []byte(`{}`), 0644)
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	relSource, err := filepath.Rel(cwd, src)
+	t.Chdir(srcRoot)
+	relSource := "chrome-src"
+	normalizedSource, err := filepath.Abs(relSource)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +116,7 @@ func TestProfileManagerImportNormalizesSourcePath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := string(importMarker), filepath.Clean(src); got != want {
+	if got, want := string(importMarker), filepath.Clean(normalizedSource); got != want {
 		t.Fatalf("expected normalized source %q, got %q", want, got)
 	}
 }
@@ -1241,6 +1244,9 @@ func TestResolutionByNameAndIDIgnoresADirectoryClaimingAnotherProfile(t *testing
 // the rename fails it must put the old name back, or the directory is left
 // claiming a profile it is not — which is the state this fix stops trusting.
 func TestProfileRenameRollsBackMetadataWhenTheDirectoryRenameFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows chmod does not make a directory rename fail")
+	}
 	base := t.TempDir()
 	pm := NewProfileManager(base)
 	if err := pm.Create("old-name"); err != nil {

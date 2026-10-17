@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	browseractions "github.com/pinchtab/pinchtab/internal/cli/actions"
-	"github.com/pinchtab/pinchtab/internal/config"
 	"github.com/pinchtab/pinchtab/internal/urls"
 	"github.com/spf13/cobra"
 )
@@ -41,7 +40,7 @@ var healthCmd = &cobra.Command{
 	Use:   "health",
 	Short: "Check server health",
 	Run: func(cmd *cobra.Command, args []string) {
-		config.EmitDefaultConfigHint()
+		emitDefaultConfigHint()
 		runCLI(func(rt cliRuntime) {
 			browseractions.Health(rt.client, rt.base, rt.token, cmd)
 		})
@@ -64,6 +63,17 @@ var profilesPruneCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		runCLI(func(rt cliRuntime) {
 			browseractions.ProfilesPrune(rt.client, rt.base, rt.token, cmd)
+		})
+	},
+}
+
+var profilesCreateCmd = &cobra.Command{
+	Use:   "create <name>",
+	Short: "Create a browser profile for human setup and authentication",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		runCLI(func(rt cliRuntime) {
+			browseractions.ProfilesCreate(rt.client, rt.base, rt.token, args[0])
 		})
 	},
 }

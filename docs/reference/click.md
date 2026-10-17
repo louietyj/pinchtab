@@ -12,6 +12,57 @@ pinchtab click e5
 OK
 ```
 
+## When the click navigates
+
+A click that moves the page **succeeds**. There is nothing to declare in advance and
+nothing to opt into: the result reports where the tab landed and that your refs are
+gone.
+
+```bash
+pinchtab nav https://example.com --snap
+# e1:link "Learn more"
+pinchtab click e1
+# OK navigated https://www.iana.org/help/example-domains
+# HINT: every ref from your last snapshot is dead — run `pinchtab snap -i` before the next action
+echo $?   # 0
+```
+
+With `--json`, the same click carries the outcome in `result`:
+
+```json
+{
+  "success": true,
+  "result": {
+    "clicked": true,
+    "navigated": true,
+    "url": "https://www.iana.org/help/example-domains",
+    "previousUrl": "https://example.com/",
+    "refsStale": true
+  }
+}
+```
+
+`navigated` is keyed on what actually happened — the URL before the action compared
+against the URL after — not on the element's role or tag, so it is the same answer for
+a link, a router `<button>`, and a form control that redirects. A fragment-only change
+(`#section`) is not a navigation: the document is the same and your refs still resolve.
+
+**`refsStale: true` means every ref from your previous `/snapshot` is dead.** Refs are
+minted per snapshot, so take a new one before the next ref-targeted action:
+
+```bash
+pinchtab click e1 --snap    # click, then print the new snapshot in one call
+```
+
+These fields are present whichever form you use: a plain click, a click with
+`--wait-nav`, and a `--submit` click that redirects all report where they landed and
+that your refs are dead. A `--submit` click keeps its own `postState` as the headline
+and carries the landing alongside it.
+
+`--wait-nav` is not permission to navigate — it makes the click *wait* for the
+navigation to settle before returning, which is what you want when the next action
+depends on the new page having loaded.
+
 ## CLI Flags
 
 | Flag | Description |
@@ -23,6 +74,8 @@ OK
 | `--text` | Output page text after click |
 | `--dialog-action` | Auto-handle JS dialog: `accept` or `dismiss` |
 | `--dialog-text` | Prompt response text (with `--dialog-action accept`) |
+| `--dismiss-banners` | Dismiss cookie/consent banners after a `--wait-nav` click (no-op without `--wait-nav`) |
+| `--dismiss-known-interstitials` | Dismiss a recognized portal interstitial before resolving the click target (refused with `known_interstitial_not_dismissed` when it cannot) |
 | `--x`, `--y` | Click at specific coordinates |
 | `--humanize` | Use humanized bezier+jitter input path (overrides instance config) |
 | `--submit` | Use the once-only submit-click path and include bounded post-submit state in the response |
@@ -47,7 +100,7 @@ pinchtab click --x 100 --y 200           # Click at coordinates
 
 ## Notes
 
-- Element refs come from `/snapshot`
+- Element refs come from `/snapshot`, and a navigation invalidates all of them — see [When the click navigates](#when-the-click-navigates)
 - Refs for iframe descendants can be clicked directly without frame switch
 - Selector lookup is limited to current frame scope (default: `main`)
 - Use [`/frame`](./frame.md) before selector-based iframe actions
@@ -55,9 +108,12 @@ pinchtab click --x 100 --y 200           # Click at coordinates
 - The API also accepts `selector` field: `{"kind":"click","selector":"#login"}`
 - Click behavior works like this: omit `mode` for the normal click path, use `mode:"dom"` for `element.click()`, or `mode:"dispatch"` for synthetic click events.
 - Treat `mode` as a broad, low-level escape hatch for click delivery. Occlusion bypass is the common case, but it can also help with pages that need a non-default click path.
-- `mode` and `humanize:true` are mutually exclusive.
+- `mode` and humanize are mutually exclusive — whether humanize comes from `humanize:true` on the request or from `instanceDefaults.humanize:true`.
 - To opt a click into the slower humanized path for a page that needs it, pass `humanize:true` in the action JSON or set `instanceDefaults.humanize:true`.
 - `submit:true` is for terminal form actions where retrying could submit twice. For clicks it sends exactly one DOM click, disables recovery/retry delivery, and reports a bounded `postState` result (`succeeded` when the URL changes or an open modal closes; otherwise `pending`). It requires an element target and cannot be combined with coordinates, `waitNav`, `mode`, or `humanize:true`. It is accepted only on a single `/action` request, not a batch or macro.
+- Ref vocabulary: an action that targets a ref may echo the snapshot's `X-PinchTab-Vocab` token as `vocab` in the body (or the `X-PinchTab-Vocab` request header), with `vocabTab` naming its tab. If a newer snapshot has renumbered that tab's refs, `/action` refuses with a `vocab_superseded` conflict instead of acting on the wrong node — re-snapshot and use the new refs. The CLI attaches the token from your last snapshot automatically. When an action re-epochs the tab's refs, the response carries the new `X-PinchTab-Vocab` header.
+- While a JavaScript dialog is open on the tab, `/action` refuses with a `dialog_blocked` conflict (details carry `dialogType` and `dialogMessage`); answer it with `pinchtab dialog accept|dismiss`, or pass `--dialog-action` on the click that opens it. See [Dialog](./dialog.md).
+- A ref that cannot be resolved answers `404 ref_not_found` with `details.dispatched: false`.
 
 ## Related Pages
 

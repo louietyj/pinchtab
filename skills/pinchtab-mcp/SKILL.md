@@ -80,17 +80,15 @@ pinchtab_scrape(url="https://example.com", preview=true)
 pinchtab_snapshot(interactive=true, compact=true)
 ```
 
-Returns an accessibility tree with numbered refs:
+Returns an accessibility tree, one element per line as `ref:role "name"`:
 ```
-[0]<a href="/about" />
-	About
-[2]<button aria-label="Sign in" />
-	Sign in
-[5]<input type="text" placeholder="Search" />
+e0:link "About"
+e2:button "Sign in"
+e5:textbox "Search"
 ```
 
 **Key rules**:
-- Only elements with `[index]` are interactive.
+- Each line's leading `eN` is the ref to pass to action tools.
 - Refs are the fastest way to target elements.
 - Use `diff=true` after an interaction to see only changed elements (saves tokens).
 - Use `selector` to scope the snapshot to a specific section.
@@ -146,7 +144,8 @@ pinchtab_click(selector="e5")
 ```
 
 - Use refs from snapshot (e.g., `e5`).
-- For links/buttons that navigate: add `waitNav=true`.
+- A click that navigates **succeeds** (no error to handle): the result adds `navigated`, `url` (landed), `previousUrl`, `refsStale` — never guess whether your refs survived. A `#fragment` jump is not a navigation; refs survive.
+- `waitNav=true` is not permission to navigate — it *waits* for the navigation to settle, for when the next step needs the new page loaded. Fields above are reported whichever form you use.
 - To save a round-trip: add `snap=true` to get a snapshot after the click.
 
 ### Fill input
@@ -283,8 +282,21 @@ pinchtab_close_tab(tabId="...")  # Close a specific tab
 ```
 
 - Each navigation reuses the current tab by default.
-- For research tasks, open a new tab on the server side.
+- For research tasks, navigate with `newTab=true`.
 - Use `tabId` parameter on any tool to target a specific tab.
+
+---
+
+## Human Handoff
+
+```
+pinchtab_handoff(tabId="...", reason="captcha_manual")   # Pause the tab; action tools answer tab_paused_handoff
+pinchtab_handoff_status(tabId="...")                       # paused_handoff (reason, pausedAt, expiresAt) or active
+pinchtab_resume(tabId="...")                               # Only after the user confirms they finished
+```
+
+- When an action is refused with `tab_paused_handoff`, hand control to the user and ask them to finish in the browser.
+- Resume only once the user says they are done; a `timeoutMs` handoff resumes on its own, which `pinchtab_handoff_status` shows.
 
 ---
 
@@ -345,7 +357,7 @@ For these, use the pinchtab CLI or HTTP API directly.
 
 ## Element Ref Best Practices
 
-1. **Re-snapshot after navigation; a ref survives a change of filter, selector or depth.** Always re-snapshot after `pinchtab_navigate` or `pinchtab_click(waitNav=true)` — a new document expires every ref. But within one page a ref denotes a node, so carrying `e5` from a full snapshot into an `interactive`/`selector`/`depth` read is safe and returns the same node (filtered views are sparse — `e0, e1, e6`). The tools track each snapshot's vocabulary token, so a truly stale ref surfaces as a `vocab_superseded` refusal instead of a wrong-element click.
+1. **Re-snapshot when the result says your refs are dead; a ref survives a change of filter, selector or depth.** Re-snapshot after `pinchtab_navigate` and after any result carrying `refsStale` — a new document expires every ref. Key on `refsStale`, never on whether you passed `waitNav`: the page decides whether a click navigates, and the result says which happened. But within one page a ref denotes a node, so carrying `e5` from a full snapshot into an `interactive`/`selector`/`depth` read is safe and returns the same node (filtered views are sparse — `e0, e1, e6`). The tools track each snapshot's vocabulary token, so a truly stale ref surfaces as a `vocab_superseded` refusal instead of a wrong-element click.
 2. **Use `diff=true` after interactions.** Shows only changed elements, saving tokens.
 3. **Prefer refs over CSS selectors.** Refs resolve by backend node IDs, more reliable than CSS.
 4. **Refs work across iframes.** Same-origin iframe content is flattened into the main tree — refs are clickable without frame hops.
@@ -358,7 +370,10 @@ For these, use the pinchtab CLI or HTTP API directly.
 |---------|-------|-----|
 | Connection refused | PinchTab server not running | Check container status, restart |
 | `ref not found` | Stale element ref | Re-call `pinchtab_snapshot()` |
-| `evaluate not allowed` | `security.allowEvaluate` is false | Use `pinchtab_find` instead |
+| `evaluate_disabled` | `security.allowEvaluate` is false | Use `pinchtab_find` instead |
 | `invalid URL` | Missing scheme | Include `http://` or `https://` |
 | Element not found | Page not loaded | Use `pinchtab_wait(for="selector", value=…)` |
 | Action seems ignored | Page changed mid-action | Re-snapshot, use fresh refs |
+| Snapshot looks right but clicks do nothing | A script threw on load, leaving the DOM present and handlers unwired | Call `pinchtab_errors()` (and `pinchtab_console()`) — they report why the page died |
+
+`pinchtab_console(clear=…)` and `pinchtab_errors(clear=…)` read the tab's console logs and uncaught JS exceptions. A result full of errors is a **successful** call — that payload is the diagnosis, not a tool failure — so read it rather than retrying blind.

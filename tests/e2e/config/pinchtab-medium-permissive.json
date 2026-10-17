@@ -38,6 +38,8 @@
     "allowCookies": true,
     "allowUpload": true,
     "allowStateExport": true,
+    "allowMemory": true,
+    "memorySnapshotMaxBytes": 65536,
     "allowedDomains": [
       "localhost",
       "127.0.0.1",

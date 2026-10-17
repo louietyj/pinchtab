@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/pinchtab/pinchtab/internal/activity"
+	"github.com/pinchtab/pinchtab/internal/bridge"
 )
 
 func TestIsNoCurrentTab(t *testing.T) {
@@ -36,6 +38,29 @@ func TestWriteTabContextError_NoCurrentTabIs409(t *testing.T) {
 	}
 	if got := w.Body.String(); got == "" || !bytes.Contains([]byte(got), []byte(`"no_current_tab"`)) {
 		t.Fatalf("body should include code no_current_tab, got %q", got)
+	}
+}
+
+func TestWriteTabContextError_AFailedUnfreezeIsARetryable503(t *testing.T) {
+	for name, err := range map[string]error{
+		"typed":   &bridge.TabUnfreezeError{TabID: "tab1", Err: errors.New("renderer busy")},
+		"wrapped": fmt.Errorf("resolve: %w", &bridge.TabUnfreezeError{TabID: "tab1", Err: errors.New("renderer busy")}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			WriteTabContextError(w, err, http.StatusNotFound)
+
+			var body struct {
+				Code      string `json:"code"`
+				Retryable bool   `json:"retryable"`
+			}
+			if jsonErr := json.Unmarshal(w.Body.Bytes(), &body); jsonErr != nil {
+				t.Fatal(jsonErr)
+			}
+			if w.Code != http.StatusServiceUnavailable || body.Code != "tab_unfreeze_failed" || !body.Retryable {
+				t.Fatalf("got %d %+v, want 503 tab_unfreeze_failed retryable", w.Code, body)
+			}
+		})
 	}
 }
 

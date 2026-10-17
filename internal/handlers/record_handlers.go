@@ -78,7 +78,7 @@ func (h *Handlers) HandleRecordStart(w http.ResponseWriter, r *http.Request) {
 
 	ctx, resolvedTabID, err := h.tabContext(r, req.TabID)
 	if err != nil {
-		httpx.Problem(w, http.StatusNotFound, "tab_not_found", "tab not found", false, nil)
+		WriteTabContextError(w, err, http.StatusNotFound)
 		return
 	}
 
@@ -112,7 +112,10 @@ func (h *Handlers) HandleRecordStop(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Discard bool `json:"discard"`
 	}
-	_ = httpx.DecodeJSONBody(w, r, 0, &req)
+	if err := httpx.DecodeOptionalJSONBody(w, r, 0, &req); err != nil {
+		httpx.Error(w, httpx.StatusForJSONDecodeError(err), err)
+		return
+	}
 
 	var outputPath string
 	if !req.Discard {

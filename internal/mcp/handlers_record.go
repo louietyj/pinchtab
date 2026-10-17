@@ -65,11 +65,7 @@ func handleRecordStart(c *Client) func(context.Context, mcp.CallToolRequest) (*m
 			payload["tabId"] = tabID
 		}
 
-		body, code, err := c.Post(ctx, "/record/start", payload)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return resultFromBytes(body, code)
+		return toolResult(c.Post(ctx, "/record/start", payload))
 	}
 }
 
@@ -200,10 +196,6 @@ func safeRecordPath(file string) (string, error) {
 
 func handleRecordStatus(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		body, code, err := c.Get(ctx, "/record/status", nil)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return resultFromBytes(body, code)
+		return toolResult(c.Get(ctx, "/record/status", nil))
 	}
 }

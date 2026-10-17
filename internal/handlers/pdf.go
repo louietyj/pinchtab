@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -237,37 +236,38 @@ func validatePDFTemplate(template string) error {
 // @Endpoint GET /tabs/{id}/pdf
 // @Endpoint POST /tabs/{id}/pdf
 func (h *Handlers) HandleTabPDF(w http.ResponseWriter, r *http.Request) {
-	tabID := r.PathValue("id")
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
-		return
-	}
-
 	q := r.URL.Query()
+	provided := ""
 	if r.Method == http.MethodPost {
 		var body map[string]any
-		if r.ContentLength > 0 {
-			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodySize)).Decode(&body); err != nil {
-				httpx.Error(w, 400, fmt.Errorf("decode: %w", err))
+		if !decodeOptionalJSON(w, r, &body) {
+			return
+		}
+		var err error
+		if provided, err = bodyTabID(body); err != nil {
+			httpx.Error(w, 400, err)
+			return
+		}
+		for key, value := range body {
+			if _, ok := pdfQueryParams[key]; !ok {
+				continue
+			}
+			switch v := value.(type) {
+			case string:
+				q.Set(key, v)
+			case bool:
+				q.Set(key, strconv.FormatBool(v))
+			case float64:
+				q.Set(key, strconv.FormatFloat(v, 'f', -1, 64))
+			default:
+				httpx.Error(w, 400, fmt.Errorf("invalid %s type", key))
 				return
 			}
-			for key, value := range body {
-				if _, ok := pdfQueryParams[key]; !ok {
-					continue
-				}
-				switch v := value.(type) {
-				case string:
-					q.Set(key, v)
-				case bool:
-					q.Set(key, strconv.FormatBool(v))
-				case float64:
-					q.Set(key, strconv.FormatFloat(v, 'f', -1, 64))
-				default:
-					httpx.Error(w, 400, fmt.Errorf("invalid %s type", key))
-					return
-				}
-			}
 		}
+	}
+	tabID, ok := h.requirePathTabIDMatch(w, r, provided)
+	if !ok {
+		return
 	}
 	q.Set("tabId", tabID)
 

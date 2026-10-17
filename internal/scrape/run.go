@@ -252,6 +252,30 @@ func Run(ctx context.Context, input Input, opts RunOptions, crawl Crawler, rende
 	}, nil
 }
 
+// PageMarkdown is one rendered document converted to Markdown through
+// seaportal: the body with the title and description the converter recovered,
+// plus its error. Markdown is empty when the converter errored or produced no
+// content, so a caller can fall back to raw text.
+type PageMarkdown struct {
+	Markdown    string
+	Title       string
+	Description string
+	Err         string
+}
+
+// ToMarkdown converts one document's HTML to Markdown through the seaportal
+// engine. Markdown is blank when the converter errors or yields no content;
+// Title, Description and Err are always reported. It is the single owner of the
+// (html, url) → Markdown conversion shared by enrichPage and the /text handler.
+func ToMarkdown(html, url string) PageMarkdown {
+	r := seaportal.FromHTML(html, url)
+	md := PageMarkdown{Title: r.Title, Description: r.Description, Err: r.Error}
+	if strings.TrimSpace(r.Content) != "" {
+		md.Markdown = r.Content
+	}
+	return md
+}
+
 // enrichPage renders p in the browser and replaces its content with the
 // extraction over the rendered HTML. The HTTP extraction is kept whenever
 // the browser path fails or yields nothing.
@@ -261,25 +285,25 @@ func enrichPage(p *Page, render BrowserRenderer) {
 		p.BrowserError = err.Error()
 		return
 	}
-	r := seaportal.FromHTML(html, p.URL)
-	if r.Error != "" {
-		p.BrowserError = r.Error
+	md := ToMarkdown(html, p.URL)
+	if md.Err != "" {
+		p.BrowserError = md.Err
 		return
 	}
-	if strings.TrimSpace(r.Content) == "" {
+	if md.Markdown == "" {
 		p.BrowserError = "browser extraction produced no content"
 		return
 	}
-	p.Markdown = r.Content
+	p.Markdown = md.Markdown
 	p.Source = SourceBrowser
 	// The browser reached the page and produced content, so an HTTP fetch
 	// failure no longer marks the page as failed.
 	p.Error = ""
-	if r.Title != "" {
-		p.Title = r.Title
+	if md.Title != "" {
+		p.Title = md.Title
 	}
-	if p.Meta == nil && r.Description != "" {
-		p.Meta = map[string]string{"description": r.Description}
+	if p.Meta == nil && md.Description != "" {
+		p.Meta = map[string]string{"description": md.Description}
 	}
 }
 
@@ -353,11 +377,13 @@ var regeneratedRecommendations = []string{"extractable text", "returned errors"}
 func summarize(pages []Page, inherited []string) Summary {
 	s := Summary{ContentTypes: map[string]int{}}
 	for _, p := range pages {
-		if p.ContentType != "" {
+		// A failed page is not an ordinary content sample: keep its error body out of
+		// the contentTypes taxonomy so a consumer is not told a 404 is a `page`.
+		if !PageFailed(p) && p.ContentType != "" {
 			s.ContentTypes[p.ContentType]++
 		}
 		switch {
-		case p.Error != "":
+		case PageFailed(p):
 			s.FailedPages++
 		case p.Source == SourceBrowser:
 			s.BrowserPages++
@@ -370,6 +396,22 @@ func summarize(pages []Page, inherited []string) Summary {
 	}
 	s.Recommendations = recommend(pages, s, inherited)
 	return s
+}
+
+// pageFailed reports whether a page is a failure rather than a content sample: a
+// transport error, or a 4xx/5xx response the browser did not recover. A 3xx or an
+// unset (zero) status is not a failure — the threshold is >= 400 — so a redirect
+// artefact or a page that never carried a status stays an ordinary page. A page the
+// browser rendered into content (Source browser, which enrichPage sets only on
+// success and where it clears Error) is not failed even if its HTTP status was
+// >= 400, mirroring enrichPage's rule that a recovered fetch failure no longer marks
+// the page failed; its statusCode is left intact. This is the one owner of the rule,
+// read by both the summary partition and the thin-content count.
+func PageFailed(p Page) bool {
+	if p.Error != "" {
+		return true
+	}
+	return p.StatusCode >= 400 && p.Source != SourceBrowser
 }
 
 // recommend keeps the crawl-scope advice the HTTP phase produced and regenerates the
@@ -403,7 +445,7 @@ func recommend(pages []Page, s Summary, inherited []string) []string {
 // the errors line already reports.
 func thinPages(pages []Page) (thin, unenriched int) {
 	for _, p := range pages {
-		if p.Error != "" || p.StatusCode >= 400 {
+		if PageFailed(p) {
 			continue
 		}
 		if contentChars(p) >= ThinContentChars {

@@ -213,3 +213,54 @@ func TestEveryFailedKeyProducerHasARecordedFunnelDecision(t *testing.T) {
 		t.Fatal("found no \"failed\" key producer at all; if the spelling moved, re-point this census rather than deleting it")
 	}
 }
+
+// A refusal's details.remedy is one pinchtab CLI line the CLI renders verbatim, but an
+// MCP agent runs tools, not a shell. The funnel must translate the remedy's verb into the
+// matching tool and name the parameter its value fills — not by the pinchtab_<verb>
+// convention, which mis-named the tool (nav → pinchtab_navigate) and mis-labelled the
+// argument (dialog's positional is its action, not a tab id).
+func TestMCPRefusalTranslatesTheRemedyIntoAToolCall(t *testing.T) {
+	for _, tc := range []struct {
+		name, remedy, want string
+	}{
+		{"resume", "pinchtab resume tab1", "call pinchtab_resume with tabId tab1"},
+		{"dialog action, not a tab", "pinchtab dialog accept", "call pinchtab_dialog with action accept"},
+		{"nav renames the tool and fills url", "pinchtab nav https://example.test", "call pinchtab_navigate with url https://example.test"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte(`{"code":"x","details":{"remedy":"` + tc.remedy + `"}}`)
+			result, err := resultFromBytes(body, http.StatusConflict)
+			if err != nil {
+				t.Fatalf("resultFromBytes: %v", err)
+			}
+			if !result.IsError {
+				t.Fatal("a 409 refusal must reach the agent as an error")
+			}
+			if text := resultText(t, result); !strings.Contains(text, tc.want) {
+				t.Fatalf("MCP guidance = %q, want it to contain %q", text, tc.want)
+			}
+		})
+	}
+
+	// A verb with no MCP counterpart (config, server, session, …) adds no guidance;
+	// the raw body stands alone rather than inventing a pinchtab_config tool.
+	noTool := []byte(`{"code":"x","details":{"remedy":"pinchtab config set security.allowCookies true"}}`)
+	noToolResult, err := resultFromBytes(noTool, http.StatusConflict)
+	if err != nil {
+		t.Fatalf("resultFromBytes: %v", err)
+	}
+	if quiet := resultText(t, noToolResult); strings.Contains(quiet, "call pinchtab_") {
+		t.Fatalf("a verb with no MCP counterpart produced tool guidance: %q", quiet)
+	}
+}
+
+// Every mapping entry must name a registered tool and a real parameter of it, or the guidance
+// cites a tool or argument the agent's client does not expose. The whole-binary census
+// (cmd/pinchtab) proves the other direction — that every declared remedy verb is covered.
+func TestRemedyVerbToolsNameRealToolParameters(t *testing.T) {
+	for verb, tool := range remedyVerbTools {
+		if !ToolInputHasParam(tool.name, tool.param) {
+			t.Errorf("verb %q maps to tool %q param %q, which is not a registered tool with that parameter", verb, tool.name, tool.param)
+		}
+	}
+}

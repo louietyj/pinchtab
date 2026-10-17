@@ -38,3 +38,18 @@ var networkUnrouteCmd = &cobra.Command{
 		})
 	},
 }
+
+var networkRulesCmd = &cobra.Command{
+	Use:   "rules",
+	Short: "List the interception rules installed on the active tab",
+	Long: `List every interception rule on the active tab, one per line as pattern (action):
+continue passes the request through, abort blocks it, fulfill answers it with the
+rule's body instead of the real server. Rules survive navigation, so a tab you did not
+set up can be mocking or blocking traffic; an empty list means it does neither.`,
+	Args: cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		runCLI(func(rt cliRuntime) {
+			browseractions.NetworkRules(rt.client, rt.base, rt.token, cmd)
+		})
+	},
+}

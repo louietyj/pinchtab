@@ -109,7 +109,7 @@ func loadRunCookies(cmd *cobra.Command) ([]audit.Cookie, error) {
 // setRunCookies injects cookies through POST /cookies, using a throwaway
 // blank tab for the required tab context so it works on a fresh browser.
 func setRunCookies(client *http.Client, base, token, url string, cookies []audit.Cookie) error {
-	raw, err := apiclient.DoPostRawE(client, base, token, "/tab", map[string]any{"action": "new"})
+	raw, err := apiclient.DoRawE(client, base, token, http.MethodPost, "/tab", apiclient.WithBody(map[string]any{"action": "new"}))
 	if err != nil {
 		return err
 	}
@@ -120,13 +120,15 @@ func setRunCookies(client *http.Client, base, token, url string, cookies []audit
 		return fmt.Errorf("parse temporary tab: %w", err)
 	}
 	if tab.TabID != "" {
-		defer func() { _, _ = apiclient.DoPostRawE(client, base, token, "/close", map[string]any{"tabId": tab.TabID}) }()
+		defer func() {
+			_, _ = apiclient.DoRawE(client, base, token, http.MethodPost, "/close", apiclient.WithBody(map[string]any{"tabId": tab.TabID}))
+		}()
 	}
 	body := map[string]any{"url": url, "cookies": cookies}
 	if tab.TabID != "" {
 		body["tabId"] = tab.TabID
 	}
-	raw, err = apiclient.DoPostRawE(client, base, token, "/cookies", body)
+	raw, err = apiclient.DoRawE(client, base, token, http.MethodPost, "/cookies", apiclient.WithBody(body))
 	if err != nil {
 		return err
 	}
@@ -147,7 +149,7 @@ func setRunCookies(client *http.Client, base, token, url string, cookies []audit
 // startIsolatedInstance creates an unnamed instance. The orchestrator assigns
 // these an instance-* profile and removes its profile directory on stop.
 func startIsolatedInstance(client *http.Client, base, token string) (string, func() error, error) {
-	raw, err := apiclient.DoPostRawE(client, base, token, "/instances/start", map[string]any{})
+	raw, err := apiclient.DoRawE(client, base, token, http.MethodPost, "/instances/start", apiclient.WithBody(map[string]any{}))
 	if err != nil {
 		return "", nil, fmt.Errorf("start isolated instance: %w", err)
 	}
@@ -162,7 +164,7 @@ func startIsolatedInstance(client *http.Client, base, token string) (string, fun
 		return "", nil, fmt.Errorf("start isolated instance: response omitted id or url")
 	}
 	cleanup := func() error {
-		_, err := apiclient.DoPostRawE(client, base, token, "/instances/"+url.PathEscape(instance.ID)+"/stop", nil)
+		_, err := apiclient.DoRawE(client, base, token, http.MethodPost, "/instances/"+url.PathEscape(instance.ID)+"/stop")
 		if err != nil {
 			return fmt.Errorf("stop isolated instance: %w", err)
 		}
@@ -186,7 +188,7 @@ func waitForIsolatedInstance(client *http.Client, base, token, instanceID string
 	path := "/instances/" + url.PathEscape(instanceID)
 
 	for {
-		raw, err := apiclient.DoGetRawE(client, base, token, path, nil)
+		raw, err := apiclient.DoRawE(client, base, token, http.MethodGet, path)
 		if err == nil {
 			var instance struct {
 				Status string `json:"status"`
@@ -215,7 +217,7 @@ func waitForIsolatedInstance(client *http.Client, base, token, instanceID string
 // through the orchestrator proxy. Child URLs normally bind to localhost and
 // are therefore not reachable by remote CLI clients.
 func resolveProfileBase(client *http.Client, base, token, profile string) (string, error) {
-	raw, err := apiclient.DoGetRawE(client, base, token, "/instances", nil)
+	raw, err := apiclient.DoRawE(client, base, token, http.MethodGet, "/instances")
 	if err != nil {
 		return "", err
 	}
@@ -311,7 +313,7 @@ func Audit(client *http.Client, base, token string, cmd *cobra.Command, target s
 	}
 
 	longClient := &http.Client{Transport: client.Transport, Timeout: auditTimeout}
-	raw, err := apiclient.DoPostRawE(longClient, base, token, "/audit", body)
+	raw, err := apiclient.DoRawE(longClient, base, token, http.MethodPost, "/audit", apiclient.WithBody(body))
 	if err != nil {
 		return err
 	}
@@ -505,7 +507,11 @@ func printAuditSummary(report map[string]any) {
 func auditSummaryLines(report audit.AuditReport) []string {
 	failed, broken, jsErrors := 0, 0, 0
 	for _, p := range report.Pages {
-		if p.Error != "" {
+		// A page failed when the audit could not collect it (transport Error) OR
+		// when its own document returned 4xx/5xx — the latter has no Error, so it
+		// used to read as ok. The main-document failure is not in BrokenAssets
+		// (dropped in ToPageResult), so broken counts only failed sub-resources.
+		if p.Error != "" || p.StatusCode >= 400 {
 			failed++
 		}
 		broken += len(p.Browser.BrokenAssets)

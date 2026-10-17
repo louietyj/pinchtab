@@ -180,21 +180,23 @@ type securityDefaultsState struct {
 }
 
 type securityConfigValues struct {
-	AllowEvaluate         bool
-	AllowMacro            bool
-	AllowScreencast       bool
-	AllowDownload         bool
-	AllowCookies          bool
-	AllowNetworkIntercept bool
-	DownloadMaxBytes      int
-	AllowUpload           bool
-	UploadMaxRequestBytes int
-	UploadMaxFiles        int
-	UploadMaxFileBytes    int
-	UploadMaxTotalBytes   int
-	MaxRedirects          int
-	AttachEnabled         bool
-	IDPI                  config.IDPIConfig
+	AllowEvaluate          bool
+	AllowMacro             bool
+	AllowScreencast        bool
+	AllowDownload          bool
+	AllowCookies           bool
+	AllowNetworkIntercept  bool
+	AllowMemory            bool
+	DownloadMaxBytes       int
+	MemorySnapshotMaxBytes int
+	AllowUpload            bool
+	UploadMaxRequestBytes  int
+	UploadMaxFiles         int
+	UploadMaxFileBytes     int
+	UploadMaxTotalBytes    int
+	MaxRedirects           int
+	AttachEnabled          bool
+	IDPI                   config.IDPIConfig
 }
 
 func securityDefaultsSnapshot(fc *config.FileConfig) securityDefaultsState {
@@ -205,7 +207,7 @@ func securityDefaultsSnapshot(fc *config.FileConfig) securityDefaultsState {
 		Bind:  fc.Server.Bind,
 		Token: fc.Server.Token,
 		Security: securityConfigValues{
-			IDPI: fc.Security.IDPI,
+			IDPI: fc.Security.EffectiveIDPI(),
 		},
 	}
 	if fc.Security.AllowEvaluate != nil {
@@ -226,8 +228,14 @@ func securityDefaultsSnapshot(fc *config.FileConfig) securityDefaultsState {
 	if fc.Security.AllowNetworkIntercept != nil {
 		s.Security.AllowNetworkIntercept = *fc.Security.AllowNetworkIntercept
 	}
+	if fc.Security.AllowMemory != nil {
+		s.Security.AllowMemory = *fc.Security.AllowMemory
+	}
 	if fc.Security.DownloadMaxBytes != nil {
 		s.Security.DownloadMaxBytes = *fc.Security.DownloadMaxBytes
+	}
+	if fc.Security.MemorySnapshotMaxBytes != nil {
+		s.Security.MemorySnapshotMaxBytes = *fc.Security.MemorySnapshotMaxBytes
 	}
 	if fc.Security.AllowUpload != nil {
 		s.Security.AllowUpload = *fc.Security.AllowUpload

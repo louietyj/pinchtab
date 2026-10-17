@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -88,22 +89,34 @@ func WasUncleanExit(profileDir string) bool {
 	return strings.Contains(prefs, `"exit_type":"Crashed"`) || strings.Contains(prefs, `"exit_type": "Crashed"`)
 }
 
+// isSessionRestoreFile reports whether Chrome replays name on its next launch.
+// Current Chrome writes timestamped Session_<ts> and Tabs_<ts> files; the fixed
+// names are what older builds used.
+func isSessionRestoreFile(name string) bool {
+	return slices.Contains(sessionRestoreFiles, name) ||
+		strings.HasPrefix(name, "Session_") || strings.HasPrefix(name, "Tabs_")
+}
+
 func ClearChromeSessions(profileDir string) {
 	sessionsDir := filepath.Join(profileDir, "Default", "Sessions")
-	if _, err := os.Stat(sessionsDir); os.IsNotExist(err) {
+	entries, err := os.ReadDir(sessionsDir)
+	if err != nil {
 		return
 	}
 
-	var failed []string
-	for _, name := range sessionRestoreFiles {
-		p := filepath.Join(sessionsDir, name)
-		if err := retryRemove(p, 3); err != nil {
-			failed = append(failed, name)
-			slog.Warn("failed to remove session file", "file", name, "err", err)
+	removed := 0
+	for _, entry := range entries {
+		if entry.IsDir() || !isSessionRestoreFile(entry.Name()) {
+			continue
 		}
+		if err := retryRemove(filepath.Join(sessionsDir, entry.Name()), 3); err != nil {
+			slog.Warn("failed to remove session file", "file", entry.Name(), "err", err)
+			continue
+		}
+		removed++
 	}
-	if len(failed) == 0 {
-		slog.Info("cleared Chrome session restore files")
+	if removed > 0 {
+		slog.Info("cleared Chrome session restore files", "count", removed)
 	}
 }
 

@@ -83,12 +83,6 @@ const MaxRulesPerTab = 100
 // MaxRulesPerTab rules and the incoming rule is not a same-pattern replace.
 var ErrTooManyRules = errors.New("too many interception rules on this tab")
 
-// ErrTabNotRouted is returned by Remove when the tab has no rule state
-// registered with the manager — distinct from "tab found, pattern matched
-// nothing" which returns (0, nil). Callers can map this to a 404 to
-// differentiate from a benign no-op removal.
-var ErrTabNotRouted = errors.New("tab has no interception rules registered")
-
 // AddRule installs (or replaces, by Pattern) a rule for the given tab.
 func (rm *RouteManager) AddRule(ctx context.Context, tabID string, rule RouteRule) error {
 	if rm == nil {
@@ -257,7 +251,7 @@ func (rm *RouteManager) Remove(ctx context.Context, tabID string, pattern string
 	state := rm.perTab[tabID]
 	if state == nil {
 		rm.mu.Unlock()
-		return 0, ErrTabNotRouted
+		return 0, nil
 	}
 
 	removed := 0
@@ -348,13 +342,13 @@ func (rm *RouteManager) RemoveTab(tabID string) {
 
 func (rm *RouteManager) List(tabID string) []RouteRule {
 	if rm == nil {
-		return nil
+		return []RouteRule{}
 	}
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 	state := rm.perTab[tabID]
 	if state == nil {
-		return nil
+		return []RouteRule{}
 	}
 	out := make([]RouteRule, len(state.rules))
 	copy(out, state.rules)

@@ -87,6 +87,10 @@ func NewBridgeAdapter(chromeBridge bridge.BridgeAPI, cfg *config.RuntimeConfig) 
 	}
 }
 
+func (a *BridgeAdapter) Unwrap() bridge.BridgeAPI {
+	return a.BridgeAPI
+}
+
 func ensureBrowser(b bridge.BridgeAPI, cfg *config.RuntimeConfig) error {
 	return b.EnsureBrowser(cfg)
 }

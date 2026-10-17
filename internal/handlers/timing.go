@@ -22,7 +22,7 @@ func (h *Handlers) HandleTiming(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	defer h.armAutoCloseIfEnabled(resolvedTabID)
+	defer h.armIdleLifecycle(resolvedTabID)
 	defer cancel()
 
 	// Paint metrics (FCP/LCP) only fire on visible pages; background tabs

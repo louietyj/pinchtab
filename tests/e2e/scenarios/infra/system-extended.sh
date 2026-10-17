@@ -15,7 +15,11 @@ assert_ok "navigate"
 pt_get "/instances/metrics"
 assert_ok "get instance metrics"
 assert_json_exists "$RESULT" '.[0].instanceId'
-assert_json_exists "$RESULT" '.[0].jsHeapUsedMB'
+# The measured fields this endpoint used to drop, pinned on the wire: it once
+# published only values derived from memoryMB while omitting memoryMB itself.
+assert_json_exists "$RESULT" '.[0].memoryMB'
+assert_json_exists "$RESULT" '.[0].renderers'
+assert_json_not_exists "$RESULT" '.[0].jsHeapUsedMB' "no derived heap field on the wire"
 
 end_test
 
@@ -462,6 +466,23 @@ else
   echo -e "  ${RED}✗${NC} unexpected state: $STATE"
   ((ASSERTIONS_FAILED++)) || true
 fi
+
+end_test
+
+# ─────────────────────────────────────────────────────────────────
+start_test "a scheduled task runs to done on the managed instance"
+
+pt_post /tasks -d "{\"agentId\":\"${AGENT}-run\",\"action\":\"hover\",\"selector\":\"body\",\"tabId\":\"${TAB_ID}\"}"
+assert_http_status "202" "task accepted"
+RUN_TASK_ID=$(echo "$RESULT" | jq -r '.taskId')
+RUN_STATE=""
+for _ in $(seq 1 100); do
+  pt_get "/tasks/${RUN_TASK_ID}"
+  RUN_STATE=$(echo "$RESULT" | jq -r '.state // empty')
+  case "$RUN_STATE" in queued|assigned|running|"") sleep 0.1 ;; *) break ;; esac
+done
+assert_json_eq "$RESULT" ".state" "done" "the executor reached the instance and the task completed"
+assert_json_eq "$RESULT" ".error // \"\"" "" "no executor error"
 
 end_test
 

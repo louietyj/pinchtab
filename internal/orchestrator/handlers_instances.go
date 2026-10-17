@@ -14,7 +14,10 @@ import (
 	"github.com/pinchtab/pinchtab/internal/bridge"
 	"github.com/pinchtab/pinchtab/internal/config"
 	"github.com/pinchtab/pinchtab/internal/httpx"
+	"github.com/pinchtab/pinchtab/internal/remedy"
 )
+
+var createMissingProfile = remedy.Declare("pinchtab profiles create <name>")
 
 type startInstanceRequest struct {
 	ProfileID       string                 `json:"profileId,omitempty"`
@@ -51,11 +54,9 @@ func (o *Orchestrator) handleLaunchByName(w http.ResponseWriter, r *http.Request
 		Name string `json:"name,omitempty"`
 	}
 
-	if r.ContentLength > 0 {
-		if err := httpx.DecodeJSONBody(w, r, 0, &req); err != nil {
-			httpx.Error(w, httpx.StatusForJSONDecodeError(err), fmt.Errorf("invalid JSON"))
-			return
-		}
+	if err := httpx.DecodeOptionalJSONBody(w, r, 0, &req); err != nil {
+		httpx.Error(w, httpx.StatusForJSONDecodeError(err), err)
+		return
 	}
 
 	if req.Name != "" {
@@ -228,11 +229,9 @@ func (o *Orchestrator) handleLogsStreamByID(w http.ResponseWriter, r *http.Reque
 func (o *Orchestrator) handleStartInstance(w http.ResponseWriter, r *http.Request) {
 	var req startInstanceRequest
 
-	if r.ContentLength > 0 {
-		if err := httpx.DecodeJSONBody(w, r, 0, &req); err != nil {
-			httpx.Error(w, httpx.StatusForJSONDecodeError(err), fmt.Errorf("invalid JSON"))
-			return
-		}
+	if err := httpx.DecodeOptionalJSONBody(w, r, 0, &req); err != nil {
+		httpx.Error(w, httpx.StatusForJSONDecodeError(err), err)
+		return
 	}
 
 	o.startInstanceWithRequest(w, r, req, "instance.started")
@@ -254,7 +253,9 @@ func (o *Orchestrator) startInstanceWithRequest(w http.ResponseWriter, r *http.R
 	if req.ProfileID != "" {
 		profileName, err = o.resolveProfileName(req.ProfileID)
 		if err != nil {
-			httpx.Error(w, 404, fmt.Errorf("profile %q not found", req.ProfileID))
+			details := remedy.Details("Creating and authenticating a reusable profile is a human setup step.", createMissingProfile.Fill(req.ProfileID))
+			details["profile"] = req.ProfileID
+			httpx.ErrorCode(w, http.StatusNotFound, "profile_not_found", fmt.Sprintf("profile %q not found", req.ProfileID), false, details)
 			return
 		}
 	} else {
@@ -312,7 +313,7 @@ func validateStartInstanceSecurityPolicy(policy *bridge.SecurityPolicy) error {
 	errs := config.ValidateFileConfig(&config.FileConfig{
 		Security: config.SecurityConfig{
 			AllowedDomains: append([]string(nil), policy.AllowedDomains...),
-			IDPI: config.IDPIConfig{
+			IDPI: &config.IDPIConfig{
 				Enabled: true,
 			},
 		},
@@ -369,7 +370,7 @@ func (o *Orchestrator) handleAttachInstance(w http.ResponseWriter, r *http.Reque
 	}
 
 	if err := httpx.DecodeJSONBody(w, r, 0, &req); err != nil {
-		httpx.Error(w, httpx.StatusForJSONDecodeError(err), fmt.Errorf("invalid JSON"))
+		httpx.Error(w, httpx.StatusForJSONDecodeError(err), err)
 		return
 	}
 
@@ -392,8 +393,8 @@ func (o *Orchestrator) handleAttachInstance(w http.ResponseWriter, r *http.Reque
 		attachBrowser = req.Provider
 	}
 
-	if attachBrowser != "" && o.runtimeCfg != nil && len(o.runtimeCfg.Targets) > 0 {
-		matches := config.TargetsForBrowser(o.runtimeCfg, attachBrowser)
+	if cfg := o.cfg(); attachBrowser != "" && cfg != nil && len(cfg.Targets) > 0 {
+		matches := config.TargetsForBrowser(cfg, attachBrowser)
 		if len(matches) == 0 {
 			httpx.Error(w, 400, fmt.Errorf("no browser target configured for browser %q", attachBrowser))
 			return
@@ -425,7 +426,7 @@ func (o *Orchestrator) handleAttachBridge(w http.ResponseWriter, r *http.Request
 	}
 
 	if err := httpx.DecodeJSONBody(w, r, 0, &req); err != nil {
-		httpx.Error(w, httpx.StatusForJSONDecodeError(err), fmt.Errorf("invalid JSON"))
+		httpx.Error(w, httpx.StatusForJSONDecodeError(err), err)
 		return
 	}
 	if req.BaseURL == "" {
@@ -512,11 +513,12 @@ func (o *Orchestrator) probeAttachBridge(baseURL, token string) error {
 }
 
 func (o *Orchestrator) validateAttachURL(rawURL string) error {
-	if o.runtimeCfg == nil {
+	cfg := o.cfg()
+	if cfg == nil {
 		return fmt.Errorf("attach not configured")
 	}
 
-	if !o.runtimeCfg.AttachEnabled {
+	if !cfg.AttachEnabled {
 		return fmt.Errorf("attach is disabled")
 	}
 
@@ -526,14 +528,14 @@ func (o *Orchestrator) validateAttachURL(rawURL string) error {
 	}
 
 	schemeAllowed := false
-	for _, allowed := range o.runtimeCfg.AttachAllowSchemes {
+	for _, allowed := range cfg.AttachAllowSchemes {
 		if parsed.Scheme == allowed {
 			schemeAllowed = true
 			break
 		}
 	}
 	if !schemeAllowed {
-		return fmt.Errorf("scheme %q not allowed (allowed: %v)", parsed.Scheme, o.runtimeCfg.AttachAllowSchemes)
+		return fmt.Errorf("scheme %q not allowed (allowed: %v)", parsed.Scheme, cfg.AttachAllowSchemes)
 	}
 
 	if parsed.Scheme == "http" || parsed.Scheme == "https" {
@@ -550,8 +552,8 @@ func (o *Orchestrator) validateAttachURL(rawURL string) error {
 	}
 
 	host := parsed.Hostname()
-	if !isAllowedAttachHost(host, o.runtimeCfg.AttachAllowHosts) {
-		return fmt.Errorf("host %q not allowed (allowed: %v)", host, o.runtimeCfg.AttachAllowHosts)
+	if !isAllowedAttachHost(host, cfg.AttachAllowHosts) {
+		return fmt.Errorf("host %q not allowed (allowed: %v)", host, cfg.AttachAllowHosts)
 	}
 
 	return nil

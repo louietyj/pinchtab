@@ -4,29 +4,22 @@ PinchTab can run as a user-level background service (daemon) on macOS (`launchd`
 
 This workflow is not currently provided on Windows. Windows binaries are available, but Windows support is limited and best-effort; on Windows, prefer running `pinchtab server` or `pinchtab bridge` directly.
 
-![Daemon Status & Picker](../media/daemon-status.png)
-
 ## Quick Start
 
-The normal entrypoints are:
-
-```bash
-pinchtab
-```
-
-Then choose `Daemon` from the menu, or manage the service directly:
+Check the service, then install it:
 
 ```bash
 pinchtab daemon
+pinchtab daemon install
 ```
 
-When run without arguments in an interactive terminal, this command shows the current status and opens a picker for common actions.
+Without an action, `pinchtab daemon` prints the current status, the commands that apply to that state, and recent logs. It does not open a picker; run the action you want directly. `pinchtab daemon --json` prints the status as JSON.
 
 ## Daemon Commands
 
 | Command | Description |
 |---------|-------------|
-| `pinchtab daemon` | Show status summary, recent logs, and open interactive picker. |
+| `pinchtab daemon` | Show status summary, next commands, and recent logs (`status` is an alias). |
 | `pinchtab daemon install` | Create and enable the background service file. |
 | `pinchtab daemon start` | Start the background service if it is stopped. |
 | `pinchtab daemon stop` | Stop the background service. |
@@ -38,10 +31,10 @@ When run without arguments in an interactive terminal, this command shows the cu
 The `pinchtab daemon` command provides a comprehensive overview of the service:
 
 - **Service Status**: Shows if the `.plist` (macOS) or `.service` (Linux) file is installed.
-- **State**: Indicates if the process is `active (running)` or `stopped`.
+- **State**: Indicates if the process is `running` or `stopped`.
 - **PID**: The Process ID of the running server.
 - **Path**: The exact location of the service configuration file on your system.
-- **Recent Logs**: The last few lines of output from the server to help diagnose issues.
+- **Recent Logs**: The last few lines of output from the server to help diagnose issues (the full logs are `~/.pinchtab/logs/daemon.out.log` and `daemon.err.log`).
 
 ## Manual Installation
 
@@ -59,7 +52,7 @@ In those cases, use the manual steps below or run `pinchtab server` in the foreg
 ### macOS (launchd)
 Service file: `~/Library/LaunchAgents/com.pinchtab.pinchtab.plist`
 
-1. Create the plist file (PinchTab will provide the content on error).
+1. Create the plist file (the error output names the path to create).
 2. Register and start:
    ```bash
    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.pinchtab.pinchtab.plist

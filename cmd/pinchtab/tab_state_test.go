@@ -264,3 +264,27 @@ func TestAnExplicitTabIsNotAnnouncedAsCached(t *testing.T) {
 		t.Errorf("announced %q when --tab was set explicitly", got)
 	}
 }
+
+func TestAnInvalidServerBaseLeavesTheTabStateInconclusiveWithoutExiting(t *testing.T) {
+	oldServerURL := serverURL
+	serverURL = ""
+	t.Cleanup(func() { serverURL = oldServerURL })
+	t.Setenv("PINCHTAB_SERVER", "127.0.0.1:9867")
+	t.Setenv("PINCHTAB_SESSION", "")
+	t.Setenv("PINCHTAB_AGENT_ID", "")
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	oldExit := osExit
+	osExit = func(code int) { t.Fatalf("the tab-state helpers exited with %d on an invalid base", code) }
+	t.Cleanup(func() { osExit = oldExit })
+
+	if got := defaultTabState.probe("tab1"); got != tabProbeInconclusive {
+		t.Fatalf("probe = %v, want inconclusive", got)
+	}
+	if defaultTabState.useLocal() {
+		t.Fatal("an invalid base must mean no cached-tab state")
+	}
+	if got := defaultTabState.resolveArg(nil); got != "" {
+		t.Fatalf("resolveArg = %q, want no cached tab", got)
+	}
+	defaultTabState.announceCachedTab("tab1")
+}

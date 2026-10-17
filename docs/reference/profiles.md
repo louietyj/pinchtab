@@ -16,25 +16,35 @@ curl http://localhost:9867/profiles
 
 # CLI Alternative (human-readable by default)
 pinchtab profiles
-# Output: prof_278be873  work
+# Output (tab-separated): prof_278be873  work
 
 pinchtab profiles --json              # Full JSON response
 ```
 
-`pinchtab profiles` is the simplest way to see available profiles from the CLI.
+`pinchtab profiles` is the simplest way to see available profiles from the CLI. Quarantined
+profiles are listed separately after the live ones, with their size.
 
-Response shape:
+Response shape (every field is always present; the same object is returned by `GET /profiles/{id}`):
 
 ```json
 [
   {
     "id": "prof_278be873",
     "name": "work",
+    "path": "/path/to/profiles/work",
+    "pathExists": true,
     "created": "2026-02-27T20:37:13.599055326Z",
+    "lastUsed": "2026-03-01T09:12:44Z",
     "diskUsage": 534952089,
     "sizeMB": 510.17,
     "running": false,
+    "quarantined": false,
+    "temporary": false,
     "source": "created",
+    "chromeProfileName": "",
+    "accountEmail": "",
+    "accountName": "",
+    "hasAccount": false,
     "useWhen": "Use for work accounts",
     "description": ""
   }
@@ -44,7 +54,7 @@ Response shape:
 Notes:
 
 - `GET /profiles` excludes temporary auto-generated instance profiles by default
-- use `GET /profiles?all=true` to include temporary profiles
+- use `GET /profiles?all=true` to include temporary profiles (`"temporary": true`)
 
 ## Get One Profile
 
@@ -57,8 +67,12 @@ curl http://localhost:9867/profiles/prof_278be873
   "path": "/path/to/profiles/work",
   "pathExists": true,
   "created": "2026-02-27T20:37:13.599055326Z",
+  "lastUsed": "2026-03-01T09:12:44Z",
   "diskUsage": 534952089,
   "sizeMB": 510.17,
+  "running": false,
+  "quarantined": false,
+  "temporary": false,
   "source": "created",
   "chromeProfileName": "Your Chrome",
   "accountEmail": "admin@pinchtab.com",
@@ -87,8 +101,9 @@ curl -X POST http://localhost:9867/profiles \
 
 Notes:
 
-- there is no `pinchtab profile create` CLI command
+- `name` is required; `description` and `useWhen` are optional
 - both `POST /profiles` and `POST /profiles/create` work for creating profiles
+- the CLI form is `pinchtab profiles create <name>`, which prints the new `id` and `name`
 
 ## Update A Profile
 
@@ -118,6 +133,9 @@ Important:
 - using the profile name in that path returns an error
 - a rename changes the generated profile ID because IDs are derived from the name
 
+`PATCH /profiles/meta` updates `description` and/or `useWhen` for the profile named by `name`
+in the body, and answers `{"status":"updated","name":"..."}`.
+
 ## Delete A Profile
 
 ```bash
@@ -130,7 +148,8 @@ curl -X DELETE http://localhost:9867/profiles/prof_278be873
 }
 ```
 
-`DELETE /profiles/{id}` also requires the profile ID.
+`DELETE /profiles/{id}` also requires the profile ID. Add `?force=true` to delete a profile
+that still has an instance; the response then names that instance as `orphanedInstance`.
 
 ## Start Or Stop By Profile
 
@@ -164,7 +183,10 @@ curl -X POST http://localhost:9867/profiles/prof_278be873/stop
 }
 ```
 
-For these orchestrator routes, the path can be a profile ID or profile name. The returned instance object now includes both `mode` and `headless`.
+For these orchestrator routes, the path can be a profile ID or profile name. Start answers `201` with the
+instance object (see [Instances](./instances.md)), which includes both `mode` and `headless`. Its body takes
+`headless` (default `false`, so omitting it starts a headed browser), `port`, `securityPolicy`, `browser`
+and `fallbackTargets`.
 
 ## Check Whether A Profile Has A Running Instance
 
@@ -173,12 +195,17 @@ curl http://localhost:9867/profiles/prof_278be873/instance
 # Response
 {
   "name": "work",
+  "exists": true,
   "running": true,
   "status": "running",
   "port": "9868",
   "id": "inst_ea2e747f"
 }
 ```
+
+`status` is `running` or `starting` when an instance exists (`id` is then set), `stopped` when it
+does not, and `missing` (with `exists: false` and a `message`) when the profile does not exist.
+The route always answers `200`.
 
 ## Additional Profile Operations
 
@@ -188,7 +215,7 @@ curl http://localhost:9867/profiles/prof_278be873/instance
 curl -X POST http://localhost:9867/profiles/prof_278be873/reset
 ```
 
-This route requires the profile ID.
+This route requires the profile ID and answers `{"status":"reset","id":"...","name":"..."}`.
 
 ### Import A Profile
 
@@ -197,6 +224,25 @@ curl -X POST http://localhost:9867/profiles/import \
   -H "Content-Type: application/json" \
   -d '{"name":"imported-profile","sourcePath":"/path/to/existing/profile"}'
 ```
+
+`name` and `sourcePath` are required; `description` and `useWhen` are optional. The response is
+`{"status":"imported","name":"..."}`.
+
+### Prune Quarantined Profiles
+
+```bash
+curl -X POST http://localhost:9867/profiles/prune
+curl -X POST http://localhost:9867/profiles/prune \
+  -H "Content-Type: application/json" \
+  -d '{"confirm":true}'
+# CLI Alternative
+pinchtab profiles prune              # list what would be removed
+pinchtab profiles prune --confirm    # remove it
+```
+
+Without `confirm` (body or `?confirm=true`) nothing is deleted and the response lists what would be.
+`profile` (body or query) limits it to one quarantined directory. The response is
+`{"removed":<bool>,"count":N,"totalBytes":N,"profiles":[{"name","path","bytes"}]}`.
 
 ### Get Logs
 

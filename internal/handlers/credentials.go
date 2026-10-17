@@ -135,7 +135,7 @@ func (h *Handlers) setCredentials(w http.ResponseWriter, r *http.Request, req cr
 	// Non-empty username requires password field (empty password is allowed).
 	// Empty username means "clear credentials".
 
-	ctx, resolvedTabID, ok := h.guardedTabContext(w, r, req.TabID, guardDomainPolicy|guardHandoffPause)
+	ctx, resolvedTabID, ok := h.guardedTabContext(w, r, req.TabID, guardDialogBlocked|guardDomainPolicy|guardHandoffPause)
 	if !ok {
 		return
 	}

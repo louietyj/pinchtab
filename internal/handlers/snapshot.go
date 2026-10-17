@@ -68,12 +68,91 @@ func attachIgnoredParams(data map[string]any, ignored []string) map[string]any {
 	return data
 }
 
-// writeIgnoredParamsComment is the same disclosure for the plain-text formats, in the
-// comment shape those responses already use for hints.
-func writeIgnoredParamsComment(w http.ResponseWriter, ignored []string) {
-	if len(ignored) > 0 {
-		_, _ = fmt.Fprintf(w, "# ignored params: %s\n", strings.Join(ignored, ", "))
+// estimateSnapshotTokens converts framing bytes into the same tokens the truncator
+// charges nodes in. Four bytes per token is the approximation the budget rests on,
+// and the reserve has to be denominated in it or the two halves of the ceiling
+// would be measured in different units.
+//
+// It rounds UP where the truncator's charge rounds down, and the asymmetry is the
+// point: a charge that rounds down can spend a fraction of a token it did not pay
+// for, while a reserve that rounds down leaves a fraction of the framing unfunded.
+// Both were floors to begin with, and the two remainders met — framing of 44.75
+// tokens reserved 44, and a 100-token budget returned 101.
+func estimateSnapshotTokens(bytes int) int {
+	return (bytes + 3) / 4
+}
+
+// snapshotFramingReserve is what this reply costs before a node is written. The
+// untrusted-content wrapper is included when the configuration turns it on: it is
+// decided by config rather than by the scan — scanSnapshotIDPI reads
+// IDPI.Enabled && IDPI.WrapContent — so it is knowable here, ahead of the scan
+// that deliberately runs after truncation. It is also the larger of the two
+// framings, being a fixed advisory paragraph.
+func (h *Handlers) snapshotFramingReserve(format, title, url string, count int, scope *frameDisclosure, hint string, ignored []string, maxTokens int) int {
+	var header string
+	switch format {
+	case "text":
+		header = snapshotTextHeader(title, url, count, scope)
+	default:
+		header = snapshotCompactHeader(title, url, count, scope)
 	}
+	n := len(snapshotFraming(format, header, hint, ignored, true, maxTokens))
+	if h.Config != nil && h.Config.IDPI.Enabled && h.Config.IDPI.WrapContent && h.IDPIGuard != nil {
+		n += len(h.IDPIGuard.WrapContent("", url))
+	}
+	return n
+}
+
+// snapshotFramingIsReserved reports whether the reply carries the plain-text framing
+// the reserve prices. json and yaml carry no header or advisory — only the node
+// array is budgeted — and a file export writes its own layout.
+func snapshotFramingIsReserved(format, output string) bool {
+	return output != "file" && (format == "compact" || format == "text")
+}
+
+// snapshotNodeBudget is what is left of maxTokens for nodes once the framing is paid
+// for. It holds back one token more than the framing: the truncator rounds its
+// charge down, so it can spend up to three bytes past the budget it is handed.
+func (h *Handlers) snapshotNodeBudget(format, output, title, url string, count int, scope *frameDisclosure, hint string, ignored []string, maxTokens int) int {
+	if !snapshotFramingIsReserved(format, output) {
+		return maxTokens
+	}
+	reserve := estimateSnapshotTokens(h.snapshotFramingReserve(format, title, url, count, scope, hint, ignored, maxTokens))
+	return max(maxTokens-reserve-1, 0)
+}
+
+func ignoredParamsComment(ignored []string) string {
+	if len(ignored) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("# ignored params: %s\n", strings.Join(ignored, ", "))
+}
+
+// snapshotFraming is everything the caller is sent that is not a node: the header,
+// the hint, the ignored-params comment, and the blank line the text layout puts
+// between them and the tree.
+//
+// It is built once and used twice — measured to reserve budget, then written — so
+// the charge cannot drift from the output. Building a second model of the framing
+// in order to price it is the mistake nodeCost already avoids by rendering through
+// appendNode rather than describing it.
+func snapshotFraming(format, header, hint string, ignored []string, truncated bool, maxTokens int) string {
+	var b strings.Builder
+	b.WriteString(header)
+	// Only the compact layout annotates the header with the budget; text does not,
+	// and this reproduces each exactly rather than making them agree.
+	if truncated && format != "text" {
+		fmt.Fprintf(&b, " (truncated to ~%d tokens)", maxTokens)
+	}
+	b.WriteString("\n")
+	if hint != "" {
+		fmt.Fprintf(&b, "# hint: %s\n", hint)
+	}
+	b.WriteString(ignoredParamsComment(ignored))
+	if format == "text" {
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 func snapshotFormatCarriesMetadata(format string) bool {
@@ -112,7 +191,7 @@ func (h *Handlers) HandleSnapshot(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	defer h.armAutoCloseIfEnabled(resolvedTabID)
+	defer h.armIdleLifecycle(resolvedTabID)
 	defer cancel()
 
 	if reqNoAnim && !h.Config.NoAnimations {
@@ -140,7 +219,7 @@ func (h *Handlers) HandleSnapshot(w http.ResponseWriter, r *http.Request) {
 			if !ghostRoute {
 				modalNodeID, modalOpen, modalErr = bridge.TopmostModalNodeID(tCtx, frameScope)
 				if modalErr != nil {
-					httpx.Error(w, selectorResolutionHTTPStatus(modalErr), modalErr)
+					respondSelectorFailure(w, modalErr)
 					return
 				}
 			}
@@ -151,7 +230,7 @@ func (h *Handlers) HandleSnapshot(w http.ResponseWriter, r *http.Request) {
 			if !ghostRoute {
 				afterNodeID, afterOpen, recheckErr := bridge.TopmostModalNodeID(tCtx, frameScope)
 				if recheckErr != nil {
-					httpx.Error(w, selectorResolutionHTTPStatus(recheckErr), fmt.Errorf("recheck topmost dialog: %w", recheckErr))
+					respondSelectorFailure(w, fmt.Errorf("recheck topmost dialog: %w", recheckErr))
 					return
 				}
 				if modalNodeID != afterNodeID || modalOpen != afterOpen {
@@ -159,7 +238,7 @@ func (h *Handlers) HandleSnapshot(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if scopeErr != nil {
-				httpx.Error(w, selectorResolutionHTTPStatus(scopeErr), scopeErr)
+				respondSelectorFailure(w, scopeErr)
 				return
 			}
 			rawNodes, scopeNodeID, stable = candidateNodes, candidateScope, true
@@ -218,15 +297,27 @@ func (h *Handlers) HandleSnapshot(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if elemInfo != "" {
-			scopedEmptyHint = fmt.Sprintf("Element exists in DOM (%s) but has no accessible nodes. Use `text --selector %s` or `eval` to extract content.", elemInfo, selector)
+			scopedEmptyHint = fmt.Sprintf("Element exists in DOM (%s) but has no accessible nodes. Use `text` with the same selector, or `eval`, to extract content.", elemInfo)
 		} else if descErr == nil {
-			scopedEmptyHint = fmt.Sprintf("Element exists in DOM but has no accessible nodes. Use `text --selector %s` or `eval` to extract content.", selector)
+			scopedEmptyHint = "Element exists in DOM but has no accessible nodes. Use `text` with the same selector, or `eval`, to extract content."
 		}
 	}
 
 	truncated := false
 	if maxTokens > 0 {
-		flat, truncated = bridge.TruncateToTokens(flat, maxTokens, format)
+		// The budget has to cover the reply, not just the part of it made of nodes.
+		// TruncateToTokens was fitting the tree to maxTokens and the header was then
+		// written on top of it, so what the caller received was over by whatever the
+		// header cost — and the header carries the title and the URL, so that is a
+		// page-dependent amount, not a constant to shrug at. Measured on a page with
+		// an ordinary marketing title and path, a budget of 100 returned ~142 tokens.
+		//
+		// Reserved before allocating, with truncation assumed: a budget is a ceiling,
+		// so where the two readings differ this takes the larger one. The node count
+		// in the header is the pre-truncation one for the same reason — it has at
+		// least as many digits as the count that will be printed.
+		nodeBudget := h.snapshotNodeBudget(format, output, title, url, len(flat), scopeInfo, scopedEmptyHint, controls.Ignored, maxTokens)
+		flat, truncated = bridge.TruncateToTokens(flat, nodeBudget, format)
 	}
 
 	prev := h.Bridge.GetRefCache(resolvedTabID)
@@ -237,7 +328,7 @@ func (h *Handlers) HandleSnapshot(w http.ResponseWriter, r *http.Request) {
 
 	cache := bridge.EpochRefs(prev, flat)
 	h.Bridge.SetRefCache(resolvedTabID, cache)
-	w.Header().Set(vocabHeader, cache.DomEpoch)
+	publishVocab(w, resolvedTabID, cache.DomEpoch)
 
 	h.recordResolvedURL(r, url)
 
@@ -375,13 +466,9 @@ func (h *Handlers) HandleSnapshot(w http.ResponseWriter, r *http.Request) {
 		if format == "compact" {
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			w.WriteHeader(200)
-			_, _ = fmt.Fprintf(w, "%s | +%d ~%d -%d",
+			diffHeader := fmt.Sprintf("%s | +%d ~%d -%d",
 				snapshotCompactHeader(title, url, len(flat), scopeInfo), len(added), len(changed), len(removed))
-			if truncated {
-				_, _ = fmt.Fprintf(w, " (truncated to ~%d tokens)", maxTokens)
-			}
-			_, _ = w.Write([]byte("\n"))
-			writeIgnoredParamsComment(w, controls.Ignored)
+			_, _ = w.Write([]byte(snapshotFraming(format, diffHeader, "", controls.Ignored, truncated, maxTokens)))
 			content := bridge.FormatSnapshotCompactDiff(flat, added, changed, removed)
 			if wrapContent {
 				content = h.IDPIGuard.WrapContent(content, url)
@@ -412,15 +499,9 @@ func (h *Handlers) HandleSnapshot(w http.ResponseWriter, r *http.Request) {
 	case "compact":
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(200)
-		_, _ = fmt.Fprintf(w, "%s", snapshotCompactHeader(title, url, len(flat), scopeInfo))
-		if truncated {
-			_, _ = fmt.Fprintf(w, " (truncated to ~%d tokens)", maxTokens)
-		}
-		_, _ = w.Write([]byte("\n"))
-		if scopedEmptyHint != "" {
-			_, _ = fmt.Fprintf(w, "# hint: %s\n", scopedEmptyHint)
-		}
-		writeIgnoredParamsComment(w, controls.Ignored)
+		_, _ = w.Write([]byte(snapshotFraming(format,
+			snapshotCompactHeader(title, url, len(flat), scopeInfo),
+			scopedEmptyHint, controls.Ignored, truncated, maxTokens)))
 		content := bridge.FormatSnapshotCompact(flat)
 		if wrapContent {
 			content = h.IDPIGuard.WrapContent(content, url)
@@ -429,12 +510,9 @@ func (h *Handlers) HandleSnapshot(w http.ResponseWriter, r *http.Request) {
 	case "text":
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(200)
-		_, _ = fmt.Fprintf(w, "%s\n", snapshotTextHeader(title, url, len(flat), scopeInfo))
-		if scopedEmptyHint != "" {
-			_, _ = fmt.Fprintf(w, "# hint: %s\n", scopedEmptyHint)
-		}
-		writeIgnoredParamsComment(w, controls.Ignored)
-		_, _ = w.Write([]byte("\n"))
+		_, _ = w.Write([]byte(snapshotFraming(format,
+			snapshotTextHeader(title, url, len(flat), scopeInfo),
+			scopedEmptyHint, controls.Ignored, truncated, maxTokens)))
 		content := bridge.FormatSnapshotText(flat)
 		if wrapContent {
 			content = h.IDPIGuard.WrapContent(content, url)

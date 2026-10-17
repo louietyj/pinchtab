@@ -32,7 +32,7 @@ func Annotate(client *http.Client, base, token string, cmd *cobra.Command) {
 		return
 	}
 
-	raw := apiclient.DoGetRaw(client, base, token, "/annotate", params)
+	raw := apiclient.DoGetRaw(client, base, token, "/annotate", params, apiclient.CaptureVocab(params.Get("tabId") == ""))
 	if raw == nil {
 		return
 	}

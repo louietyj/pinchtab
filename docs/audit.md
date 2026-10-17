@@ -86,7 +86,7 @@ summaryScore                     # mean accessibility score of enriched pages;
                                  # broken assets, failed requests and uncaught
                                  # JS errors do not move it
 pages[]:
-  url, title, error?             # error set when the page failed to load
+  url, title, statusCode?, error?  # error set when the page failed to load
   seaportal?                     # HTTP-extraction summary when ingested
   securityFindings[]?            # ruleId, severity, detail, url
   browser:
@@ -191,11 +191,13 @@ build against it if you need one.
 
 ## HTTP API
 
-The CLI is a thin client over two endpoints:
+The CLI is a thin client over these endpoints (`pinchtab audit` calls `POST /audit`):
 
-- `POST /audit/page {"url", "options"}` → single-page `BrowserPageData`
+- `POST /audit/page {"url", "options"}` → single-page `PageAudit` (`url`, `title`,
+  `error`, `screenshot`, `a11yFindings`, `securityFindings`, plus the
+  `BrowserPageData` fields inline)
 - `POST /audit {"urls" | "sitemapUrl" | "seaportalResults", "options",
-  "concurrency", "sampleSize", "enrichAll"}` → `AuditReport`
+  "seaportalFile", "concurrency", "sampleSize", "enrichAll"}` → `AuditReport`
 
 ## Docker / CI
 

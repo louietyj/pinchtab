@@ -15,8 +15,6 @@ func (b *Bridge) SetFileInputFiles(ctx context.Context, backendNodeID int64, pat
 	}))
 }
 
-// ResolveSelectorToNodeID finds a DOM node by a unified selector string and returns its NodeID.
-// Supports CSS (default), XPath (xpath: prefix or // auto-detect), and text (text: prefix).
-func (b *Bridge) ResolveSelectorToNodeID(ctx context.Context, raw string) (int64, error) {
-	return ResolveUnifiedSelectorInFrame(ctx, selector.Parse(raw), nil, "")
+func (b *Bridge) ResolveSelectorToNodeID(ctx context.Context, raw string, refCache *RefCache, frameID string) (int64, error) {
+	return ResolveUnifiedSelectorInFrame(ctx, selector.Parse(raw), refCache, frameID)
 }

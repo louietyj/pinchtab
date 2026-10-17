@@ -79,9 +79,12 @@ calls"** — `pairing.navigated` flips to `true` when the main frame's
 document (React re-renders, `IntersectionObserver` mutations) is not
 detected; `wait=stable` reduces but does not eliminate it.
 
-`epoch.domEpoch` is an opaque server-minted token cached on the tab's
-ref-cache alongside the snapshot refs. Future action endpoints will accept
-an `expectedEpoch` query param to reject stale refs at use time.
+`epoch.domEpoch` is the tab's ref vocabulary token — the same opaque value
+`/snapshot` returns as `vocabularyToken` — and is also set on the
+`X-PinchTab-Vocab` response header. It is kept while the new nodes share refs
+with the previous vocabulary and re-minted when they do not. Echo it as `vocab`
+on ref-based actions: a ref action under a token other than the tab's current
+one is refused with `409 vocab_superseded`.
 
 ## Bounding boxes and coordinate space
 
@@ -106,6 +109,20 @@ The coordinate space depends on `selector` and `beyondViewport`:
 - **`document`** (when `beyondViewport=true`): boxes use page coordinates
   (`box.x` and `box.y` include scroll offset). The image is the full
   document.
+
+In all three, the image measures exactly the reported space times
+`image.devicePixelRatio` times the `scale` you asked for (default `1`):
+scaling a `boundingBox` by `devicePixelRatio × scale`, from the origin the
+space names, lands on the image's pixels. The mode never enters the
+arithmetic, and neither does `pinchtab set viewport` — the only factor beyond
+the reported ratio is the one you passed yourself, and the response reports
+the page ratio rather than the product. At the default `scale` the ratio
+alone is the whole mapping.
+
+Keeping that identity costs the default capture the faster read-the-view path
+— that path returns the real window surface, whose scale factor is the
+screen's rather than the page's and which viewport emulation does not touch —
+so an idle headed browser can make a `/capture` slower than a `/screenshot`.
 
 `visible` is true when the box has positive area and intersects the
 viewport — a cheap heuristic, not a strict occlusion check. A node
@@ -143,13 +160,13 @@ above.
 | `selector` | Scope: clips image and filters snapshot subtree to the same element |
 | `filter` | `interactive` (default) or `all` |
 | `format` | `jpeg` (default) or `png` |
-| `quality` | JPEG quality 0-100 |
-| `depth` | Snapshot tree depth limit |
+| `quality` | JPEG quality 0-100 (default `80`) |
+| `depth` | Snapshot tree depth limit (default `-1`, full tree) |
 | `output` | `file` (default), `inline` (base64 in JSON), or `raw` (bytes only — drops the snapshot) |
 | `wait` | `stable` (default) waits for `Page.lifecycleEvent` quiescence (250ms silence / 750ms ceiling); `load` polls `document.readyState` until `complete` (2s ceiling); `none` skips the wait |
 | `withBounds` | `true` (default) — populate `boundingBox` (the border box) + `visible` on every measurable snapshot node; `false` omits both keys everywhere |
 | `beyondViewport` | `true` — capture the full scrollable document; coordinate space becomes `document` |
-| `scale` | Rescale the output bitmap. Default `1`. `0.5` halves each axis (quarter the pixels) |
+| `scale` | Rescale the output bitmap. Default `1`. `0.5` halves each axis (quarter the pixels); out-of-range values are clamped |
 | `requirePair` | `true` returns 409 if `pairing.navigated` would be true |
 | `noAnimations` | `true` — inject `prefers-reduced-motion` CSS for the capture window |
 
@@ -160,7 +177,7 @@ above.
 | `-o <path>` | Save the captured image locally (default: `capture-<ts>.jpg`) |
 | `-s <selector>` | Scope: clips image and filters snapshot subtree |
 | `--filter <name>` | Snapshot filter |
-| `--format <fmt>` | `jpeg` or `png` |
+| `--format <fmt>` | `jpeg` or `png` (default: `png` when `-o` ends in `.png`, otherwise `jpeg`) |
 | `-q <0-100>` | JPEG quality |
 | `--depth <n>` | Snapshot depth limit |
 | `--wait <mode>` | `stable` (default) / `load` / `none` |
@@ -169,6 +186,11 @@ above.
 | `--scale <f>` | Bitmap rescale (e.g. `0.5`) |
 | `--require-pair` | Fail with 409 on mid-capture navigation |
 | `--tab <id>` | Target a specific tab |
+| `--json` | Print the full JSON response instead of the terse summary |
+
+`GET /tabs/{id}/capture` is the same handler with the tab in the path. An
+unknown `output` value is a 400; `requirePair` failing is a 409, as is a pending
+JavaScript dialog (`409 dialog_blocked`).
 
 ## Related Pages
 

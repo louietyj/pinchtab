@@ -122,7 +122,7 @@ export interface BackendBrowserConfig {
 
 export interface BackendTabPolicy {
   eviction?: "reject" | "close_oldest" | "close_lru";
-  lifecycle?: "keep" | "close_idle";
+  lifecycle?: "keep" | "close_idle" | "freeze_idle";
   closeDelaySec?: number;
   restore?: boolean;
 }

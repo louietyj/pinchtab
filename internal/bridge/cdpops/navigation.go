@@ -44,7 +44,7 @@ func dispatchBackgroundNavigation(ctx context.Context, url string, replaceInitia
 	if err := emulation.SetFocusEmulationEnabled(true).Do(ctx); err != nil {
 		return fmt.Errorf("enable background focus emulation: %w", err)
 	}
-	if err := page.SetWebLifecycleState(page.SetWebLifecycleStateStateActive).Do(ctx); err != nil {
+	if err := SetPageFrozen(ctx, false); err != nil {
 		return fmt.Errorf("activate background web lifecycle: %w", err)
 	}
 	return startNavigation(ctx, url, replaceInitialBlank)

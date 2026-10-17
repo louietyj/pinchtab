@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/pinchtab/pinchtab/internal/cli"
-	"github.com/pinchtab/pinchtab/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -10,7 +9,7 @@ var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Manage configuration",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		config.EmitDefaultConfigHint()
+		emitDefaultConfigHint()
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		printConfigOverview(loadLocalConfig())

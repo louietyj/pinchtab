@@ -16,10 +16,10 @@ RUN go mod download
 
 # Copy full source and build the CLI binary
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/pinchtab ./cmd/pinchtab
+RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/pinchtab ./cmd/pinchtab
 
 # Library-mode example program, exercised by the library-mode smoke scenario
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/enrich-example ./docs/examples/enrich
+RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/enrich-example ./docs/examples/enrich
 
 # ── Runner image ──────────────────────────────────────────────────────────────
 FROM alpine:3.23

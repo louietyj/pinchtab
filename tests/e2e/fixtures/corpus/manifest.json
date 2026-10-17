@@ -1,0 +1,160 @@
+{
+  "entries": {
+    "article": {
+      "hits": 0,
+      "data": {
+        "headline": "Contents",
+        "published": "Published"
+      }
+    },
+    "infobox": {
+      "hits": 0,
+      "data": {
+        "easiestRoute": "Easiest route",
+        "location": "Location",
+        "name": "Contents",
+        "parentRange": "Parent range"
+      }
+    },
+    "listing": {
+      "hits": 11,
+      "data": {
+        "books": [
+          {
+            "availability": "In stock"
+          },
+          {
+            "availability": "In stock"
+          },
+          {
+            "availability": "In stock"
+          },
+          {
+            "availability": "In stock"
+          },
+          {
+            "availability": "In stock"
+          },
+          {
+            "availability": "In stock"
+          },
+          {
+            "availability": "In stock"
+          },
+          {
+            "availability": "In stock",
+            "title": "A Year in Provence ..."
+          },
+          {
+            "availability": "In stock"
+          },
+          {
+            "availability": "In stock"
+          },
+          {
+            "availability": "In stock"
+          }
+        ]
+      }
+    },
+    "login": {
+      "hits": 2,
+      "data": {
+        "passwordLabel": "Username Password",
+        "quotesSource": "Quotes by:",
+        "site": "Quotes to Scrape",
+        "submit": "Login",
+        "usernameLabel": "Username Password"
+      }
+    },
+    "pricing": {
+      "offline": "github.com/pricing is GitHub, Inc. page content that cannot be redistributed"
+    },
+    "product": {
+      "hits": 1,
+      "data": {
+        "availability": "Availability",
+        "description": "Product Description",
+        "productType": "Product Type",
+        "title": "A Light in the Attic",
+        "upc": "UPC"
+      }
+    },
+    "search": {
+      "hits": 0,
+      "data": {
+        "results": [
+          {
+            "words": 0
+          },
+          {
+            "title": "Thumbnail for PhantomJS",
+            "words": 6
+          },
+          {
+            "words": 0
+          },
+          {
+            "title": "Thumbnail for Web browser",
+            "words": 34
+          },
+          {
+            "title": "Thumbnail for AI browser",
+            "words": 8
+          },
+          {
+            "words": 0
+          },
+          {
+            "words": 0
+          },
+          {
+            "words": 0
+          },
+          {
+            "words": 0
+          },
+          {
+            "title": "Thumbnail for Archive.today",
+            "words": 44
+          },
+          {
+            "words": 0
+          },
+          {
+            "words": 0
+          },
+          {
+            "title": "Thumbnail for CodeSandbox",
+            "words": 6
+          },
+          {
+            "words": 0
+          },
+          {
+            "words": 0
+          },
+          {
+            "words": 0
+          },
+          {
+            "words": 0
+          },
+          {
+            "words": 4
+          },
+          {
+            "title": "Thumbnail for Denial-of-service attack",
+            "words": -2017
+          },
+          {
+            "words": 0
+          }
+        ]
+      }
+    },
+    "stories": {
+      "offline": "the news.ycombinator.com front page is Y Combinator and user-submitted content that cannot be redistributed"
+    }
+  }
+}

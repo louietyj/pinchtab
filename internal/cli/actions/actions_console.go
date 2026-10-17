@@ -13,76 +13,59 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Console displays browser console logs.
 func Console(client *http.Client, base, token string, cmd *cobra.Command) {
 	if v, _ := cmd.Flags().GetBool("clear"); v {
 		ConsoleClear(client, base, token, cmd)
 		return
 	}
-
-	params := url.Values{}
-	if v, _ := cmd.Flags().GetString("tab"); v != "" {
-		params.Set("tabId", v)
-	}
-	if v, _ := cmd.Flags().GetString("limit"); v != "" {
-		params.Set("limit", v)
-	}
-
-	result := apiclient.DoGetRaw(client, base, token, "/console", params)
-	if result == nil {
-		fmt.Fprintln(os.Stderr, "Failed to get console logs")
-		os.Exit(1)
-	}
-
-	printConsoleLogs(result)
+	readLog(client, base, token, cmd, "/console", "Failed to get console logs", printConsoleLogs)
 }
 
-// ConsoleClear clears console logs.
 func ConsoleClear(client *http.Client, base, token string, cmd *cobra.Command) {
-	params := url.Values{}
-	if v, _ := cmd.Flags().GetString("tab"); v != "" {
-		params.Set("tabId", v)
-	}
-	result := apiclient.DoPost(client, base, token, "/console/clear?"+params.Encode(), nil)
-	if result != nil {
-		fmt.Println("Console logs cleared")
-	}
+	clearLog(client, base, token, cmd, "/console/clear", "Console logs cleared")
 }
 
-// Errors displays browser error logs.
 func Errors(client *http.Client, base, token string, cmd *cobra.Command) {
 	if v, _ := cmd.Flags().GetBool("clear"); v {
 		ErrorsClear(client, base, token, cmd)
 		return
 	}
+	readLog(client, base, token, cmd, "/errors", "Failed to get error logs", printErrorLogs)
+}
 
-	params := url.Values{}
-	if v, _ := cmd.Flags().GetString("tab"); v != "" {
-		params.Set("tabId", v)
-	}
+func ErrorsClear(client *http.Client, base, token string, cmd *cobra.Command) {
+	clearLog(client, base, token, cmd, "/errors/clear", "Error logs cleared")
+}
+
+func readLog(client *http.Client, base, token string, cmd *cobra.Command, path, failMsg string, print func([]byte)) {
+	params := tabParams(cmd)
 	if v, _ := cmd.Flags().GetString("limit"); v != "" {
 		params.Set("limit", v)
 	}
-
-	result := apiclient.DoGetRaw(client, base, token, "/errors", params)
+	if v, _ := cmd.Flags().GetBool("json"); v {
+		apiclient.DoGet(client, base, token, path, params)
+		return
+	}
+	result := apiclient.DoGetRaw(client, base, token, path, params)
 	if result == nil {
-		fmt.Fprintln(os.Stderr, "Failed to get error logs")
+		fmt.Fprintln(os.Stderr, failMsg)
 		os.Exit(1)
 	}
-
-	printErrorLogs(result)
+	print(result)
 }
 
-// ErrorsClear clears error logs.
-func ErrorsClear(client *http.Client, base, token string, cmd *cobra.Command) {
+func clearLog(client *http.Client, base, token string, cmd *cobra.Command, path, doneMsg string) {
+	if apiclient.DoPost(client, base, token, path+"?"+tabParams(cmd).Encode(), nil) != nil {
+		fmt.Println(doneMsg)
+	}
+}
+
+func tabParams(cmd *cobra.Command) url.Values {
 	params := url.Values{}
 	if v, _ := cmd.Flags().GetString("tab"); v != "" {
 		params.Set("tabId", v)
 	}
-	result := apiclient.DoPost(client, base, token, "/errors/clear?"+params.Encode(), nil)
-	if result != nil {
-		fmt.Println("Error logs cleared")
-	}
+	return params
 }
 
 func printConsoleLogs(data []byte) {

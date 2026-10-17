@@ -379,6 +379,9 @@ var enrolledAreas = []enrolledArea{
 		name:   "compare",
 		match:  `(?i)compare`,
 		suites: []string{"run_cli_extended"},
+		excluded: map[string]string{
+			"internal/heapsnap/compare.go": "heap snapshot diffing — the memory compare route, a different sense of the word, covered by the memory scenarios rather than the compare ones",
+		},
 	},
 }
 

@@ -33,7 +33,7 @@ func (h *Handlers) handleHistoryNav(w http.ResponseWriter, r *http.Request,
 	}
 	tabID := r.URL.Query().Get("tabId")
 	dismissBanners := historyDismissBannersFlag(r)
-	ctx, resolvedID, ok := h.guardedTabContext(w, r, tabID, guardHandoffPause)
+	ctx, resolvedID, ok := h.guardedTabContext(w, r, tabID, guardDialogBlocked|guardHandoffPause)
 	if !ok {
 		return
 	}

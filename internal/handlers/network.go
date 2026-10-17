@@ -488,19 +488,14 @@ func (h *Handlers) HandleTabNetwork(w http.ResponseWriter, r *http.Request) {
 //
 // @Endpoint GET /tabs/{id}/network/{requestId}
 func (h *Handlers) HandleTabNetworkByID(w http.ResponseWriter, r *http.Request) {
-	tabID := r.PathValue("id")
-	requestID := r.PathValue("requestId")
-	if tabID == "" || requestID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id and request id required"))
+	if _, ok := requirePathTabID(w, r); !ok {
 		return
 	}
-	q := r.URL.Query()
-	q.Set("tabId", tabID)
-	req := r.Clone(r.Context())
-	u := *r.URL
-	u.RawQuery = q.Encode()
-	req.URL = &u
-	h.HandleNetworkByID(w, req)
+	if r.PathValue("requestId") == "" {
+		httpx.Error(w, 400, fmt.Errorf("request id required"))
+		return
+	}
+	h.withPathTabID(w, r, h.HandleNetworkByID)
 }
 
 // HandleTabNetworkStream streams network entries for a tab identified by path ID.

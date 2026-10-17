@@ -15,6 +15,8 @@ func newTextCmd() *cobra.Command {
 	cmd := &cobra.Command{}
 	cmd.Flags().Bool("raw", false, "")
 	cmd.Flags().Bool("full", false, "")
+	cmd.Flags().Bool("markdown", false, "")
+	cmd.Flags().String("output", "", "")
 	cmd.Flags().String("tab", "", "")
 	cmd.Flags().String("frame", "", "")
 	cmd.Flags().String("selector", "", "")
@@ -64,6 +66,51 @@ func TestTextFull(t *testing.T) {
 	}
 	if !strings.Contains(m.lastQuery, "format=text") {
 		t.Errorf("expected --full to set format=text, got %s", m.lastQuery)
+	}
+}
+
+func TestTextMarkdown(t *testing.T) {
+	m := newMockServer()
+	defer m.close()
+	client := m.server.Client()
+
+	cmd := newTextCmd()
+	_ = cmd.Flags().Set("markdown", "true")
+	Text(client, m.base(), "", cmd, nil)
+	if !strings.Contains(m.lastQuery, "mode=markdown") {
+		t.Errorf("expected mode=markdown, got %s", m.lastQuery)
+	}
+	if strings.Contains(m.lastQuery, "format=text") {
+		t.Errorf("markdown must not force format=text (the JSON envelope carries .text): %s", m.lastQuery)
+	}
+}
+
+func TestTextMarkdownOutputWritesFileAndPrintsConfirmation(t *testing.T) {
+	m := newMockServer()
+	m.response = `{"url":"https://pinchtab.com","title":"Example","text":"# Title\n\nBody"}`
+	defer m.close()
+
+	out := t.TempDir() + "/page.md"
+	cmd := newTextCmd()
+	_ = cmd.Flags().Set("markdown", "true")
+	_ = cmd.Flags().Set("output", out)
+
+	stdout := captureStdout(t, func() {
+		Text(m.server.Client(), m.base(), "", cmd, nil)
+	})
+
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("output file not written: %v", err)
+	}
+	if string(data) != "# Title\n\nBody" {
+		t.Errorf("file body = %q, want the Markdown text", string(data))
+	}
+	if strings.Contains(stdout, "# Title") {
+		t.Errorf("stdout carried the body instead of a one-line confirmation: %q", stdout)
+	}
+	if !strings.Contains(stdout, out) {
+		t.Errorf("stdout = %q, want a one-line confirmation naming %s", stdout, out)
 	}
 }
 

@@ -117,6 +117,8 @@ func (m *failMockBridge) AvailableActions() []string {
 	return []string{bridge.ActionClick, bridge.ActionType}
 }
 
+func (m *failMockBridge) GetDialogManager() *bridge.DialogManager { return nil }
+
 func (m *failMockBridge) Evaluate(ctx context.Context, expression string, result any, opts bridge.EvalOpts) error {
 	return nil
 }
@@ -248,6 +250,193 @@ func TestHandleMacro_FollowsAutoSwitchedTab(t *testing.T) {
 	}
 	if got, want := strings.Join(b.actionTabs, ","), "tab1,tab2"; got != want {
 		t.Fatalf("action tabs = %s, want %s", got, want)
+	}
+}
+
+// lockedActionBridge is autoSwitchActionBridge with the current tab (tab1) held
+// by lockOwner, so a batch only executes when the request carries a matching
+// owner — the observable effect of reading owner from the query.
+type lockedActionBridge struct {
+	autoSwitchActionBridge
+	lockOwner string
+}
+
+func (m *lockedActionBridge) TabLockInfo(string) *bridge.LockInfo {
+	return &bridge.LockInfo{Owner: m.lockOwner}
+}
+
+// A stray or mistargeted query parameter (the common ?tab= mistake, the correctly
+// spelled but ignored ?tabId=, or any unknown key) must be refused 400 before any
+// step runs, matching the singular /action — otherwise the batch silently runs its
+// writes on the current tab. The one query key the batch reads, owner, is honoured.
+func TestHandleActions_RejectsStrayQueryParam(t *testing.T) {
+	body := `{"actions":[{"kind":"click"},{"kind":"type","text":"after"}]}`
+
+	// Every key the batch does not read from the query must be refused before any
+	// step runs — including ?tabId=, which the batch ignores (it targets the tab
+	// from the body/path/current rule) and would otherwise run on the current tab.
+	for _, tc := range []struct {
+		name  string
+		query string
+	}{
+		{"stray tab", "tab=tab_fixture"},
+		{"mistargeted tabId", "tabId=tab_other"},
+		{"unknown key", "bogusparam=1"},
+		{"per-step field", "ref=e1"},
+	} {
+		t.Run(tc.name+" is refused before execution", func(t *testing.T) {
+			b := &autoSwitchActionBridge{}
+			h := New(b, &config.RuntimeConfig{ActionTimeout: time.Second}, nil, nil, nil)
+			req := httptest.NewRequest("POST", "/actions?"+tc.query, bytes.NewReader([]byte(body)))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			h.HandleActions(w, req)
+
+			if w.Code != 400 {
+				t.Fatalf("expected 400 for ?%s, got %d: %s", tc.query, w.Code, w.Body.String())
+			}
+			if resp := map[string]string{}; json.Unmarshal(w.Body.Bytes(), &resp) == nil {
+				if !strings.Contains(resp["error"], "silently dropped") {
+					t.Errorf("error should carry the drop guidance: %q", resp["error"])
+				}
+			}
+			if len(b.actionTabs) != 0 {
+				t.Errorf("the batch executed %d steps despite the 400; no step may run on a rejected request: %v", len(b.actionTabs), b.actionTabs)
+			}
+		})
+	}
+
+	t.Run("no query executes normally", func(t *testing.T) {
+		b := &autoSwitchActionBridge{}
+		h := New(b, &config.RuntimeConfig{ActionTimeout: time.Second}, nil, nil, nil)
+		req := httptest.NewRequest("POST", "/actions", bytes.NewReader([]byte(body)))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		h.HandleActions(w, req)
+
+		if w.Code != 200 {
+			t.Fatalf("expected 200 for a clean batch, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	// owner is the one query key the batch reads (resolveOwner). Prove the EFFECT,
+	// not just the status: with the current tab locked by "agent", ?owner=agent must
+	// pass the lease and run every step, while the same request with no owner is
+	// refused 423 — so the owner used came from the query.
+	t.Run("owner from the query is read and honoured", func(t *testing.T) {
+		b := &lockedActionBridge{lockOwner: "agent"}
+		h := New(b, &config.RuntimeConfig{ActionTimeout: time.Second}, nil, nil, nil)
+		req := httptest.NewRequest("POST", "/actions?owner=agent", bytes.NewReader([]byte(body)))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		h.HandleActions(w, req)
+
+		if w.Code != 200 {
+			t.Fatalf("expected 200 when ?owner= matches the tab lock, got %d: %s", w.Code, w.Body.String())
+		}
+		if len(b.actionTabs) == 0 {
+			t.Error("the batch ran no step, so ?owner= did not unlock the tab")
+		}
+	})
+
+	t.Run("without the query owner the locked tab refuses the batch", func(t *testing.T) {
+		b := &lockedActionBridge{lockOwner: "agent"}
+		h := New(b, &config.RuntimeConfig{ActionTimeout: time.Second}, nil, nil, nil)
+		req := httptest.NewRequest("POST", "/actions", bytes.NewReader([]byte(body)))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		h.HandleActions(w, req)
+
+		if w.Code != 423 {
+			t.Fatalf("expected 423 for a locked tab with no owner, got %d: %s", w.Code, w.Body.String())
+		}
+		if len(b.actionTabs) != 0 {
+			t.Errorf("the batch ran on a locked tab: %v", b.actionTabs)
+		}
+	})
+}
+
+// PIN-416: POST /action reads its parameters from the JSON body, so a stray query
+// parameter is silently dropped — the same wrong-tab-write hazard the batch route
+// refuses. It must be refused 400 before the action runs, while the two keys that are
+// legitimately sent on the query (owner, and browser which MCP appends) still pass.
+func TestHandleAction_POST_RejectsStrayQueryParam(t *testing.T) {
+	body := `{"kind":"click","nodeId":42,"tabId":"tab1"}`
+
+	postAction := func(t *testing.T, query string) *httptest.ResponseRecorder {
+		t.Helper()
+		h := New(&mockBridge{}, &config.RuntimeConfig{ActionTimeout: time.Second}, nil, nil, nil)
+		url := "/action"
+		if query != "" {
+			url += "?" + query
+		}
+		req := httptest.NewRequest("POST", url, bytes.NewReader([]byte(body)))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.HandleAction(w, req)
+		return w
+	}
+
+	for _, tc := range []struct{ name, query string }{
+		{"stray tab", "tab=tab_fixture"},
+		{"mistargeted tabId", "tabId=tab_other"},
+		{"unknown key", "bogusparam=1"},
+	} {
+		t.Run(tc.name+" is refused", func(t *testing.T) {
+			w := postAction(t, tc.query)
+			if w.Code != 400 {
+				t.Fatalf("expected 400 for ?%s, got %d: %s", tc.query, w.Code, w.Body.String())
+			}
+			var resp map[string]string
+			if json.Unmarshal(w.Body.Bytes(), &resp) == nil && !strings.Contains(resp["error"], "silently dropped") {
+				t.Errorf("error should carry the drop guidance: %q", resp["error"])
+			}
+		})
+	}
+
+	t.Run("a clean POST is unaffected", func(t *testing.T) {
+		if w := postAction(t, ""); w.Code == 400 {
+			t.Fatalf("a clean POST /action was refused: %s", w.Body.String())
+		}
+	})
+
+	// browser (MCP's routedPathWithBody appends ?browser=) and owner (resolveOwner)
+	// are the keys legitimately carried on a POST query; refusing them would 400 a
+	// browser-targeted MCP action, so they must pass the guard.
+	for _, tc := range []struct{ name, query string }{
+		{"browser (MCP appends this)", "browser=cloak"},
+		{"owner", "owner=agent"},
+	} {
+		t.Run(tc.name+" is accepted", func(t *testing.T) {
+			if w := postAction(t, tc.query); w.Code == 400 {
+				t.Fatalf("?%s must not be refused on POST /action: %s", tc.query, w.Body.String())
+			}
+		})
+	}
+}
+
+// The POST accepted set must stay a subset of the action-family vocabulary, so a key
+// added here cannot silently permit something the query allow-list would name as not
+// a parameter of /action.
+func TestPostActionQueryKeysAreActionParameters(t *testing.T) {
+	for key := range postActionQueryKeys {
+		if _, ok := actionQueryKeys[key]; !ok {
+			t.Errorf("postActionQueryKeys has %q, which is not an /action parameter", key)
+		}
+	}
+}
+
+// The batch accepted set must stay a subset of the action-family vocabulary, so a
+// key added here cannot silently permit something /action itself would refuse.
+func TestBatchActionQueryKeysAreActionParameters(t *testing.T) {
+	for key := range batchActionQueryKeys {
+		if _, ok := actionQueryKeys[key]; !ok {
+			t.Errorf("batchActionQueryKeys has %q, which is not an /action parameter; it would accept a key the singular route refuses", key)
+		}
 	}
 }
 
@@ -481,6 +670,22 @@ func TestHandleAction_AutoCloseArmedAfterActionError(t *testing.T) {
 	}
 }
 
+func TestHandleAction_OnlyCloseIdleIsArmedByTheHandler(t *testing.T) {
+	for policy, want := range map[string]int{"close_idle": 1, "freeze_idle": 0, "keep": 0} {
+		t.Run(policy, func(t *testing.T) {
+			mb := &mockBridge{}
+			h := New(mb, &config.RuntimeConfig{ActionTimeout: time.Second, TabLifecyclePolicy: policy}, nil, nil, nil)
+			req := httptest.NewRequest("POST", "/action", bytes.NewReader([]byte(`{"kind":"click"}`)))
+
+			h.HandleAction(httptest.NewRecorder(), req)
+
+			if got := len(mb.autoCloseArmed); got != want {
+				t.Fatalf("handler armed the idle timer %d times, want %d", got, want)
+			}
+		})
+	}
+}
+
 func TestHandleAction_PostRejectsInvalidDialogAction(t *testing.T) {
 	h := New(&mockBridge{}, &config.RuntimeConfig{}, nil, nil, nil)
 	req := httptest.NewRequest("POST", "/action", bytes.NewReader([]byte(`{"kind":"click","selector":"#btn","dialogAction":"maybe"}`)))
@@ -647,9 +852,18 @@ func TestEnsureChromeAliasServes(t *testing.T) {
 	}
 }
 
-func TestHandleAction_NavigationChangedCarriesHintAndRemedy(t *testing.T) {
-	navErr := fmt.Errorf("%w: %s -> %s", bridge.ErrUnexpectedNavigation, "https://pinchtab.com/", "https://pinchtab.com/docs/")
-	mb := &mockBridge{executeActionErr: navErr}
+// The endpoint's whole contract for a click that navigates: a success carrying where
+// the caller landed and the fact that its refs are dead. It used to be a 409 whose
+// hint and remedy told the caller to re-issue the click with --wait-nav — advice that
+// re-clicked on the page the first click had already reached.
+func TestHandleAction_ANavigatingClickIsASuccessCarryingTheLandedURL(t *testing.T) {
+	mb := &mockBridge{actionResult: map[string]any{
+		"clicked":                true,
+		bridge.ResultNavigated:   true,
+		bridge.ResultLandedURL:   "https://pinchtab.com/docs/",
+		bridge.ResultPreviousURL: "https://pinchtab.com/",
+		bridge.ResultRefsStale:   true,
+	}}
 	h := New(mb, &config.RuntimeConfig{ActionTimeout: time.Second}, nil, nil, nil)
 	req := httptest.NewRequest("POST", "/action", bytes.NewReader([]byte(`{"kind":"click"}`)))
 	req.Header.Set("Content-Type", "application/json")
@@ -657,45 +871,32 @@ func TestHandleAction_NavigationChangedCarriesHintAndRemedy(t *testing.T) {
 
 	h.HandleAction(w, req)
 
-	if w.Code != 409 {
-		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 	var resp struct {
-		Code    string         `json:"code"`
-		Details map[string]any `json:"details"`
+		Success bool           `json:"success"`
+		Result  map[string]any `json:"result"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if resp.Code != "navigation_changed" {
-		t.Fatalf("code = %q, want navigation_changed", resp.Code)
+	if !resp.Success {
+		t.Fatalf("success = false: %s", w.Body.String())
 	}
-	for _, key := range []string{"hint", "remedy", "url"} {
-		value, _ := resp.Details[key].(string)
-		if value == "" {
-			t.Fatalf("details[%q] missing or empty: %#v", key, resp.Details)
-		}
+	// The action's own result is what the API used to discard when it answered with
+	// the navigation as an error instead.
+	if resp.Result["clicked"] != true {
+		t.Errorf("the action's own result was dropped: %v", resp.Result)
 	}
-	hint, _ := resp.Details["hint"].(string)
-	for _, want := range []string{"waitNav", "submit"} {
-		if !strings.Contains(hint, want) {
-			t.Fatalf("hint %q does not name request field %q", hint, want)
-		}
+	if resp.Result[bridge.ResultNavigated] != true {
+		t.Errorf("result does not report the navigation: %v", resp.Result)
 	}
-	// One command, one flag: the remedy is a line a caller can run, so the alternative
-	// flag belongs in the hint. Naming both here is what made the field unrunnable.
-	line, _ := resp.Details["remedy"].(string)
-	if want := "pinchtab click <ref> --wait-nav"; line != want {
-		t.Fatalf("remedy = %q, want %q", line, want)
+	if got, _ := resp.Result[bridge.ResultLandedURL].(string); got != "https://pinchtab.com/docs/" {
+		t.Errorf("result[%s] = %q, want the landed URL", bridge.ResultLandedURL, got)
 	}
-	if strings.Contains(line, "--submit") {
-		t.Fatalf("remedy %q offers two flags, so it is not one command to run", line)
-	}
-	if !strings.Contains(hint, "--submit") {
-		t.Fatalf("hint %q does not name the --submit alternative the remedy dropped", hint)
-	}
-	if got, _ := resp.Details["url"].(string); got != "https://pinchtab.com/docs/" {
-		t.Fatalf("details[url] = %q, want the resulting URL", got)
+	if resp.Result[bridge.ResultRefsStale] != true {
+		t.Errorf("result does not say the caller's refs are dead: %v", resp.Result)
 	}
 }
 
@@ -975,7 +1176,7 @@ func TestActionQueryAcceptsEveryFieldTheRequestTypeDeclares(t *testing.T) {
 		if key == "" || key == "-" {
 			continue
 		}
-		if unknown := unknownQueryFields(url.Values{key: []string{"1"}}); len(unknown) > 0 {
+		if unknown := unknownQueryFields(url.Values{key: []string{"1"}}, actionQueryKeys); len(unknown) > 0 {
 			t.Errorf("%q is declared by ActionRequest and the GET form calls it unknown; the allow-list is not derived from the type", key)
 		}
 		checked++
@@ -983,7 +1184,7 @@ func TestActionQueryAcceptsEveryFieldTheRequestTypeDeclares(t *testing.T) {
 	if checked == 0 {
 		t.Fatal("no field was checked; the guard is not reading the request type")
 	}
-	if unknown := unknownQueryFields(url.Values{"modifers": []string{"8"}}); len(unknown) != 1 {
+	if unknown := unknownQueryFields(url.Values{"modifers": []string{"8"}}, actionQueryKeys); len(unknown) != 1 {
 		t.Fatalf("a key the type does not declare was not called unknown: %v — the allow-list accepts everything", unknown)
 	}
 }

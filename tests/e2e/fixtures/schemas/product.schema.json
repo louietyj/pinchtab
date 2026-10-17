@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "required": ["name", "price", "inStock"],
+  "properties": {
+    "name": {"type": "string", "description": "product name", "x-pinchtab-hint": "role:heading"},
+    "price": {"type": "number", "description": "product price"},
+    "rating": {"type": "number", "description": "product rating out of 5"},
+    "inStock": {"type": "boolean", "description": "in stock availability", "x-pinchtab-hint": "role:checkbox"}
+  }
+}

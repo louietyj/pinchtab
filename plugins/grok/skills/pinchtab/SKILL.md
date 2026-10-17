@@ -35,7 +35,7 @@ CLI-first browser skill. Use `pinchtab` commands.
    - `--mode` and `--humanize` are mutually exclusive.
 4. For read-only observation: `pinchtab text` when you won't act on refs.
 
-**Key optimization**: Use `--snap-diff` on `nav`, `click`, `fill`, `select`, `press`, `scroll`, `back`, `forward`, `reload` to get only added/changed/removed elements — most token-efficient for multi-step flows. Use `--snap` when you need the full snapshot (e.g., first navigation, or after major page changes). `--text` is available on `click`, `fill`, `select`, `press`, `back`, `forward`, `reload` (but NOT on `nav` or `scroll`) when you need prose content for verification (skips snap, returns page text directly). `dblclick` does not support any observation flag — run a separate `snap` after.
+**Key optimization**: Use `--snap-diff` on `nav`, `click`, `fill`, `select`, `press`, `scroll`, `back`, `forward`, `reload` to get only added/changed/removed elements — most token-efficient for multi-step flows. Use `--snap` when you need the full snapshot (e.g., first navigation, or after major page changes). `--text` is available on `nav`, `click`, `fill`, `select`, `press`, `back`, `forward`, `reload` (but NOT on `scroll`) when you need prose content for verification (skips snap, returns page text directly). `dblclick` does not support any observation flag — run a separate `snap` after.
 
 `--snap-diff` returns the same compact format as `snap`, but with change markers and a header showing counts:
 ```
@@ -53,7 +53,7 @@ Fallback observation (when `--snap` wasn't used):
 - `pinchtab snap --full` — all nodes as JSON (for debugging).
 - `pinchtab text` — content only (use when snap is missing prose you need).
 
-Rules: only `nav <url>` auto-starts the default local server; `snap`, `text`, `html`, `find`, and action commands operate on an already-running server/current tab. Explicit `--server` targets are never auto-started. Never act on stale refs; screenshots only for visual/debug; choose the instance/profile up front for parallel or multi-site work.
+Rules: only `nav <url>` and `session create` auto-start the default local server; `snap`, `text`, `html`, `find`, and action commands operate on an already-running server/current tab. Explicit `--server` / `PINCHTAB_SERVER` targets are never auto-started. Never act on stale refs; screenshots only for visual/debug; choose the instance/profile up front for parallel or multi-site work.
 
 ## Safety Defaults
 
@@ -87,7 +87,7 @@ If a site requires a CAPTCHA, anti-bot challenge, or other human verification, s
 
 ## Authentication and State
 
-Patterns: (1) one-off `pinchtab instance start`; (2) reuse profile `instance start --profile work --mode headed`, switch to headless after login; (3) HTTP `POST /profiles` then `POST /profiles/<name>/start`; (4) human-assisted headed login, agent reuses headless. Agent sessions: `pinchtab session create --agent-id <id>` or `POST /sessions` → set `PINCHTAB_SESSION=ses_...`.
+Patterns: (1) one-off `pinchtab instance start`; (2) reuse a profile with `instance start --profile work`; (3) HTTP `POST /profiles` then `POST /profiles/<name>/start`. The `--profile` pattern requires the profile to exist first. Human setup: `pinchtab profiles create work`, authenticate headed; agents reuse headless. Agent sessions: `pinchtab session create --agent-id <id>` or `POST /sessions` → set `PINCHTAB_SESSION=ses_...`.
 
 **Session reuse safety:** When reusing authenticated browser sessions established by a human, use a dedicated low-privilege profile — not the user's personal browsing profile. Confirm with the user before performing account-changing actions (password changes, payment, deletion, permissions) in a reused session. Restrict navigation to the sites needed for the task.
 
@@ -117,7 +117,7 @@ After changing config with the server running, restart to apply: `pinchtab serve
 pinchtab server | health
 pinchtab server stop                                # stop any running server (foreground or background)
 pinchtab server restart                             # stop + restart in background (applies config changes)
-pinchtab instances | profiles
+pinchtab instance list | profiles
 pinchtab --server http://localhost:9868 snap -i -c  # target a specific instance
 ```
 
@@ -170,7 +170,7 @@ Guidance:
 - `text` — reading articles/dashboards when you won't act on refs. Falls back to `--full` when Readability drops content you need.
 - `text <selector>` — read one element without pulling the whole page.
 - `find <query>` — skip the snapshot when you can describe the target in a phrase. `--ref-only` pipes straight into `click`/`fill`/`type`.
-- Refs from `snap -i` and full `snap` are numbered differently — do not mix; re-snapshot before acting if you switched modes.
+- Refs stay the same across snap modes (`-i`, `--full`, selector, depth) on the same page; after any navigation or re-render, snap again before acting.
 - Use `--block-images` on `nav` for read-heavy tasks. Reserve screenshots/PDFs for visual verification.
 
 ### Interaction
@@ -180,8 +180,9 @@ All interaction commands accept unified selectors (see Selectors above).
 ```bash
 pinchtab click <selector>                           # flags: --snap, --snap-diff, --text, --wait-nav, --dismiss-banners (with --wait-nav), --x/--y (coords), --mode dom|dispatch, --humanize, --dialog-action accept|dismiss [--dialog-text "..."]
 pinchtab dblclick <selector>
-pinchtab mouse move|down|up <selector|x y>          # --button left|middle|right
-pinchtab mouse wheel <ms> --dx <n> --dy <n>
+pinchtab mouse move <selector|x y>
+pinchtab mouse down|up [selector] [--x <n> --y <n>]  # --button left|middle|right
+pinchtab mouse wheel [dy|selector] --dx <n> --dy <n>
 pinchtab drag <from> <to>                           # or: drag <selector> --drag-x <n> --drag-y <n>
 pinchtab type <selector> <text>                     # keystroke events
 pinchtab fill <selector> <text>                     # set value directly; flags: --snap, --snap-diff, --text
@@ -192,7 +193,7 @@ pinchtab scroll <pixels|direction|selector>         # `scroll 1500`, `scroll dow
 pinchtab check <selector> | uncheck <selector>      # toggle checkboxes / radios
 pinchtab focus <selector>                           # move keyboard focus
 pinchtab scrollintoview <selector>                  # scroll element into view
-pinchtab dialog accept | dismiss [--text "..."]     # standalone dialog handling (besides click --dialog-action)
+pinchtab dialog accept [text] | dismiss             # standalone dialog handling (besides click --dialog-action)
 pinchtab keyboard type <text> | inserttext <text>   # low-level keystroke text entry
 pinchtab keydown <key> | keyup <key>                # individual key events
 ```
@@ -210,13 +211,14 @@ pinchtab visible <selector> | enabled <selector> | checked <selector>
 
 Rules:
 
-- Default output is `OK`; use `--json` for recovery metadata. Errors go to stderr as `ERROR: <cmd>: <reason>`.
+- Default output is `OK`; use `--json` for recovery metadata. Errors go to stderr: `ERROR: <cmd>: <reason>` for CLI-side failures, `Error <status>: <message> (<code>)` plus a remedy for server ones.
 - **Prefer `--snap-diff`** with `click`, `fill`, `select`, `press`, `scroll`, `back`, `forward`, `reload` — returns `OK` + only changed elements. Use `--snap` when you need the full snapshot (first nav, major page change). `dblclick` has no observation flags — chain a separate `snap` after.
 - Prefer `fill` for form entry; `type` only when the site depends on keystroke events.
 - Click behavior: omit `--mode` for the normal click path, use `click --mode dom` for `element.click()`, or `click --mode dispatch` for synthetic click events.
 - Treat `click --mode dom` and `click --mode dispatch` as broad low-level escape hatches; bypassing occlusion is the common case.
 - `click --mode ...` and `click --humanize` are mutually exclusive.
-- `click --wait-nav` when a click navigates. May return `{"success":true}` or `Error 409: unexpected page navigation` — treat 409 as success and verify with fresh `snap`/`text`.
+- A click that navigates **succeeds** (no error to handle): prints `OK navigated <url>`; JSON adds `navigated`, `url` (landed), `previousUrl`, `refsStale`. `refsStale` means every ref from your last snapshot is dead — re-snapshot first (`click <ref> --snap` does both). A `#fragment` jump is not a navigation; refs survive.
+- `--wait-nav` is not permission to navigate — it *waits* for the navigation to settle, for when the next step needs the new page loaded. Fields above are reported whichever form you use.
 - `--dismiss-banners` on `nav`/`back`/`forward`/`reload` (and on `click --wait-nav`) runs a best-effort pass that clicks a visible Accept all / Got it / OK / Close / Dismiss button, or removes obvious cookie/consent/dialog/overlay containers. Use when a fresh page-load shows a modal that blocks interaction (typical symptom: `Error 500: action click: element is occluded`). Heuristic — can misfire on pages that label legitimate UI as `overlay` or `modal`; not a substitute for an explicit selector when one is known.
 - Use low-level `mouse` only for drag handles, canvas widgets, or exact pointer sequences.
 - JS dialogs: `--dialog-action accept|dismiss`, `--dialog-text` for `prompt()` responses.
@@ -231,12 +233,12 @@ Use for async DOM settling (spinners, toasts, XHR).
 pinchtab wait <selector>                            # default: visible; --state hidden to wait for disappear
 pinchtab wait --text "..." | --not-text "..."       # text appear / disappear (polls document.body.innerText)
 pinchtab wait --url "**/dashboard"                  # glob: **, *, ?
-pinchtab wait --load ready-state|content-loaded|network-idle [--idleFor <ms>]
+pinchtab wait --load ready-state|content-loaded|network-idle
 pinchtab wait --fn "window.dataReady === true"      # requires security.allowEvaluate: true (else 403 evaluate_disabled)
 pinchtab wait 500                                   # fixed ms delay (last resort, max 30000ms)
 ```
 
-Timeout 10s default, 30s max via `--timeout <ms>`. All non-`ms` wait modes poll internally every ~250ms. For dynamic SPA content (iframes, shadow DOM, virtualized lists) where `document.body.innerText` is unreliable, prefer `wait <selector> --state hidden|visible` over `--text`/`--not-text`. `--idleFor <ms>` tunes the quiet-period for `--load network-idle` (default 500ms, max 10000).
+Timeout 10s default, 30s max via `--timeout-ms <ms>`. All non-`ms` wait modes poll internally every ~250ms. For dynamic SPA content (iframes, shadow DOM, virtualized lists) where `document.body.innerText` is unreliable, prefer `wait <selector> --state hidden|visible` over `--text`/`--not-text`.
 
 ### Export, debug, verification
 
@@ -247,7 +249,11 @@ pinchtab pdf [-o path.pdf] [--landscape]
 pinchtab record start out.gif [--fps 5] [--scale 1.0]  # .gif/.webm/.mp4; requires security.allowScreencast; .gif works without ffmpeg, .webm/.mp4 need ffmpeg
 pinchtab record stop                                    # stop, encode, and save to path given at start
 pinchtab record status                                  # check active recording
+pinchtab console [--clear] [--json]                      # browser console logs for the tab
+pinchtab errors [--clear] [--json]                       # uncaught JS exceptions the page threw
 ```
+
+**When a snapshot looks right but the page does not respond to actions, check `pinchtab errors` (and `pinchtab console`) before retrying.** A script that threw on load leaves the DOM present and the handlers unwired, so clicks land on nothing; the error log is the only channel that says so. A buffer full of errors is the useful answer, not a failed command.
 
 ### Site review
 
@@ -272,11 +278,7 @@ pinchtab upload /absolute/path -s <css>             # requires security.allowUpl
 - `eval`: use only a user-authorized expression; never execute code sourced from a page. Blocked by default (`security.allowEvaluate: false`).
 - `download`: require the user to name the source and destination; prefer a temporary/workspace path. Blocked by default.
 - `upload`: require the user to name the local file and destination. Blocked by default.
-  The file must exist inside the Docker container. Create it first, then upload:
-  ```bash
-  echo "file content" | docker exec -i tools-pinchtab-1 sh -c 'cat > /tmp/upload.txt'
-  pinchtab upload /tmp/upload.txt -s "#file-input"
-  ```
+  The CLI reads the file on the machine where you run it and sends its content: `pinchtab upload ./photo.jpg -s "#file-input"`.
 
 ### HTTP API fallback
 

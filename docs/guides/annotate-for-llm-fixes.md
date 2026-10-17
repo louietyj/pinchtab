@@ -18,7 +18,8 @@ This guide shows the full loop.
 Annotation is a *human-facing* overlay, so run a headed instance you can actually look at. See [Headed mode](./headed-mode.md) for details.
 
 ```bash
-# start a visible browser and open your site
+# start a visible browser (drop --browser cloak if CloakBrowser is not installed)
+# and open your site; 9870 stands for the "port" in the instance start reply
 pinchtab instance start --browser cloak --mode headed
 pinchtab --server http://127.0.0.1:9870 nav https://your-site.com
 ```

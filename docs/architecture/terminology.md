@@ -10,8 +10,8 @@ and provider routing.
 | **browser**     | Public   | The user-facing selection concept. Users choose a browser in config, CLI flags, and API calls. Replaces "engine" in all user-facing contexts. |
 | **provider**    | Public   | One of `chrome | cloak | ghost-chrome`. The implementation behind a browser selection. Each provider maps to a distinct launch and routing strategy. |
 | **static fetch**| Public   | The lightweight HTTP+DOM path used by `ghost-chrome` before escalating to Chrome. Replaces "lite engine" in user-facing language. |
-| **engine**      | Internal | DEPRECATED as a public concept. Kept internally in `internal/engine/` as an implementation detail. Will be removed from public config in a future phase. |
-| **target**      | Internal | A named profile for launch settings (binary path, proxy, flags, etc.). Not exposed publicly through API, CLI, or docs. |
+| **engine**      | Removed  | No longer a public concept: `server.engine` in a config file fails validation. The old `chrome` / `lite` / `auto` values survive only as the internal `browsers.LaunchMode` (`internal/browsers/config.go`). |
+| **target**      | Config   | A named launch profile under `browser.targets` in the config file (provider, binary path, proxy, flags, etc.), with `browser.defaultTarget` naming the default. Where a `browser` value is accepted (e.g. `POST /instances/attach`), a target name may be given instead of a provider. |
 
 ## Provider descriptions
 
@@ -33,9 +33,11 @@ requires JavaScript execution.
 
 ## Migration notes
 
-- The `engine` field in `ServerConfig` and `RuntimeConfig` is deprecated.
-  Use `browsers.default` in the config file instead.
-- The `provider` field inside `browser {}` config blocks is deprecated in
-  favor of the top-level `browsers.default` key.
+- The `engine` field in `ServerConfig` is no longer supported: it is parsed
+  only so config validation can reject it. Use `browsers.default` in the
+  config file instead. `RuntimeConfig` has no engine field.
+- The `provider` field inside `browser {}` config blocks is no longer
+  supported (validation error); use the top-level `browsers.default` key.
+  Per-target `browser.targets.<name>.provider` is still required.
 - Public documentation, CLI help text, and API responses should use
   "browser" and "provider" — never "engine" or "lite engine".

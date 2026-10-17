@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -203,6 +204,9 @@ func TestTopmostModalUsesBrowserPaintOrderAndRejectsFalseOwners(t *testing.T) {
 	}
 
 	t.Run("native top layer follows showModal order", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("Windows Chrome does not expose a stable backend node for the native top layer")
+		}
 		navigate(`<style>dialog { width:300px; height:180px; padding:0 }</style>
 			<dialog id="first">first</dialog><dialog id="second">second</dialog>
 			<script>second.showModal(); first.showModal();</script>`)

@@ -419,11 +419,33 @@ func resetConfigSchemaPrintFlag(t *testing.T) {
 	}
 }
 
+// restartHintForMode names `pinchtab server restart` only for the server/daemon
+// front door ("dashboard"); a bridge (or an unknown mode) gets a mode-neutral
+// instruction, because that command would stop a bridge. This is the config-set
+// path counterpart of the capability-gate remedy test.
+func TestRestartHintForMode(t *testing.T) {
+	dashboard := restartHintForMode("dashboard")
+	if !strings.Contains(dashboard, "pinchtab server restart") {
+		t.Errorf("dashboard hint should name the server restart command: %q", dashboard)
+	}
+	for _, mode := range []string{"bridge", "server", ""} {
+		hint := restartHintForMode(mode)
+		if strings.Contains(hint, "pinchtab server restart") {
+			t.Errorf("mode %q hint names `pinchtab server restart`, which is wrong off the dashboard: %q", mode, hint)
+		}
+		if !strings.Contains(strings.ToLower(hint), "restart") {
+			t.Errorf("mode %q hint does not tell the caller to restart: %q", mode, hint)
+		}
+	}
+}
+
 func TestConfigSetHintsRestartWhenServerRunning(t *testing.T) {
-	// Spin up a fake health endpoint so hintRestartIfRunning detects a running server.
+	// Spin up a fake dashboard health endpoint so hintRestartIfRunning detects a
+	// running server (mode "dashboard"), the surface where `pinchtab server restart`
+	// is the correct command.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
+		_, _ = w.Write([]byte(`{"status":"ok","mode":"dashboard"}`))
 	}))
 	defer srv.Close()
 
@@ -457,6 +479,86 @@ func TestConfigSetHintsRestartWhenServerRunning(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "pinchtab server restart") {
 		t.Fatalf("expected 'pinchtab server restart' in hint, got %q", stderr)
+	}
+}
+
+// AC: config set of a capability while a BRIDGE is running must not print a hint
+// that names `pinchtab server restart` — running it would kill the bridge.
+func TestConfigSetHintDoesNotNameServerRestartForBridge(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"status":"ok","mode":"bridge"}`))
+	}))
+	defer srv.Close()
+
+	port := srv.URL[strings.LastIndex(srv.URL, ":")+1:]
+
+	configPath := filepath.Join(t.TempDir(), "pinchtab", "config.json")
+	t.Setenv("PINCHTAB_CONFIG", configPath)
+	configJSON := []byte(`{"configVersion":"0.8.0","server":{"port":"` + port + `","token":"test-token-for-restart-hint-00000"}}`)
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(configPath, configJSON, 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	t.Cleanup(func() { rootCmd.SetArgs(nil) })
+
+	stderr := captureStderr(t, func() {
+		_ = captureStdout(t, func() {
+			rootCmd.SetArgs([]string{"config", "set", "security.allowScreencast", "true"})
+			if err := rootCmd.Execute(); err != nil {
+				t.Fatalf("Execute() error = %v", err)
+			}
+		})
+	})
+
+	if strings.Contains(stderr, "pinchtab server restart") {
+		t.Fatalf("bridge-mode config set named `pinchtab server restart`, which would kill the bridge: %q", stderr)
+	}
+	if !strings.Contains(stderr, "restart") {
+		t.Fatalf("expected a mode-neutral restart hint on stderr, got %q", stderr)
+	}
+}
+
+// A running instance whose token the CLI cannot present answers /health with
+// 401/403. It is still running and still needs a restart to apply the change, so
+// the hint must print — mode-neutral, since the mode is hidden. This pins the
+// regression where switching off CheckPinchTabRunning (any 200) to a strict probe
+// left a protected instance with no hint at all.
+func TestConfigSetHintsRestartForProtectedInstance(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	port := srv.URL[strings.LastIndex(srv.URL, ":")+1:]
+
+	configPath := filepath.Join(t.TempDir(), "pinchtab", "config.json")
+	t.Setenv("PINCHTAB_CONFIG", configPath)
+	configJSON := []byte(`{"configVersion":"0.8.0","server":{"port":"` + port + `","token":"test-token-for-restart-hint-00000"}}`)
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(configPath, configJSON, 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	t.Cleanup(func() { rootCmd.SetArgs(nil) })
+
+	stderr := captureStderr(t, func() {
+		_ = captureStdout(t, func() {
+			rootCmd.SetArgs([]string{"config", "set", "security.allowScreencast", "true"})
+			if err := rootCmd.Execute(); err != nil {
+				t.Fatalf("Execute() error = %v", err)
+			}
+		})
+	})
+
+	if !strings.Contains(stderr, "restart") {
+		t.Fatalf("a protected running instance got no restart hint: %q", stderr)
+	}
+	if strings.Contains(stderr, "pinchtab server restart") {
+		t.Fatalf("a protected instance's mode is unknown, so the hint must stay neutral: %q", stderr)
 	}
 }
 

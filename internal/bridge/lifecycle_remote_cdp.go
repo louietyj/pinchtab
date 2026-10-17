@@ -42,12 +42,13 @@ func (b *Bridge) ensureRemoteCDPLocked(cfg *config.RuntimeConfig) error {
 }
 
 func (b *Bridge) ensureAtLeastOnePageTarget(browserCtx context.Context) error {
-	var targets []*target.Info
-	err := runOnBrowser(browserCtx, func(ctx context.Context) error {
-		var listErr error
-		targets, listErr = target.GetTargets().Do(ctx)
-		return listErr
-	})
+	// Target.getTargets is browser-level; issuing it on browserCtx's own CDP
+	// session ties it to whichever tab chromedp adopted from the remote browser.
+	execCtx, err := browserExecutorContext(browserCtx)
+	if err != nil {
+		return err
+	}
+	targets, err := target.GetTargets().Do(execCtx)
 	if err != nil {
 		return fmt.Errorf("list targets: %w", err)
 	}

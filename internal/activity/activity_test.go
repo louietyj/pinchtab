@@ -33,7 +33,7 @@ func TestQueryKeepsNewestWithinLimitInOrder(t *testing.T) {
 		}
 	}
 
-	got, err := store.Query(Filter{Source: "client", Limit: 3})
+	got, err := store.Query(Filter{Sources: []string{"client"}, Limit: 3})
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
@@ -351,7 +351,7 @@ func TestStorePartitionsDashboardEventsOutsidePrimaryLog(t *testing.T) {
 		t.Fatalf("unfiltered query = %d events, want 2 (server + dashboard)", len(gotAll))
 	}
 
-	gotDashboard, err := store.Query(Filter{Source: "dashboard", Limit: 10})
+	gotDashboard, err := store.Query(Filter{Sources: []string{"dashboard"}, Limit: 10})
 	if err != nil {
 		t.Fatalf("Query dashboard: %v", err)
 	}
@@ -359,7 +359,7 @@ func TestStorePartitionsDashboardEventsOutsidePrimaryLog(t *testing.T) {
 		t.Fatalf("dashboard query = %#v, want dashboard event", gotDashboard)
 	}
 
-	gotServer, err := store.Query(Filter{Source: "server", Limit: 10})
+	gotServer, err := store.Query(Filter{Sources: []string{"server"}, Limit: 10})
 	if err != nil {
 		t.Fatalf("Query server: %v", err)
 	}
@@ -787,7 +787,7 @@ func TestStoreRecordConcurrentNoCorruption(t *testing.T) {
 	}
 	wg.Wait()
 
-	got, err := store.Query(Filter{Source: "server", Limit: 1000})
+	got, err := store.Query(Filter{Sources: []string{"server"}, Limit: 1000})
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
@@ -806,5 +806,89 @@ func TestStoreRecordConcurrentNoCorruption(t *testing.T) {
 				t.Fatalf("RequestID %s appeared %d times, want 1", key, seen[key])
 			}
 		}
+	}
+}
+
+// A query narrowed to a set of sources must open only those sources' per-source
+// log files, not every source's log in the retention window. The dashboard file
+// is poisoned with a line longer than the query scanner's token buffer, so the
+// query errors if — and only if — it opens the file it was not asked for. Fails
+// on HEAD, where a Sources-only filter narrowed nothing and walked every file.
+func TestQuerySourcesNarrowsFileWalkAndSkipsUnrequestedSource(t *testing.T) {
+	store, err := NewStore(t.TempDir(), 7)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	day := time.Now().UTC()
+	for _, src := range []string{SourceClient, SourceScheduler, SourceDashboard} {
+		if err := store.Record(Event{Source: src, Timestamp: day, Method: "GET", Path: "/" + src, Status: 200}); err != nil {
+			t.Fatalf("Record(%s): %v", src, err)
+		}
+	}
+
+	dashPath := store.sourceFilePathFor(SourceDashboard, day)
+	if dashPath == "" {
+		t.Fatal("no dashboard per-source path")
+	}
+	poison := []byte(strings.Repeat("x", 2*1024*1024) + "\n") // > the 1 MiB scanner token cap
+	if err := os.WriteFile(dashPath, poison, 0600); err != nil {
+		t.Fatalf("poison dashboard file: %v", err)
+	}
+
+	got, err := store.Query(Filter{Sources: []string{SourceClient, SourceScheduler}})
+	if err != nil {
+		t.Fatalf("query opened the dashboard file it was not asked for: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d events, want 2 (client + scheduler): %v", len(got), paths(got))
+	}
+	for _, e := range got {
+		if normalizeSourceName(e.Source) == SourceDashboard {
+			t.Errorf("a dashboard event leaked into a {client, scheduler} query: %+v", e)
+		}
+	}
+}
+
+// The store query and the IsDashboardAgentActivity predicate normalize the same
+// way: a capitalised or const-spelled source select the same events, and the
+// predicate agrees with the query on a capitalised source. Fails on HEAD for the
+// predicate, which compared evt.Source unnormalized.
+func TestQuerySourcesNormalizationMatchesPredicate(t *testing.T) {
+	store, err := NewStore(t.TempDir(), 7)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := store.Record(Event{Source: SourceClient, Timestamp: now, Method: "GET", Path: "/c", Status: 200}); err != nil {
+		t.Fatalf("Record client: %v", err)
+	}
+	if err := store.Record(Event{Source: SourceScheduler, Timestamp: now, Method: "GET", Path: "/s", Status: 200}); err != nil {
+		t.Fatalf("Record scheduler: %v", err)
+	}
+
+	capitalised, err := store.Query(Filter{Sources: []string{"Client"}})
+	if err != nil {
+		t.Fatalf("Query(Sources={\"Client\"}): %v", err)
+	}
+	constSpelled, err := store.Query(Filter{Sources: []string{SourceClient}})
+	if err != nil {
+		t.Fatalf("Query(Sources={SourceClient}): %v", err)
+	}
+	if len(capitalised) != 1 || len(constSpelled) != 1 {
+		t.Fatalf("capitalised=%d const=%d, want 1 each", len(capitalised), len(constSpelled))
+	}
+	if capitalised[0].Path != constSpelled[0].Path {
+		t.Errorf("capitalised query returned %q, const spelling %q", capitalised[0].Path, constSpelled[0].Path)
+	}
+
+	if !IsDashboardAgentActivity(Event{Source: "Scheduler"}) {
+		t.Error("IsDashboardAgentActivity(\"Scheduler\") = false; it disagrees with a normalized Sources query")
+	}
+	sched, err := store.Query(Filter{Sources: []string{"Scheduler"}})
+	if err != nil {
+		t.Fatalf("Query(Sources={\"Scheduler\"}): %v", err)
+	}
+	if len(sched) != 1 || sched[0].Path != "/s" {
+		t.Fatalf("capitalised scheduler query returned %v, want the one scheduler event", paths(sched))
 	}
 }

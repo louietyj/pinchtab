@@ -8,6 +8,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const stateNameRequired = "Error: a state name is required, as <name> or --name"
+
 func StateCurrent(client *http.Client, base, token string, cmd *cobra.Command) {
 	tabID, _ := cmd.Flags().GetString("tab")
 	params := url.Values{}
@@ -26,8 +28,7 @@ func StateList(client *http.Client, base, token string) {
 	printIndented(buf)
 }
 
-func StateSave(client *http.Client, base, token string, cmd *cobra.Command) {
-	name, _ := cmd.Flags().GetString("name")
+func StateSave(client *http.Client, base, token string, cmd *cobra.Command, name string) {
 	encrypt, _ := cmd.Flags().GetBool("encrypt")
 	tabID, _ := cmd.Flags().GetString("tab")
 
@@ -43,12 +44,11 @@ func StateSave(client *http.Client, base, token string, cmd *cobra.Command) {
 }
 
 // StateLoad supports exact name or prefix-based loading (most recent match).
-func StateLoad(client *http.Client, base, token string, cmd *cobra.Command) {
-	name, _ := cmd.Flags().GetString("name")
+func StateLoad(client *http.Client, base, token string, cmd *cobra.Command, name string) {
 	tabID, _ := cmd.Flags().GetString("tab")
 
 	if name == "" {
-		exitErr(1, "Error: --name is required")
+		exitErr(1, stateNameRequired)
 	}
 
 	body := map[string]any{
@@ -61,10 +61,9 @@ func StateLoad(client *http.Client, base, token string, cmd *cobra.Command) {
 	requireMap(apiclient.DoPost(client, base, token, "/state/load", body), 1, "Failed to load state")
 }
 
-func StateShow(client *http.Client, base, token string, cmd *cobra.Command) {
-	name, _ := cmd.Flags().GetString("name")
+func StateShow(client *http.Client, base, token string, name string) {
 	if name == "" {
-		exitErr(1, "Error: --name is required")
+		exitErr(1, stateNameRequired)
 	}
 
 	params := url.Values{}
@@ -75,10 +74,9 @@ func StateShow(client *http.Client, base, token string, cmd *cobra.Command) {
 	printIndented(buf)
 }
 
-func StateDelete(client *http.Client, base, token string, cmd *cobra.Command) {
-	name, _ := cmd.Flags().GetString("name")
+func StateDelete(client *http.Client, base, token string, name string) {
 	if name == "" {
-		exitErr(1, "Error: --name is required")
+		exitErr(1, stateNameRequired)
 	}
 
 	params := url.Values{}

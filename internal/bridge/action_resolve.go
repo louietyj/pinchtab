@@ -517,11 +517,22 @@ const resolveSelectorAtFn = `function(kind, value, index, fromEnd, positional) {
 	// has to pick the maximum weight EXPLICITLY: reading element zero of a
 	// weight-sorted list is what made nth:1 resolve earlier in the document than
 	// nth:0. Ties keep the first, so equal weights still mean document order.
-	const bestRanked = (items) => {
+	// A label that IS the query breaks a tie between equally control-like matches
+	// — "Save" over "Save and exit" — but never outranks control-likeness: a
+	// heading reading "Sign in" must not take the click from a "Sign in with
+	// Google" button. A leaf inside a control weighs as that control, so the
+	// <span>Save</span> of a button is not beaten by a bare "Save changes" button.
+	const exactBonus = 0.01;
+	const controlSelector = "button, a, input, [role=button], [role=link], [role=textbox]";
+	const textWeight = (el, query) => {
+		const control = (el.closest && el.closest(controlSelector)) || el;
+		return semanticWeight(control) + (normalize(el.textContent || "") === query ? exactBonus : 0);
+	};
+	const bestRanked = (items, query) => {
 		let best = items[0];
-		let bestWeight = semanticWeight(best);
+		let bestWeight = textWeight(best, query);
 		for (const el of items) {
-			const weight = semanticWeight(el);
+			const weight = textWeight(el, query);
 			if (weight > bestWeight) {
 				best = el;
 				bestWeight = weight;
@@ -529,15 +540,34 @@ const resolveSelectorAtFn = `function(kind, value, index, fromEnd, positional) {
 		}
 		return best;
 	};
-	const textCandidates = (query) => {
+	const textCandidates = (query, exactFirst) => {
 		if (!query) return [];
 		// textContent, not innerText: innerText forces a synchronous layout per
 		// element and is O(N^2) on large pages.
 		const elements = deepQueryAll("*", root.body || root)
 			.filter((el) => !nonRendered.has((el.tagName || "").toLowerCase()));
 		const measured = elements.map((el) => ({ el, text: normalize(el.textContent || ""), size: el.getElementsByTagName("*").length }));
-		const exact = measured.filter((item) => item.text && item.text.includes(query));
-		if (exact.length) return smallestMatches(exact);
+		// An element whose label IS the query beats one that merely contains it.
+		// Without this rung the two were one filter — named exact, testing
+		// includes — so "Save" and "Save and exit" were equally good answers to
+		// text:Save, both leaf-most, both weighted as buttons, and the tie fell to
+		// document order. A page listing the longer label first therefore sent
+		// text:Delete to "Delete all" and reported OK.
+		//
+		// Containment still answers when nothing matches outright, so the
+		// shorthand that reaches "Sign in" by text:Sign is untouched. This is the
+		// ladder the select-option matcher already documents in
+		// docs/reference/select.md: exact visible text, then substring.
+		//
+		// The rung applies to the positional wrappers, which index what it
+		// returns. The bare selector takes every containing match and lets
+		// bestRanked weigh exactness below control-likeness.
+		if (exactFirst) {
+			const equals = measured.filter((item) => item.text === query);
+			if (equals.length) return smallestMatches(equals);
+		}
+		const contains = measured.filter((item) => item.text && item.text.includes(query));
+		if (contains.length) return smallestMatches(contains);
 		const tokens = query.split(" ").filter(Boolean);
 		if (!tokens.length) return [];
 		const fuzzy = measured.filter((item) => {
@@ -565,9 +595,9 @@ const resolveSelectorAtFn = `function(kind, value, index, fromEnd, positional) {
 			return pick(items);
 		}
 		case "text": {
-			const items = unique(textCandidates(needle));
+			const items = unique(textCandidates(needle, positional));
 			if (!items.length) return null;
-			return positional ? pick(items) : bestRanked(items);
+			return positional ? pick(items) : bestRanked(items, needle);
 		}
 		default:
 			return null;

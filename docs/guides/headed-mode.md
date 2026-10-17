@@ -44,10 +44,14 @@ work too because Chrome falls back to XWayland.
 ### Linux over SSH with X forwarding
 
 ```bash
-ssh -X user@workstation 'DISPLAY=:0 pinchtab instance start --mode headed'
+ssh -X user@workstation
+# in that SSH session, DISPLAY already points at the forwarded display
+pinchtab server --headed
 ```
 
-Forwarding works but is laggy for interactive use; prefer running PinchTab on
+Chrome inherits `DISPLAY` from the `pinchtab server` process, not from the
+client that calls `pinchtab instance start`, so the server has to be started
+inside the forwarded session. Forwarding works but is laggy for interactive use; prefer running PinchTab on
 the workstation itself.
 
 ### Docker with X11 forwarding (manual, Linux host only)

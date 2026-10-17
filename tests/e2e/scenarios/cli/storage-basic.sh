@@ -104,3 +104,88 @@ else
 fi
 
 end_test
+
+# ═══════════════════════════════════════════════════════════════════
+# Positional key shapes
+# ═══════════════════════════════════════════════════════════════════
+
+assert_err_contains() {
+  local needle="$1" desc="$2"
+  if grep -q -- "$needle" <<<"$PT_ERR"; then
+    pass_assert "$desc"
+  else
+    fail_assert "$desc"
+    echo -e "  ${RED}  stderr was: $PT_ERR${NC}"
+  fi
+}
+
+# ─────────────────────────────────────────────────────────────────
+start_test "pinchtab storage get <key> reads one item positionally"
+
+pt navigate "${FIXTURES_URL}/index.html"
+assert_cli_ok "navigate to fixture"
+pt_cli storage set pos_k1 pos_v1 --type local
+assert_cli_ok "set pos_k1"
+pt_cli storage set pos_k2 pos_v2 --type local
+assert_cli_ok "set pos_k2"
+
+pt_cli storage get pos_k1 --type local
+assert_cli_ok "get pos_k1 positionally"
+assert_json_field '.local | length' '1' "positional get returns exactly one item"
+assert_json_field '.local[0].key' 'pos_k1' "positional get returns the named key"
+assert_json_field '.local[0].value' 'pos_v1' "positional get returns its value"
+
+pt_cli storage get --key pos_k2 --type local
+assert_cli_ok "get --key pos_k2 still works"
+assert_json_field '.local[0].value' 'pos_v2' "--key get returns its value"
+
+end_test
+
+# ─────────────────────────────────────────────────────────────────
+start_test "pinchtab storage get/delete refuse a key given as argument and --key"
+
+pt_fail storage get pos_k1 --key pos_k2
+assert_err_contains "pos_k1" "get refusal names the argument"
+assert_err_contains "pos_k2" "get refusal names the flag value"
+
+pt_fail storage delete pos_k1 --key pos_k2 --type local
+assert_err_contains "twice" "delete refusal says the key was given twice"
+
+pt_cli storage get --type local
+assert_json_field '[.local[].key] | map(select(. == "pos_k1" or . == "pos_k2")) | length' '2' \
+  "a refused delete removed nothing"
+
+end_test
+
+# ─────────────────────────────────────────────────────────────────
+start_test "bare pinchtab storage delete is refused, names storage clear, and wipes nothing"
+
+pt_fail storage delete
+assert_err_contains "storage clear" "refusal names storage clear"
+
+pt_fail storage delete --key ""
+assert_err_contains "storage clear" "empty --key refusal names storage clear"
+
+pt_cli storage get --type local
+assert_cli_ok "get after refused bare delete"
+assert_json_field '[.local[].key] | map(select(. == "pos_k1" or . == "pos_k2")) | length' '2' \
+  "both keys survive a bare storage delete"
+
+end_test
+
+# ─────────────────────────────────────────────────────────────────
+start_test "pinchtab storage delete <key> removes only that key"
+
+pt_cli storage delete pos_k1 --type local
+assert_cli_ok "delete pos_k1 positionally"
+
+pt_cli storage get --type local
+assert_json_field '[.local[].key] | index("pos_k1")' 'null' "pos_k1 is gone"
+assert_json_field '[.local[] | select(.key == "pos_k2") | .value][0]' 'pos_v2' "pos_k2 survives"
+
+pt_cli storage delete --key pos_k2 --type local
+assert_cli_ok "delete --key pos_k2 still works"
+pt_cli storage get pos_k2 --type local
+assert_json_field '.local | length' '0' "pos_k2 is gone after --key delete"
+
+end_test

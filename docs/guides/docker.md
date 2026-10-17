@@ -1,7 +1,7 @@
 # Docker Deployment
 
 PinchTab can run in Docker with a mounted data volume for config, profiles, and state.
-The bundled image now manages its default config under `/data/.config/pinchtab/config.json`.
+The bundled image manages its default config under `/data/.pinchtab/config.json` (the image sets `HOME=/data`, and PinchTab keeps config in `~/.pinchtab` on Linux).
 If you want full control over the config file path, you can still mount your own file and point `PINCHTAB_CONFIG` at it.
 
 ## Quick Start
@@ -23,7 +23,7 @@ docker run -d \
   pinchtab
 ```
 
-On first boot, the image creates `/data/.config/pinchtab/config.json` with `bind: 0.0.0.0` (required for Docker port publishing) and generates a token if needed.
+On first boot, the image creates `/data/.pinchtab/config.json` with `bind: 0.0.0.0` (required for Docker port publishing) and generates a token if needed. Read it with `docker exec pinchtab pinchtab config token --stdout`; every API call, `/health` included, needs it as `Authorization: Bearer <token>`.
 
 If you inspect the startup security summary from inside Docker, the loopback bind check will still report the effective runtime bind as non-loopback. That is expected: the process is listening on `0.0.0.0` inside the container so Docker port publishing can forward traffic to it.
 
@@ -47,11 +47,11 @@ With the `always-on` strategy (default), PinchTab launches a managed Chrome inst
 
 ### Docker Compose Healthcheck
 
-The standard healthcheck marks the container as "healthy" when the dashboard responds:
+The image's built-in `HEALTHCHECK` runs `pinchtab health`, which reads the token from the container's config, and marks the container "healthy" when the dashboard responds. In Compose the equivalent is:
 
 ```yaml
 healthcheck:
-  test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9867/health"]
+  test: ["CMD-SHELL", "pinchtab health >/dev/null"]
   interval: 3s
   timeout: 10s
   retries: 20
@@ -66,7 +66,7 @@ If your application needs Chrome to be ready before making requests, poll `/heal
 
 ```bash
 # Wait for browser to be ready
-until curl -sf http://localhost:9867/health | jq -e '.defaultInstance.status == "running"' > /dev/null 2>&1; do
+until curl -sf -H "Authorization: Bearer $PINCHTAB_TOKEN" http://localhost:9867/health | jq -e '.defaultInstance.status == "running"' > /dev/null 2>&1; do
   sleep 1
 done
 echo "Browser ready"
@@ -75,11 +75,13 @@ echo "Browser ready"
 Or in code:
 
 ```javascript
-async function waitForBrowser(baseUrl, timeoutMs = 60000) {
+async function waitForBrowser(baseUrl, token, timeoutMs = 60000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
-      const res = await fetch(`${baseUrl}/health`);
+      const res = await fetch(`${baseUrl}/health`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const data = await res.json();
       if (data.defaultInstance?.status === "running") return;
     } catch {}
@@ -97,6 +99,7 @@ async function waitForBrowser(baseUrl, timeoutMs = 60000) {
   "mode": "dashboard",
   "version": "0.8.0",
   "uptime": 12345,
+  "authRequired": true,
   "profiles": 1,
   "instances": 1,
   "defaultInstance": {
@@ -126,6 +129,7 @@ Example `docker-data/config.json`:
   "server": {
     "bind": "0.0.0.0",
     "port": "9867",
+    "token": "replace-with-a-generated-token",
     "stateDir": "/data/state"
   },
   "profiles": {
@@ -138,6 +142,8 @@ Example `docker-data/config.json`:
   }
 }
 ```
+
+PinchTab will not write a token into a file you supplied through `PINCHTAB_CONFIG`, so either set `server.token` as above or pass `-e PINCHTAB_TOKEN=...`; with neither, the server refuses to start.
 
 Run with an explicit config file:
 
@@ -155,8 +161,8 @@ docker run -d \
 Check it:
 
 ```bash
-curl http://localhost:9867/health
-curl http://localhost:9867/instances
+curl -H "Authorization: Bearer $PINCHTAB_TOKEN" http://localhost:9867/health
+curl -H "Authorization: Bearer $PINCHTAB_TOKEN" http://localhost:9867/instances
 ```
 
 ## What To Persist
@@ -202,7 +208,7 @@ services:
     command:
       - |
         export PINCHTAB_TOKEN="$(cat /run/secrets/pinchtab_token)"
-        exec /usr/local/bin/docker-entrypoint.sh pinchtab
+        exec /usr/local/bin/docker-entrypoint.sh pinchtab server
 ```
 
 Secrets mounted at `/run/secrets/...` are read-only and never appear in `docker ps` or logs.
@@ -212,7 +218,7 @@ Secrets mounted at `/run/secrets/...` are read-only and never appear in `docker 
 The repository includes a `docker-compose.yml` that follows the managed-config pattern:
 
 1. mount a persistent `/data` volume
-2. let the entrypoint create and maintain `/data/.config/pinchtab/config.json`
+2. let the entrypoint create and maintain `/data/.pinchtab/config.json`
 3. optionally pass `PINCHTAB_TOKEN`
 
 If you prefer a fully user-managed config file, mount it separately and set `PINCHTAB_CONFIG`.
@@ -279,7 +285,7 @@ This image is local-only:
 
 - it is not pushed to any registry
 - it is not produced by `./dev binaries`
-- `./dev smoke cloakbrowser` reuses it when present; set `SKIP_BUILD=0` or remove the image to force a rebuild
+- `./dev smoke cloakbrowser` builds its own copy from the same Dockerfile, tagged `pinchtab-cloakbrowser:test`, on every run; set `SKIP_BUILD=1` to reuse an existing image instead
 
 ### Run a CloakBrowser-backed container locally
 

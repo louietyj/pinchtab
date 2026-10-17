@@ -20,11 +20,10 @@ func handleEval(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.Call
 		if tabID := optString(r, "tabId"); tabID != "" {
 			payload["tabId"] = tabID
 		}
-		body, code, err := c.Post(ctx, "/evaluate", payload)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+		if v, ok := optBool(r, "awaitPromise"); ok && v {
+			payload["awaitPromise"] = true
 		}
-		return resultFromBytes(body, code)
+		return toolResult(c.Post(ctx, "/evaluate", payload))
 	}
 }
 
@@ -43,11 +42,7 @@ func handlePDF(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.CallT
 		if pr := optString(r, "pageRanges"); pr != "" {
 			q.Set("pageRanges", pr)
 		}
-		body, code, err := c.Get(ctx, "/pdf", q)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return resultFromBytes(body, code)
+		return toolResult(c.Get(ctx, "/pdf", q))
 	}
 }
 
@@ -58,10 +53,11 @@ func handleFind(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.Call
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		payload := map[string]any{"query": query}
-		if tabID := optString(r, "tabId"); tabID != "" {
+		tabID := optString(r, "tabId")
+		if tabID != "" {
 			payload["tabId"] = tabID
 		}
-		body, code, err := c.Post(ctx, "/find", payload)
+		body, code, err := c.PostCapturingVocab(ctx, "/find", payload, tabID)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
@@ -85,5 +81,26 @@ func handleFind(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.Call
 		}
 
 		return jsonResult(resp)
+	}
+}
+
+func handleExtract(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		schema, ok := r.GetArguments()["schema"]
+		if !ok || schema == nil {
+			return mcp.NewToolResultError("required argument \"schema\" not found"), nil
+		}
+		payload := map[string]any{"schema": schema}
+		tabID := optString(r, "tabId")
+		if tabID != "" {
+			payload["tabId"] = tabID
+		}
+		if scope := optTrimmedString(r, "scope"); scope != "" {
+			payload["scope"] = scope
+		}
+		if maxItems, ok := optInt(r, "maxItems"); ok && maxItems > 0 {
+			payload["maxItems"] = maxItems
+		}
+		return toolResult(c.PostCapturingVocab(ctx, "/extract", payload, tabID))
 	}
 }

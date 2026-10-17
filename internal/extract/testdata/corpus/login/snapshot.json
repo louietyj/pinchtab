@@ -1,0 +1,33 @@
+{
+  "url": "https://quotes.toscrape.com/login",
+  "title": "Quotes to Scrape",
+  "nodes": [
+    {"ref":"e0","role":"RootWebArea","name":"Quotes to Scrape","depth":0,"nodeId":22,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e1","role":"heading","name":"Quotes to Scrape","depth":6,"text":"Quotes to Scrape","tag":"h1","nodeId":34,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e2","role":"link","name":"Quotes to Scrape","depth":7,"text":"Quotes to Scrape","tag":"a","nodeId":35,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e3","role":"StaticText","name":"Quotes to Scrape","depth":8,"nodeId":54,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e4","role":"paragraph","name":"","depth":6,"text":"Login","tag":"p","nodeId":37,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e5","role":"link","name":"Login","depth":7,"text":"Login","tag":"a","nodeId":38,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e6","role":"StaticText","name":"Login","depth":8,"nodeId":55,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e7","role":"form","name":"","depth":4,"text":"Username Password","tag":"form","nodeId":17,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e8","role":"LabelText","name":"","depth":7,"text":"Username","tag":"label","nodeId":41,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e9","role":"StaticText","name":"Username","depth":8,"nodeId":56,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e10","role":"textbox","name":"Username Password","depth":7,"label":"Username Password Username Password","tag":"input","nodeId":18,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e11","role":"LabelText","name":"","depth":7,"text":"Password","tag":"label","nodeId":45,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e12","role":"StaticText","name":"Password","depth":8,"nodeId":57,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e13","role":"textbox","name":"","depth":7,"tag":"input","nodeId":19,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e14","role":"button","name":"Login","depth":5,"tag":"input","nodeId":21,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e15","role":"StaticText","name":"Login","depth":6,"nodeId":58,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e16","role":"contentinfo","name":"","depth":3,"text":"Quotes by: GoodReads.com Made with ❤ by Zyte","tag":"footer","nodeId":47,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e17","role":"paragraph","name":"","depth":5,"text":"Quotes by: GoodReads.com","tag":"p","nodeId":49,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e18","role":"StaticText","name":"Quotes by: ","depth":6,"nodeId":59,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e19","role":"link","name":"GoodReads.com","depth":6,"text":"GoodReads.com","tag":"a","nodeId":50,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e20","role":"StaticText","name":"GoodReads.com","depth":7,"nodeId":60,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e21","role":"paragraph","name":"","depth":5,"text":"Made with ❤ by Zyte","tag":"p","nodeId":51,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e22","role":"StaticText","name":"Made with ","depth":6,"nodeId":61,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e23","role":"StaticText","name":"❤","depth":6,"nodeId":62,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e24","role":"StaticText","name":" by ","depth":6,"nodeId":63,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e25","role":"link","name":"Zyte","depth":6,"text":"Zyte","tag":"a","nodeId":53,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"},
+    {"ref":"e26","role":"StaticText","name":"Zyte","depth":7,"nodeId":64,"frameId":"C8F234EC3D681228669BDE7AFCD23608","frameUrl":"https://quotes.toscrape.com/login"}
+  ]
+}

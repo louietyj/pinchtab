@@ -3,10 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 
@@ -41,8 +38,7 @@ type visionRequest struct {
 // @Endpoint POST /vision
 func (h *Handlers) HandleVision(w http.ResponseWriter, r *http.Request) {
 	var req visionRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodySize)).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
-		httpx.Error(w, 400, fmt.Errorf("decode: %w", err))
+	if !decodeOptionalJSON(w, r, &req) {
 		return
 	}
 	if _, ok := external.VisionModules[req.Module]; !ok {
@@ -64,7 +60,7 @@ func (h *Handlers) HandleVision(w http.ResponseWriter, r *http.Request) {
 	}
 	// No handoff-pause guard: vision is what an agent reaches for after an
 	// auto-solve failed and parked the tab.
-	if _, ok := h.applyTabGuards(w, r, ctx, tabID, guardDomainPolicy); !ok {
+	if _, ok := h.applyTabGuards(w, r, ctx, tabID, guardDialogBlocked|guardDomainPolicy); !ok {
 		return
 	}
 	if h.Config == nil || h.Config.AutoSolver.CapsolverKey == "" {
@@ -73,7 +69,9 @@ func (h *Handlers) HandleVision(w http.ResponseWriter, r *http.Request) {
 	}
 	h.recordActivity(r, activity.Update{Action: "vision:" + req.Module, TabID: tabID})
 
+	vocabBefore := h.tabVocab(tabID)
 	out, status, err := h.runVision(ctx, tabID, req)
+	h.publishVocabIfReepoched(w, tabID, vocabBefore)
 	if err != nil {
 		httpx.Error(w, status, err)
 		return

@@ -12,6 +12,9 @@ pinchtab daemon install
 
 Starting an instance may be optional, depending on strategy/config.
 
+The HTTP API requires the server token. The `curl` examples on this page omit it for brevity;
+add `-H "Authorization: Bearer $PINCHTAB_TOKEN"` after `export PINCHTAB_TOKEN=$(pinchtab config token --stdout)`. The CLI alternatives read the token from your config.
+
 ```bash
 curl -s -X POST http://127.0.0.1:9867/instances/start \
   -H "Content-Type: application/json" \
@@ -22,7 +25,7 @@ pinchtab instance start
 {
   "id": "inst_0a89a5bb",
   "profileId": "prof_278be873",
-  "profileName": "instance-1741400000000000000",
+  "profileName": "instance-1741400000000000000-9f3c2a1b",
   "port": "9868",
   "mode": "headless",
   "headless": true,
@@ -96,7 +99,7 @@ pinchtab click e14
 ### Screenshot
 
 ```bash
-curl -s http://127.0.0.1:9867/screenshot > smoke.jpg
+curl -s "http://127.0.0.1:9867/screenshot?raw=true" > smoke.jpg
 ls -lh smoke.jpg
 # CLI Alternative
 pinchtab screenshot -o smoke.jpg
@@ -107,7 +110,7 @@ Saved smoke.jpg (55876 bytes)
 ### Export a PDF
 
 ```bash
-curl -s http://127.0.0.1:9867/pdf > smoke.pdf
+curl -s "http://127.0.0.1:9867/pdf?raw=true" > smoke.pdf
 ls -lh smoke.pdf
 # CLI Alternative
 pinchtab pdf -o smoke.pdf
@@ -157,7 +160,7 @@ pinchtab press Enter
 ### Generate artifacts
 
 ```bash
-curl -s http://127.0.0.1:9867/pdf > report.pdf
+curl -s "http://127.0.0.1:9867/pdf?raw=true" > report.pdf
 ls -lh report.pdf
 # CLI Alternative
 pinchtab pdf -o report.pdf
@@ -166,7 +169,7 @@ Saved report.pdf (1494657 bytes)
 ```
 
 ```bash
-curl -s http://127.0.0.1:9867/screenshot > page.jpg
+curl -s "http://127.0.0.1:9867/screenshot?raw=true" > page.jpg
 ls -lh page.jpg
 # CLI Alternative
 pinchtab screenshot -o page.jpg
@@ -184,6 +187,8 @@ This fits:
 ## Human-agent development surface
 
 When Chrome is already running in remote-debugging mode, PinchTab can attach to it and expose it through the same API.
+
+Attach is disabled by default; enable it first with `pinchtab config set security.attach.enabled true` and restart the server.
 
 ### 1. Start Chrome with remote debugging
 

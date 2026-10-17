@@ -73,20 +73,39 @@ func assertRemedyRuns(t *testing.T, line string) {
 			continue
 		}
 
-		var args, flags []string
-		for _, word := range words[1:] {
+		// The command path is the words before the first flag; everything after is
+		// split by the RESOLVED command's own flag table rather than by the shape of
+		// the token, because a flag's separate value does not start with a dash and
+		// would otherwise be counted as a positional argument — which rejects every
+		// remedy of the form `--flag <value>` however correct it is.
+		path := words[1:]
+		for i, word := range path {
 			if strings.HasPrefix(word, "-") {
-				flags = append(flags, word)
-				continue
+				path = path[:i]
+				break
 			}
-			args = append(args, word)
 		}
-
-		found, rest, err := rootCmd.Find(args)
+		found, rest, err := rootCmd.Find(path)
 		if err != nil {
 			t.Errorf("remedy command %v does not resolve: %v", words, err)
 			continue
 		}
+
+		args := append([]string(nil), rest...)
+		var flags []string
+		tail := words[1+len(path):]
+		for i := 0; i < len(tail); i++ {
+			word := tail[i]
+			if !strings.HasPrefix(word, "-") {
+				args = append(args, word)
+				continue
+			}
+			flags = append(flags, word)
+			if i+1 < len(tail) && !strings.HasPrefix(tail[i+1], "-") && remedyFlagTakesAValue(found, word) {
+				i++
+			}
+		}
+		rest = args
 		if !found.Runnable() || printsGroupHelp(found) {
 			t.Errorf("remedy command %v resolves to %q, which is a command group and only prints help when run",
 				words, found.CommandPath())
@@ -100,13 +119,27 @@ func assertRemedyRuns(t *testing.T, line string) {
 		}
 		// A flag the resolved command does not define is the same dead end as a missing
 		// verb, and it is the likelier one: a remedy naming --wait-nav outlives a rename.
+		// The name is cut at "=" the way remedyFlagTakesAValue cuts it, or the day a
+		// remedy is written --flag=value this reports the flag as undefined.
 		for _, flag := range flags {
-			name := strings.TrimLeft(flag, "-")
+			name, _, _ := strings.Cut(strings.TrimLeft(flag, "-"), "=")
 			if found.Flags().Lookup(name) == nil && found.InheritedFlags().Lookup(name) == nil {
 				t.Errorf("remedy command %v names flag %q, which %q does not define", words, flag, found.CommandPath())
 			}
 		}
 	}
+}
+
+// remedyFlagTakesAValue mirrors cobra's own binding rule rather than a hand list of
+// value-taking flags: a flag with no implicit value (everything but a bool) consumes
+// the next word. An unknown flag consumes nothing and is reported by the check below.
+func remedyFlagTakesAValue(cmd *cobra.Command, word string) bool {
+	name, _, _ := strings.Cut(strings.TrimLeft(word, "-"), "=")
+	flag := cmd.Flags().Lookup(name)
+	if flag == nil {
+		flag = cmd.InheritedFlags().Lookup(name)
+	}
+	return flag != nil && flag.NoOptDefVal == ""
 }
 
 // printsGroupHelp reports whether the command's only action is the help the unknown-subcommand
@@ -128,12 +161,29 @@ func TestTheRemedyGuardRedsOnACommandThatCannotRun(t *testing.T) {
 		"pinchtab config get security.allowedDomains && pinchtab unclog",
 		"pinchtab session",
 		"pinchtab back --wait-nav",
+		// Splitting a flag's value off the positional list must not blind the
+		// argument check: revoke takes exactly one id, and this line hands it two
+		// past a flag that consumes neither.
+		"pinchtab session revoke --json ses_one ses_two",
 	} {
 		fake := &testing.T{}
 		assertRemedyRuns(fake, line)
 		if !fake.Failed() {
 			t.Errorf("the guard accepts %q, so it would accept a remedy nobody can run", line)
 		}
+	}
+}
+
+// The joined flag form, which no remedy uses today and which the undefined-flag check
+// would have reported as undefined: the name has to be cut at "=" or every --flag=value
+// reads as a flag the command never defined. This is a POSITIVE shape on purpose — the
+// broken version reds a line that runs, and a reds-list row cannot see that, since an
+// undefined flag is reported either way.
+func TestTheRemedyGuardAcceptsADefinedFlagWrittenWithAnEquals(t *testing.T) {
+	fake := &testing.T{}
+	assertRemedyRuns(fake, "pinchtab session create --agent-id=a")
+	if fake.Failed() {
+		t.Error("the guard rejects `pinchtab session create --agent-id=a`, a line that runs; a remedy written in the joined form would be unpublishable")
 	}
 }
 
@@ -149,19 +199,29 @@ func TestCapabilityRemedySettingsAreAcceptedByTheConfigEditor(t *testing.T) {
 	}
 }
 
-// The restart half must name a command that exists at that exact path. Finding it
-// through the tree rather than asserting the literal means a renamed or moved
-// verb reds here instead of shipping a remedy nobody can run.
-func TestCapabilityRemedyRestartCommandExists(t *testing.T) {
-	line, _ := httpx.DisabledEndpointDetails("security.allowCookies")["remedy"].(string)
+// The capability remedy must be the mode-neutral config write, never the
+// server-only restart: this gate answers on a bridge too, where `pinchtab server
+// restart` would kill it. The restart guidance lives in the hint instead. This
+// supersedes the old test that required the remedy to name `pinchtab server
+// restart`. That command must still resolve, because the config-set CLI hint names
+// it on the one surface where the mode is known to be a server.
+func TestCapabilityRemedyIsModeNeutralAndServerRestartStillResolves(t *testing.T) {
+	details := httpx.DisabledEndpointDetails("security.allowCookies")
+	remedy, _ := details["remedy"].(string)
+	hint, _ := details["hint"].(string)
 
-	const restart = "pinchtab server restart"
-	if !strings.Contains(line, restart) {
-		t.Fatalf("remedy = %q, want it to name %q", line, restart)
+	if remedy != "pinchtab config set security.allowCookies true" {
+		t.Fatalf("remedy = %q, want the mode-neutral config write", remedy)
+	}
+	if strings.Contains(remedy, "pinchtab server restart") {
+		t.Fatalf("remedy names `pinchtab server restart`, which destroys a bridge if run: %q", remedy)
+	}
+	if !strings.Contains(strings.ToLower(hint), "restart pinchtab") {
+		t.Fatalf("hint does not carry the mode-neutral restart guidance: %q", hint)
 	}
 	found, _, err := rootCmd.Find([]string{"server", "restart"})
 	if err != nil || found.CommandPath() != "pinchtab server restart" {
-		t.Fatalf("`%s` does not resolve to itself (got %q, err %v); the remedy names a command that no longer exists",
-			restart, found.CommandPath(), err)
+		t.Fatalf("`pinchtab server restart` does not resolve to itself (got %q, err %v); the config-set hint names a command that no longer exists",
+			found.CommandPath(), err)
 	}
 }

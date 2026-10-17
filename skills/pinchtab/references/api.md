@@ -23,6 +23,13 @@ Notes:
 - scheduler-submitted tasks reuse their `agentId` as `X-Agent-Id` when the task is executed
 - omitted `tabId` resolves by caller identity: agent sessions use a session-scoped current tab, `X-Agent-Id` uses an agent-scoped current tab when no session is present, and anonymous requests use the shared global/default tab
 
+## Auth, errors and ref tokens
+
+- Every request needs `Authorization: Bearer <server.token>` (or `Authorization: Session ses_...`, see below); even `/health` answers 401 without it.
+- A disabled capability answers 403 `<capability>_disabled` with `details.setting` and `details.remedy`. Off by default: `/evaluate` and `/wait` with `fn` (`security.allowEvaluate`), `/upload` (`allowUpload`), `/download` (`allowDownload`), memory snapshots (`allowMemory`).
+- Refs belong to a vocabulary. `/snapshot`, `/capture`, `/extract` and `/a11y/audit` return `vocabularyToken` (also the `X-PinchTab-Vocab` header); `/find`, `/annotate`, `/action`, `/actions` and `/macro` send the header when they renumbered the tab's refs. Echo it as `"vocab"` in an `/action` body; a stale token answers 409 `vocab_superseded`, which means re-snapshot. `X-PinchTab-Tab-Id` names the tab the server resolved.
+- While a JavaScript dialog is open, page-touching routes (navigate, wait, find, evaluate, element reads, actions, storage, …) answer 409 `dialog_blocked` immediately, with `details.dialogType`/`dialogMessage`. Answer it with `POST /dialog {"action":"accept"|"dismiss","text":"..."}`, or pass `"dialogAction"` on the action that opens it.
+
 ## Navigate
 
 ```bash
@@ -75,10 +82,10 @@ curl "/snapshot?format=compact&selector=main&maxTokens=2000&filter=interactive"
 curl "/snapshot?noAnimations=true"
 
 # Write to file
-curl "/snapshot?output=file&path=/tmp/snapshot.json"
+curl "/snapshot?output=file&path=snapshots/snapshot.json"
 ```
 
-Returns flat JSON array of nodes with `ref`, `role`, `name`, `depth`, `value`, `nodeId`.
+Returns `{url, title, nodes, count, vocabularyToken}`; each node carries `ref`, `role`, `name`, `depth` and, when present, `value`. `output=file` paths are relative to the server state dir; absolute paths are refused with 400.
 
 **Token optimization**: Use `?format=compact` for best token efficiency. Add `?filter=interactive` for action-oriented tasks (~75% fewer nodes). Use `?selector=main` to scope to relevant content. Use `?maxTokens=2000` to cap output. Use `?diff=true` on multi-step workflows to see only changes. Combine all params freely.
 
@@ -211,9 +218,9 @@ curl "/state?tabId=TAB_ID"
 Returns:
 
 - `tabId`, `url`, `title`
-- `cookies`
+- `cookies` (a count unless `security.allowCookies` is on)
 - `storage` grouped by origin with `local` and `session`
-- `metadata` such as origin and user agent
+- `origins` and `metadata` such as origin and user agent
 
 This is the richer low-level browser-state view and is gated by `security.allowStateExport`.
 
@@ -258,7 +265,7 @@ curl "/tabs/TAB_ID/pdf"
 curl "/tabs/TAB_ID/pdf?raw=true" -o page.pdf
 
 # Save to disk in a safe temp location
-curl "/tabs/TAB_ID/pdf?output=file&path=/tmp/pinchtab-page.pdf"
+curl "/tabs/TAB_ID/pdf?output=file&path=exports/page.pdf"
 
 # Landscape with custom scale
 curl "/tabs/TAB_ID/pdf?landscape=true&scale=0.8&raw=true" -o page.pdf
@@ -316,7 +323,7 @@ curl "/download?url=https://site.com/report.pdf"
 curl "/download?url=https://site.com/image.jpg&raw=true" -o image.jpg
 
 # Save directly to disk in a safe temp location
-curl "/download?url=https://site.com/export.csv&output=file&path=/tmp/pinchtab-export.csv"
+curl "/download?url=https://site.com/export.csv&output=file&path=exports/export.csv"
 ```
 
 ## Upload files
@@ -326,7 +333,9 @@ Only upload a local file the user explicitly provided or approved for the named 
 ```bash
 # Upload a local file to a file input
 curl -X POST "/upload?tabId=TAB_ID" -H "Content-Type: application/json" \
-  -d '{"selector": "input[type=file]", "paths": ["/tmp/user-approved-photo.jpg"]}'
+  -d '{"selector": "input[type=file]", "paths": ["uploads/user-approved-photo.jpg"]}'
+
+# `paths` are relative files that already exist under <stateDir>/uploads/; absolute paths are refused
 
 # Upload base64-encoded data
 curl -X POST /upload -H "Content-Type: application/json" \
@@ -365,16 +374,31 @@ curl -X POST /record/start -H 'Content-Type: application/json' \
 # Check status
 curl /record/status
 
-# Stop and save (returns raw binary)
-curl -X POST /record/stop -o recording.gif
+# Stop: returns JSON {status:"encoding", path, format, frames}; encoding finishes in the background
+# under <stateDir>/recordings — poll /record/status. {"discard":true} drops the frames.
+curl -X POST /record/stop
 ```
 
 Formats: `gif` (always available), `webm` and `mp4` (require ffmpeg). One active recording per instance.
 
+## Find and extract
+
+```bash
+# CLI: pinchtab find "sign in button"
+curl -X POST /find -H 'Content-Type: application/json' \
+  -d '{"query": "sign in button", "threshold": 0.3, "topK": 3}'
+
+# CLI: pinchtab extract --schema product.schema.json
+curl -X POST /extract -H 'Content-Type: application/json' \
+  -d '{"schema": {"type":"object","properties":{"price":{"type":"number"}}}, "scope": "role:main", "maxItems": 100}'
+```
+
+`/extract` returns typed `data` plus per-field `ref`, `score` and `confidence`. `scope` (and a property's `x-pinchtab-hint`/`x-pinchtab-scope`) takes a ref (`e12`), `role:`, `text:` or a plain query; CSS and XPath are refused with 400. See docs/reference/extract.md.
+
 ## Evaluate JavaScript
 
 Use this sparingly. Prefer `text`, `snapshot`, and normal actions first.
-Default to read-only DOM inspection and avoid reading cookies, localStorage, or unrelated page secrets unless the user explicitly asks for that behavior. Cookie access is disabled by default and requires `security.allowCookies: true`.
+Default to read-only DOM inspection and avoid reading cookies, localStorage, or unrelated page secrets unless the user explicitly asks for that behavior. `/evaluate` requires `security.allowEvaluate: true` (default off; 403 `evaluate_disabled` otherwise).
 
 ```bash
 # CLI: pinchtab eval "document.title"
@@ -413,7 +437,7 @@ Multi-tab: pass `?tabId=TARGET_ID` to snapshot/screenshot/text, or `"tabId"` in 
 
 ## Tab-specific endpoints
 
-All read/action endpoints have tab-scoped variants using `/tabs/{id}/...`:
+Most page endpoints have tab-scoped variants using `/tabs/{id}/...` (root-only exceptions include `/macro`, `/console`, `/errors`, `/record/*`, `/clipboard/*`; see docs/endpoints.md):
 
 ```bash
 # Navigate a specific tab
@@ -465,7 +489,7 @@ These are equivalent to using `?tabId=TARGET_ID` on top-level endpoints but foll
 ## Tab locking (multi-agent)
 
 ```bash
-# Lock a tab (default 30s timeout, max 5min)
+# Lock a tab (default 10 min; timeoutSec overrides). Returns {locked, owner, expiresAt}; conflicts are 409
 curl -X POST /lock -H 'Content-Type: application/json' \
   -d '{"tabId": "TARGET_ID", "owner": "agent-1", "timeoutSec": 60}'
 
@@ -518,7 +542,11 @@ curl /tabs/TAB_ID/network/export?format=har
 
 All standard network filters apply: `filter`, `method`, `status`, `type`, `limit`.
 
-Formats are pluggable. `GET /network/export?format=unknown` returns `{"available": ["har", "ndjson"]}`.
+Formats are pluggable. `GET /network/export?format=unknown` returns 400 `{"code": "unknown_format", "available": ["har", "ndjson"]}`.
+
+## Memory
+
+`GET /memory` returns JS heap usage (`?gc=true` collects first). `POST /memory/snapshot` writes a heap snapshot under the state dir, `GET /memory/snapshot/{snapshotId}/summary` lists top constructors, and `GET /memory/compare?base=ID&head=ID` reports per-constructor growth; these three need `security.allowMemory`. See docs/reference/memory.md.
 
 ## Health check
 

@@ -5,9 +5,10 @@
 package security
 
 import (
-	"net"
 	"net/url"
 	"strings"
+
+	"github.com/pinchtab/pinchtab/internal/urls"
 )
 
 // HostAllowed reports whether rawURL's host matches an entry in allowedDomains.
@@ -50,30 +51,20 @@ func HostMatchesPatterns(host string, patterns []string) bool {
 	return false
 }
 
-// ExtractHost parses rawURL and returns the lowercase bare hostname (no port).
-// It handles both fully-qualified URLs ("https://example.com:8080/path") and
-// bare hostnames ("example.com" or "example.com/path").
+// urls.EnsureScheme owns the normalisation that decides which forms carry a host.
 func ExtractHost(rawURL string) string {
-	parsed, err := url.Parse(rawURL)
+	parsed, err := url.Parse(urls.EnsureScheme(rawURL))
 	if err != nil {
 		return ""
 	}
-
-	host := parsed.Hostname()
-
-	if host == "" {
-		bare := parsed.Path
-		bare = strings.SplitN(bare, "/", 2)[0]
-		bare = strings.SplitN(bare, "?", 2)[0]
-		bare = strings.SplitN(bare, "#", 2)[0]
-		if h, _, err := net.SplitHostPort(bare); err == nil {
-			host = h
-		} else {
-			host = bare
-		}
-	}
-
-	return strings.ToLower(strings.TrimSpace(host))
+	// The DNS root label is silent: "example.com." and "example.com" name the
+	// same host and the browser fetches both. Leaving it on made two answers
+	// differ, and this primitive is read in both directions — a listed host that
+	// stops matching is a refusal on a target the operator allowed, and the
+	// response-forgery rule reads the same answer inverted, where a listed host
+	// that stops matching PERMITS forgery on exactly the sensitive origin the
+	// list marks.
+	return strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
 }
 
 // IsAllowedSpecialURL reports whether rawURL is a non-routable URL that bypasses

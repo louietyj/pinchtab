@@ -33,9 +33,10 @@ pinchtab mcp
   ├── reads config port     (default http://127.0.0.1:9867)
   ├── --server flag         (override for remote servers)
   ├── reads PINCHTAB_TOKEN  (env or config)
+  ├── ensureServerForCLI    (auto-starts a local server when allowed)
   │
   ├── creates internal/mcp.Client  (HTTP client with 120 s timeout)
-  ├── registers 38 MCP tools via mcp-go SDK
+  ├── registers 47 MCP tools via mcp-go SDK
   └── calls server.ServeStdio()  (blocking read loop)
 ```
 
@@ -46,15 +47,23 @@ The process exits when stdin is closed by the client.
 ```
 internal/mcp/
 ├── server.go               # NewServer() wires tools → handlers; Serve() starts stdio
-├── tools.go                # allTools() — JSON-schema tool definitions for all 38 tools
-├── handlers.go             # handlerMap() — registers each tool's handler
+├── tools.go                # allTools() — JSON-schema tool definitions for all 47 tools
+├── tools_params.go         # shared parameter builders (tabId, browser, snap, …)
+├── tools_a11y.go           # a11y_audit tool + handler
+├── tools_memory.go         # memory, memory_snapshot, memory_compare tools + handlers
+├── handlers.go             # handlerMap() — wraps each tool's handler with argument checks
+├── argcheck.go             # declared-argument + typed-argument validation from the tool schema
+├── routing.go              # routedQuery/routedPath — puts `browser` where the router reads it
 ├── handlers_helpers.go     # shared argument parsing / response helpers
-├── handlers_navigation.go  # navigate, snapshot, frame, screenshot, get_text
-├── handlers_interaction.go # click, type, press, hover, focus, select, scroll(_into_view), fill
-├── handlers_content.go     # eval, pdf, find
-├── handlers_tabs.go        # list_tabs, close_tab, health, cookies, connect_profile
-├── handlers_wait.go        # wait, wait_for_selector/text/url/load/function
-├── handlers_network.go     # network, network_detail/clear/route/unroute
+├── handlers_navigation.go  # navigate, back/forward/reload, snapshot, frame, screenshot, capture, get_text
+├── handlers_interaction.go # click, type, hover, focus, select, scroll(_into_view), fill, key
+├── handlers_content.go     # eval, pdf, find, extract
+├── handlers_tabs.go        # list_tabs, close_tab, health, handoff/resume/handoff_status, cookies(_set), connect_profile
+├── handlers_wait.go        # wait (fixed ms or selector/text/url/load/function condition)
+├── handlers_network.go     # network, network_detail/clear/route/unroute/rules
+├── handlers_diagnostics.go # console, errors
+├── handlers_record.go      # record
+├── handlers_scrape.go      # scrape
 ├── handlers_dialog.go      # dialog
 └── client.go               # Client — thin HTTP wrapper for PinchTab REST API
 
@@ -76,13 +85,13 @@ cmd/pinchtab/
 - a human-readable description used by the LLM to select the right tool
 - typed parameter schemas with `Required()` / `Description()` annotations
 
-The declarations are grouped by category: Navigation, Interaction, Keyboard, Content, Tab Management, Wait utilities, Network, and Dialog.
+The declarations are ordered roughly by category: Navigation, Interaction, Keyboard, Content, Tab Management, Wait utilities, Network, Diagnostics, Dialog, and Scrape.
 
 ### handlers.go
 
-Each handler is a factory function returning a `func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)` closure. Handlers:
+Each handler is a factory function returning a `func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)` closure. `handlerMap` wraps every handler in `withTypedArgChecks`, which first rejects any argument the tool's schema does not declare (naming the closest declared argument) and any declared number/integer/boolean argument whose value has the wrong type, returning a tool error before the handler runs. Handlers then:
 
-1. Extract and validate arguments from `r.GetArguments()`
+1. Extract arguments from `r.GetArguments()`
 2. Build the corresponding PinchTab REST payload
 3. Call `c.Get` or `c.Post` with the request context
 4. Return `mcp.NewToolResultText` on success or `mcp.NewToolResultError` on HTTP 4xx/5xx
@@ -103,14 +112,16 @@ URL validation lives in `handleNavigate` (`handlers_navigation.go`), which calls
 
 | Category | Count | REST Endpoints Used |
 |----------|-------|---------------------|
-| Navigation | 5 | `/navigate`, `/snapshot`, `/frame`, `/screenshot`, `/text` |
+| Navigation | 9 | `/navigate`, `/back`, `/forward`, `/reload`, `/snapshot`, `/frame`, `/screenshot`, `/capture`, `/text` |
 | Interaction | 8 | `/action` |
 | Keyboard | 1 | `/action` |
-| Content | 3 | `/evaluate`, `/pdf`, `/find` |
-| Tab Management | 5 | `/tabs`, `/health`, `/cookies`, `/profiles/{id}/instance` |
+| Content | 4 | `/evaluate`, `/pdf`, `/find`, `/extract` |
+| Tab Management | 9 | `/tabs`, `/close`, `/health`, `/tabs/{id}/handoff`, `/tabs/{id}/resume`, `/cookies`, `/profiles/{name}/instance` |
 | Wait utilities | 1 | `/wait` |
-| Network | 5 | `/network`, `/network/route` (POST/DELETE) |
+| Network | 6 | `/network`, `/network/{requestId}`, `/network/clear`, `/tabs/{id}/network/route` (POST/GET/DELETE) |
+| Diagnostics | 7 | `/console`, `/errors`, `/record/*`, `/a11y/audit`, `/memory`, `/memory/snapshot`, `/memory/compare` |
 | Dialog | 1 | `/dialog` |
+| Scrape | 1 | `/scrape` |
 
 ## Security Considerations
 
@@ -118,7 +129,7 @@ URL validation lives in `handleNavigate` (`handlers_navigation.go`), which calls
 - **`pinchtab_cookies`** and **`pinchtab_cookies_set`** call `/cookies`, which requires `security.allowCookies: true`. Cookie values can expose session credentials, and setting one grants a session, so cookie operations are disabled by default.
 - **URL validation** — `pinchtab_navigate` rejects non-HTTP/HTTPS URLs to prevent SSRF via `file://`, `javascript:`, or custom schemes.
 - **Token forwarding** — the MCP client forwards the configured bearer token to PinchTab, so access control at the PinchTab layer applies to all tool calls.
-- **Wait caps** — `pinchtab_wait` enforces a 30-second maximum on both the fixed `for=ms` sleep and the `timeout` of every browser-backed condition, to prevent agent runaway.
+- **Wait caps** — `pinchtab_wait` enforces a 30-second maximum on both the fixed `for=ms` sleep and the `timeoutMs` of every browser-backed condition, to prevent agent runaway.
 
 ## Related Pages
 

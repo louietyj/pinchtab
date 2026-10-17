@@ -204,7 +204,7 @@ func (h *Handlers) evaluateCount(ctx context.Context, tabID, expr string, out an
 	if frameID == "" {
 		return h.evalRuntime(ctx, expr, out, bridge.EvalOpts{})
 	}
-	evaluator, ok := h.Bridge.(frameCountEvaluator)
+	evaluator, ok := bridgeAs[frameCountEvaluator](h.Bridge)
 	if !ok {
 		return fmt.Errorf("frame-scoped count unavailable")
 	}

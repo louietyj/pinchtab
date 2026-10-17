@@ -6,7 +6,7 @@ The geo provider (`internal/config/geo`) resolves geographic information for a
 proxy egress IP so users can wire "automatic" geo alignment without supplying
 `browser.proxy.geo.*` by hand.
 
-P4b ships only the `Noop` and `Static` providers. This note captures the
+The package currently ships only the `Noop` and `Static` providers. This note captures the
 proposed contract for a future HTTP-backed provider so the design lives in
 documentation rather than as ballast in the compiled package.
 

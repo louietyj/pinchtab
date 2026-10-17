@@ -19,13 +19,13 @@ import {
 export * from './types';
 export * from './platform';
 
-/**
- * Returns true only for an actual PinchTab `/health` ready body (`{ status: "ok" }`),
- * so an unrelated process listening on the port cannot satisfy startup.
- */
+const servingHealthStatuses: readonly unknown[] = ['ok', 'degraded'];
+
 export function isPinchtabHealthy(body: unknown): boolean {
   return (
-    typeof body === 'object' && body !== null && (body as { status?: unknown }).status === 'ok'
+    typeof body === 'object' &&
+    body !== null &&
+    servingHealthStatuses.includes((body as { status?: unknown }).status)
   );
 }
 

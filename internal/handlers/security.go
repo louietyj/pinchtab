@@ -60,6 +60,10 @@ func (h *Handlers) networkInterceptEnabled() bool {
 	return h != nil && h.Config != nil && h.Config.AllowNetworkIntercept
 }
 
+func (h *Handlers) memoryEnabled() bool {
+	return h != nil && h.Config != nil && h.Config.AllowMemory
+}
+
 func (h *Handlers) endpointSecurityStates() map[string]endpointSecurityState {
 	return map[string]endpointSecurityState{
 		"evaluate": capState(routes.CapEvaluate, h.evaluateEnabled(),
@@ -94,5 +98,7 @@ func (h *Handlers) endpointSecurityStates() map[string]endpointSecurityState {
 				"GET /network/route", "POST /network/route", "DELETE /network/route",
 				"GET /tabs/{id}/network/route", "POST /tabs/{id}/network/route", "DELETE /tabs/{id}/network/route",
 			}),
+		"memory": capState(routes.CapMemory, h.memoryEnabled(),
+			[]string{"POST /memory/snapshot", "POST /tabs/{id}/memory/snapshot", "GET /memory/snapshot/{snapshotId}/summary", "GET /memory/compare"}),
 	}
 }

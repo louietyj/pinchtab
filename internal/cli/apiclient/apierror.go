@@ -21,6 +21,14 @@ func mustRequest(client *http.Client, token string, r request) (int, []byte) {
 	return status, body
 }
 
+type StatusError struct {
+	Status  int
+	Body    []byte
+	message string
+}
+
+func (e *StatusError) Error() string { return e.message }
+
 // exitOnAPIError is a terminal path: the command is ending, so this is where the
 // failure is HANDLED rather than formatted, and where the cached tab that produced
 // a dead id is dropped.

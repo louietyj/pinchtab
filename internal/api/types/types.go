@@ -55,6 +55,25 @@ type Instance struct {
 	// empty in P2.4a).
 	FallbackFrom   string `json:"fallbackFrom,omitempty"`
 	FallbackReason string `json:"fallbackReason,omitempty"`
+
+	Crashes *CrashSummary `json:"crashes,omitempty"`
+
+	Responsiveness string `json:"responsiveness"` // responsive/unresponsive/unknown
+}
+
+type CrashEvent struct {
+	Time       time.Time `json:"time"`
+	TargetID   string    `json:"targetId,omitempty"`
+	TabID      string    `json:"tabId,omitempty"`
+	URL        string    `json:"url,omitempty"`
+	Reason     string    `json:"reason"`
+	LastError  string    `json:"lastError,omitempty"`
+	InstanceID string    `json:"instanceId,omitempty"`
+}
+
+type CrashSummary struct {
+	Total  uint64       `json:"total"`
+	Recent []CrashEvent `json:"recent"`
 }
 
 type Agent struct {
@@ -185,14 +204,23 @@ type InstanceTab struct {
 }
 
 type InstanceMetrics struct {
-	InstanceID    string  `json:"instanceId"`
-	ProfileName   string  `json:"profileName"`
-	JSHeapUsedMB  float64 `json:"jsHeapUsedMB"`
-	JSHeapTotalMB float64 `json:"jsHeapTotalMB"`
-	Documents     int64   `json:"documents"`
-	Frames        int64   `json:"frames"`
-	Nodes         int64   `json:"nodes"`
-	Listeners     int64   `json:"listeners"`
+	InstanceID  string  `json:"instanceId"`
+	ProfileName string  `json:"profileName"`
+	MemoryMB    float64 `json:"memoryMB"`
+	Renderers   int     `json:"renderers"`
+
+	Page              *PageMetrics `json:"page,omitempty"`
+	UnreadableTargets int          `json:"unreadableTargets"`
+}
+
+type PageMetrics struct {
+	Targets          int     `json:"targets"`
+	JSHeapUsedMB     float64 `json:"jsHeapUsedMB"`
+	JSHeapTotalMB    float64 `json:"jsHeapTotalMB"`
+	Documents        int     `json:"documents"`
+	Frames           int     `json:"frames"`
+	Nodes            int     `json:"nodes"`
+	JSEventListeners int     `json:"jsEventListeners"`
 }
 
 type LaunchInstanceRequest struct {

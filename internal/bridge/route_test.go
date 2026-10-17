@@ -89,14 +89,33 @@ func TestRouteManager_AddRule_FailedEnableRollsBackFetchEnabled(t *testing.T) {
 	}
 }
 
-func TestRouteManager_Remove_TabNotRoutedReturnsSentinel(t *testing.T) {
+func TestRouteManager_RemoveOnATabWithNoRuleStateIsANoOp(t *testing.T) {
 	rm := NewRouteManager(nil)
-	_, err := rm.Remove(t.Context(), "tab-never-routed", "*.png")
-	if err == nil {
-		t.Fatal("expected ErrTabNotRouted when tab has no rule state")
+	for _, pattern := range []string{"*.png", ""} {
+		removed, err := rm.Remove(t.Context(), "tab-never-routed", pattern)
+		if err != nil || removed != 0 {
+			t.Fatalf("Remove(%q) on a tab with no rule state = (%d, %v), want (0, nil) with no CDP call", pattern, removed, err)
+		}
 	}
-	if !errors.Is(err, ErrTabNotRouted) {
-		t.Errorf("expected errors.Is(err, ErrTabNotRouted), got %v", err)
+	if rules := rm.List("tab-never-routed"); rules == nil || len(rules) != 0 {
+		t.Fatalf("List on a tab with no rule state = %#v, want a non-nil empty slice", rules)
+	}
+}
+
+func TestRouteManager_ClearAllThenClearAgainStaysIdempotent(t *testing.T) {
+	rm := NewRouteManager(nil)
+	rm.mu.Lock()
+	rm.perTab["tab1"] = &tabRouteState{rules: []RouteRule{{Pattern: "a", Action: RouteActionAbort}}}
+	rm.mu.Unlock()
+
+	if removed, err := rm.Remove(t.Context(), "tab1", ""); err != nil || removed != 1 {
+		t.Fatalf("first clear = (%d, %v), want (1, nil)", removed, err)
+	}
+	if rules := rm.List("tab1"); rules == nil || len(rules) != 0 {
+		t.Fatalf("List after teardown = %#v, want a non-nil empty slice", rules)
+	}
+	if removed, err := rm.Remove(t.Context(), "tab1", ""); err != nil || removed != 0 {
+		t.Fatalf("second clear = (%d, %v), want (0, nil)", removed, err)
 	}
 }
 

@@ -36,6 +36,9 @@ Start `pinchtab server` or even better `pinchtab daemon install` and leave it ru
 pinchtab server
 ```
 
+The HTTP API requires the server token. The `curl` examples below omit it for brevity;
+add `-H "Authorization: Bearer $PINCHTAB_TOKEN"` after `export PINCHTAB_TOKEN=$(pinchtab config token --stdout)`. The CLI alternatives read the token from your config.
+
 ### 2. Start an instance
 
 By default we use always-on strategy. This is optional now and not necessary.
@@ -50,7 +53,7 @@ pinchtab instance start
 {
   "id": "inst_0a89a5bb",
   "profileId": "prof_278be873",
-  "profileName": "instance-1741400000000000000",
+  "profileName": "instance-1741400000000000000-9f3c2a1b",
   "port": "9868",
   "mode": "headless",
   "headless": true,

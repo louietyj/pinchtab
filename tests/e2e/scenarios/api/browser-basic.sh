@@ -138,6 +138,22 @@ assert_form_page "$RESULT"
 end_test
 
 # ─────────────────────────────────────────────────────────────────
+start_test "pinchtab snap (snapshot-hydrated-list.html): content-visibility:auto rows in a background tab"
+
+pt_post /navigate -d "{\"url\":\"${FIXTURES_URL}/snapshot-hydrated-list.html\"}"
+assert_ok "navigate to hydrated list"
+
+pt_get "/snapshot?filter=all"
+assert_ok "snapshot hydrated list"
+assert_json_eq "$RESULT" '[.nodes[] | select(.role == "link" and (.name | startswith("Hydrated issue")))] | length' '3' "all three rows are in the snapshot"
+
+pt_post /find -d '{"query":"Hydrated issue gamma"}'
+assert_ok "find hydrated row"
+assert_json_eq "$RESULT" '.matches[0].name' 'Hydrated issue gamma' "find sees the row"
+
+end_test
+
+# ─────────────────────────────────────────────────────────────────
 start_test "pinchtab text (table.html)"
 
 pt_post /navigate -d "{\"url\":\"${FIXTURES_URL}/table.html\"}"

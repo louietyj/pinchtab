@@ -8,10 +8,11 @@ Use tab-scoped HTTP routes once you already have a tab ID. In the CLI, use the n
 
 - listing tabs
 - focusing a tab
-- opening a new tab
 - closing a tab
+- human handoff (`handoff`, `handoff-status`, `resume`)
 
-There are no subcommands such as `pinchtab tab navigate` or `pinchtab tab click`.
+Open a new tab with `pinchtab nav <url> --new-tab`. There are no subcommands such as
+`pinchtab tab navigate` or `pinchtab tab click`.
 
 ## Top-Level Browser Commands
 
@@ -54,7 +55,7 @@ There is still no dedicated instance-scoped tab-open CLI command. The CLI shortc
 pinchtab instance navigate inst_ea2e747f https://pinchtab.com
 ```
 
-That command opens a tab for the instance and then navigates it.
+That command opens a tab for the instance already on the URL, in one `tabs/open` call.
 
 ## List Tabs
 
@@ -69,7 +70,8 @@ curl http://localhost:9867/tabs
       "id": "8f9c7d4e1234567890abcdef12345678",
       "url": "https://pinchtab.com",
       "title": "PinchTab",
-      "type": "page"
+      "type": "page",
+      "status": "active"
     }
   ]
 }
@@ -86,6 +88,10 @@ Notes:
 - `GET /tabs` is not a fleet-wide inventory
 - in bridge mode or shorthand mode it lists tabs from the active browser context
 - `pinchtab tab` follows that shorthand behavior
+- the current tab is listed first
+- tabs on `about:blank`, `chrome://`, `chrome-extension://`, `devtools://`, `file://` or the server's own port are not listed
+- `status` is `active`, or `paused_handoff` with `handoffReason` and `pausedAt`; a locked tab also carries `owner` and `lockedUntil`,
+  and `browserContextId` appears when the tab has one
 
 ### Tabs For One Instance
 
@@ -100,6 +106,9 @@ curl http://localhost:9867/instances/tabs
 ```
 
 Use `GET /instances/tabs` when you need the orchestrator-wide view.
+
+Both instance routes return a bare JSON array of `{"id","instanceId","url","title"}` objects.
+Results are cached per instance; add `?fresh=1` to refetch.
 
 ## Focus And Close From The CLI
 
@@ -274,7 +283,9 @@ Reading, writing, and clearing cookies requires `security.allowCookies=true`.
 curl http://localhost:9867/tabs/<tabId>/metrics
 ```
 
-This reports memory metrics for the tab through the bridge, not a full per-tab performance profile.
+This reports the owning browser instance's aggregate memory — the whole process tree —
+not an isolated per-tab reading: the tab id picks the instance to ask. Two tabs of one
+instance return the same figures. See [Memory monitoring](../guides/memory-monitoring.md).
 
 ## Lock And Unlock
 
@@ -283,17 +294,23 @@ Tab locking is API-only.
 ```bash
 curl -X POST http://localhost:9867/tabs/<tabId>/lock \
   -H "Content-Type: application/json" \
-  -d '{"owner":"my-agent","ttl":60}'
+  -d '{"owner":"my-agent","timeoutSec":60}'
 
 curl -X POST http://localhost:9867/tabs/<tabId>/unlock \
   -H "Content-Type: application/json" \
   -d '{"owner":"my-agent"}'
 ```
 
-There are also active-tab forms at `POST /lock` and `POST /unlock`.
+`owner` is required. `timeoutSec` is optional and defaults to 10 minutes. Lock answers
+`{"locked":true,"owner":"...","expiresAt":"..."}`, unlock answers `{"unlocked":true}`, and a
+conflicting owner gets `409`.
+
+There are also root forms at `POST /lock` and `POST /unlock`; they take the tab in the body
+as `tabId` (required).
 
 ## Important Limits
 
-- There is no `GET /tabs/{id}` endpoint for fetching single-tab metadata.
+- There is no `GET /tabs/{id}` endpoint. `GET /tabs/{id}/state` reports one tab's `tabId`, `url`, `title`,
+  `dialogPresent`/`dialog`, `load` (`readyState`, `navigationInProgress`, `networkIdle`, `state`) and `actionability`.
 - `GET /tabs` and `GET /instances/tabs` serve different purposes and are not interchangeable.
 - In the CLI, tab-scoped work happens through top-level commands with `--tab`, not through `pinchtab tab <subcommand>` variants — except for `handoff`, `resume`, and `handoff-status`, which are exposed both as top-level commands and as `pinchtab tab handoff|resume|handoff-status` subcommands.

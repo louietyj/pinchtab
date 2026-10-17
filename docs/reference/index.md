@@ -5,11 +5,14 @@ Reference pages for the current PinchTab CLI and closely related command-facing 
 Note: this index is generated and should be checked against the code when commands change.
 
 - [CLI Overview](./cli.md)
+- [A11y](./a11y.md)
 - [Cache](./cache.md)
 - [Capture](./capture.md)
 - [Click](./click.md)
 - [Config](./config.md)
+- [Dialog](./dialog.md)
 - [Eval](./eval.md)
+- [Extract](./extract.md)
 - [Frame](./frame.md)
 - [Fill](./fill.md)
 - [Find](./find.md)
@@ -19,6 +22,7 @@ Note: this index is generated and should be checked against the code when comman
 - [Hover](./hover.md)
 - [Instances](./instances.md)
 - [Keyboard](./keyboard.md)
+- [Memory](./memory.md)
 - [Metrics](./metrics.md)
 - [Mouse](./mouse.md)
 - [Navigate](./navigate.md)

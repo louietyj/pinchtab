@@ -73,7 +73,7 @@ func Screenshot(client *http.Client, base, token string, cmd *cobra.Command) {
 
 	if annotate {
 		params.Set("annotate", "true")
-		raw := apiclient.DoGetRaw(client, base, token, "/screenshot", params)
+		raw := apiclient.DoGetRaw(client, base, token, "/screenshot", params, apiclient.CaptureVocab(params.Get("tabId") == ""))
 		if raw == nil {
 			return
 		}
@@ -127,7 +127,8 @@ func Screenshot(client *http.Client, base, token string, cmd *cobra.Command) {
 	if autoNamed {
 		outFile = fmt.Sprintf("screenshot-%s%s", time.Now().Format("20060102-150405"), ext)
 	}
-	data, headers := apiclient.DoGetRawWithHeaders(client, base, token, "/screenshot", params)
+	var headers http.Header
+	data := apiclient.DoGetRaw(client, base, token, "/screenshot", params, apiclient.CaptureHeaders(&headers))
 	if data == nil {
 		return
 	}

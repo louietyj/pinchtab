@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 
 	"github.com/pinchtab/pinchtab/internal/activity"
+	"github.com/pinchtab/pinchtab/internal/bridge"
 	"github.com/pinchtab/pinchtab/internal/httpx"
 )
 
@@ -99,7 +99,7 @@ func (h *Handlers) createBlankTab(w http.ResponseWriter, r *http.Request, browse
 			httpx.Error(w, 400, fmt.Errorf("browserContextId is not owned by an attached page"))
 			return
 		}
-		creator, ok := h.Bridge.(browserContextTabCreator)
+		creator, ok := bridgeAs[browserContextTabCreator](h.Bridge)
 		if !ok {
 			httpx.Error(w, 501, fmt.Errorf("browser-context tab creation is unavailable"))
 			return
@@ -116,7 +116,7 @@ func (h *Handlers) createBlankTab(w http.ResponseWriter, r *http.Request, browse
 
 	h.setCurrentTabForRequest(r, newTabID)
 	h.recordActivity(r, activity.Update{Action: "tab.new", TabID: newTabID, URL: curURL})
-	markCreatedTab(w, newTabID)
+	h.markCreatedTab(w, r, newTabID)
 	response := map[string]any{"tabId": newTabID, "url": curURL, "title": title}
 	if browserContextID != "" {
 		response["browserContextId"] = browserContextID
@@ -128,24 +128,15 @@ func (h *Handlers) createBlankTab(w http.ResponseWriter, r *http.Request, browse
 // equivalent of POST /close and exists so orchestrator dashboard commands can
 // use the common /tabs/{id}/... proxy path.
 func (h *Handlers) HandleTabClose(w http.ResponseWriter, r *http.Request) {
-	tabID := strings.TrimSpace(r.PathValue("id"))
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
+	var req struct {
+		TabID string `json:"tabId"`
+	}
+	if !decodeOptionalJSON(w, r, &req) {
 		return
 	}
-
-	if r.Body != nil && r.Body != http.NoBody && r.ContentLength != 0 {
-		var req struct {
-			TabID string `json:"tabId"`
-		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodySize)).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
-			httpx.Error(w, 400, fmt.Errorf("decode: %w", err))
-			return
-		}
-		if req.TabID != "" && req.TabID != tabID {
-			httpx.Error(w, 400, fmt.Errorf("tabId in body does not match path id"))
-			return
-		}
+	tabID, ok := h.requirePathTabIDMatch(w, r, req.TabID)
+	if !ok {
+		return
 	}
 
 	h.closeTab(w, r, tabID)
@@ -157,8 +148,7 @@ func (h *Handlers) HandleClose(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		TabID string `json:"tabId"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodySize)).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
-		httpx.Error(w, 400, fmt.Errorf("decode: %w", err))
+	if !decodeOptionalJSON(w, r, &req) {
 		return
 	}
 
@@ -179,7 +169,18 @@ func (h *Handlers) closeTab(w http.ResponseWriter, r *http.Request, tabID string
 	}
 
 	if err := h.Bridge.CloseTab(tabID); err != nil {
-		httpx.Error(w, 500, err)
+		var notFound *bridge.TabNotFoundError
+		switch {
+		case errors.As(err, &notFound):
+			// Match every other tab-scoped op: a missing tab is a 404 client error,
+			// not a server fault. WriteTabContextError also carries the crash
+			// annotation when the tab died with the browser.
+			WriteTabContextError(w, err, 404)
+		case errors.Is(err, bridge.ErrCannotCloseLastTab):
+			httpx.ErrorCode(w, http.StatusConflict, "cannot_close_last_tab", err.Error(), false, nil)
+		default:
+			httpx.Error(w, 500, err)
+		}
 		return
 	}
 

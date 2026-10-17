@@ -75,3 +75,8 @@ func (b *Bridge) TabHandoffState(tabID string) (TabHandoffState, bool) {
 	}
 	return state, ok
 }
+
+func (b *Bridge) tabHandoffPaused(tabID string) bool {
+	_, paused := b.TabHandoffState(tabID)
+	return paused
+}

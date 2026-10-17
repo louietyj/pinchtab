@@ -3,6 +3,7 @@ package cdpops
 import (
 	"context"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chromedp/cdproto"
 	"github.com/chromedp/cdproto/input"
 )
 
@@ -419,5 +421,27 @@ func TestTheButtonTableIsTheOnlyPlaceAButtonFactIsWritten(t *testing.T) {
 	}
 	if got := mouseButtonCode(input.None); got != noButtonJSCode {
 		t.Errorf("mouseButtonCode(input.None) = %d, want %d", got, noButtonJSCode)
+	}
+}
+
+// A link click whose trusted press already navigated leaves the old document's
+// context gone before jsClickIfLink's .click() runs. That is the click landing,
+// not failing: reported as an error it became a retryable 500, and a retry would
+// click on the page the link led to.
+func TestLinkContextGoneOnlyMatchesADestroyedContext(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		want bool
+	}{
+		{&cdproto.Error{Code: -32000, Message: "Cannot find context with specified id"}, true},
+		{fmt.Errorf("click: %w", &cdproto.Error{Code: -32000, Message: "Execution context was destroyed."}), true},
+		{&cdproto.Error{Code: -32000, Message: "Node is detached from document"}, false},
+		{&cdproto.Error{Code: -32602, Message: "Cannot find context with specified id"}, false},
+		{errors.New("Cannot find context with specified id"), false},
+		{nil, false},
+	} {
+		if got := linkContextGone(tc.err); got != tc.want {
+			t.Errorf("linkContextGone(%v) = %v, want %v", tc.err, got, tc.want)
+		}
 	}
 }

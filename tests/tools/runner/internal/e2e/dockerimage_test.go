@@ -14,10 +14,11 @@ func writeProbeContext(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
 	for path, body := range map[string]string{
-		".dockerignore":                     "# comment\ntests/\nnode_modules/\ndocs/\n!docs/examples/\n*.md\n",
+		".dockerignore":                     "# comment\ntests/\nnode_modules/\ndocs/\n!docs/examples/\n.tools/\n*.md\n",
 		"Dockerfile":                        "FROM alpine\nCOPY . .\n",
 		"main.go":                           "package main\n",
 		"scripts/build.sh":                  "echo build\n",
+		".tools/cloakbrowser/browser":       "binary\n",
 		"tests/e2e/scenarios/probe.sh":      "echo scenario\n",
 		"tests/tools/docker/cft.Dockerfile": "FROM ubuntu\nARG VERSION=1\n",
 		"docs/examples/enrich/main.go":      "package main\n",
@@ -147,6 +148,10 @@ func TestBuildInputDigestFollowsTheDockerignoreOnlyWhereItIsUnambiguous(t *testi
 		{
 			name: "a nested directory named like the excluded tests/ still counts",
 			file: "npm/tests/integration.test.ts", body: "test('y', () => {})\n", wantChange: true,
+		},
+		{
+			name: "a file under the excluded .tools/ cloakbrowser download does not affect the digest",
+			file: ".tools/cloakbrowser/browser", body: "different binary\n", wantChange: false,
 		},
 		{
 			name: "a directory with a negation stays in the digest, because the negation puts part of it back",
@@ -287,6 +292,9 @@ func TestDockerSmokeRunNamesEachImageAndWhy(t *testing.T) {
 // the image changes, the tag does not, and a stale one is reused.
 func TestBuildInputDigestCoversModeAndSymlinkTargets(t *testing.T) {
 	t.Run("chmod +x on a context file changes the digest", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("Windows does not expose Unix executable mode bits")
+		}
 		root := writeProbeContext(t)
 		before := digestOf(t, root, probeSpec)
 

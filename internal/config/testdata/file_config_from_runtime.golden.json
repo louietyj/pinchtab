@@ -1,0 +1,232 @@
+{
+  "$schema": "https://raw.githubusercontent.com/pinchtab/pinchtab/main/schema/config.json",
+  "server": {
+    "port": "9911",
+    "bind": "0.0.0.0",
+    "token": "tok",
+    "stateDir": "/tmp/state",
+    "logLevel": "debug",
+    "networkBufferSize": 250,
+    "retainNetworkBodies": true,
+    "retainNetworkBodyMaxBytes": 4096,
+    "trustProxyHeaders": true,
+    "cookieSecure": true
+  },
+  "browser": {
+    "version": "",
+    "binary": "",
+    "extraFlags": "",
+    "cloak": {
+      "storageQuotaMB": 0,
+      "disableDefaultStealthArgs": true
+    },
+    "extensionPaths": [
+      "/ext/a",
+      "/ext/b"
+    ],
+    "proxy": {
+      "server": "http://proxy:3128",
+      "username": "u",
+      "password": "p"
+    },
+    "defaultTarget": "primary",
+    "fallbackOrder": [
+      "primary",
+      "backup"
+    ],
+    "targets": {
+      "backup": {
+        "provider": "cloak",
+        "cloak": {},
+        "proxy": {}
+      },
+      "primary": {
+        "provider": "chrome",
+        "cloak": {},
+        "proxy": {}
+      }
+    }
+  },
+  "browsers": {
+    "default": "cloak",
+    "available": [
+      "chrome",
+      "cloak"
+    ]
+  },
+  "instanceDefaults": {
+    "mode": "headed",
+    "noRestore": true,
+    "timezone": "Europe/Rome",
+    "blockImages": true,
+    "blockMedia": true,
+    "blockAds": true,
+    "maxTabs": 7,
+    "maxParallelTabs": 3,
+    "userAgent": "ua/1",
+    "noAnimations": true,
+    "captureAllowActivation": true,
+    "humanize": true,
+    "stealthLevel": "max",
+    "tabEvictionPolicy": "reject",
+    "dialogAutoAccept": true
+  },
+  "security": {
+    "allowEvaluate": true,
+    "allowMacro": true,
+    "allowScreencast": true,
+    "allowDownload": true,
+    "allowCookies": true,
+    "allowNetworkIntercept": true,
+    "allowMemory": true,
+    "allowFileScheme": true,
+    "allowedDomains": null,
+    "downloadAllowedDomains": [
+      "dl.example"
+    ],
+    "downloadMaxBytes": 123456,
+    "memorySnapshotMaxBytes": 654321,
+    "allowUpload": true,
+    "allowClipboard": true,
+    "allowStateExport": true,
+    "stateEncryptionKey": null,
+    "uploadMaxRequestBytes": 1000,
+    "uploadMaxFiles": 4,
+    "uploadMaxFileBytes": 500,
+    "uploadMaxTotalBytes": 900,
+    "maxRedirects": 9,
+    "trustedProxyCIDRs": [
+      "10.0.0.0/8"
+    ],
+    "trustedResolveCIDRs": [
+      "192.168.0.0/16"
+    ],
+    "trustLoopbackProxy": true,
+    "attach": {
+      "enabled": true,
+      "allowHosts": [
+        "attach.example"
+      ],
+      "allowSchemes": [
+        "ws"
+      ],
+      "forwardProxyAuth": true
+    },
+    "idpi": {
+      "enabled": true,
+      "strictMode": true,
+      "scanContent": true,
+      "wrapContent": true,
+      "customPatterns": [
+        "ignore previous"
+      ],
+      "scanTimeoutSec": 3,
+      "shieldThreshold": 55
+    }
+  },
+  "profiles": {
+    "baseDir": "/tmp/profiles",
+    "defaultProfile": "main",
+    "quarantineKeep": 2
+  },
+  "multiInstance": {
+    "strategy": "always-on",
+    "allocationPolicy": "round-robin",
+    "instancePortStart": 9900,
+    "instancePortEnd": 9950,
+    "restart": {
+      "maxRestarts": 5,
+      "initBackoffSec": 2,
+      "maxBackoffSec": 60,
+      "stableAfterSec": 120
+    }
+  },
+  "timeouts": {
+    "actionSec": 11,
+    "navigateSec": 22,
+    "shutdownSec": 33,
+    "waitNavMs": 444
+  },
+  "scheduler": {
+    "enabled": null,
+    "strategy": "",
+    "maxQueueSize": null,
+    "maxPerAgent": null,
+    "maxInflight": null,
+    "maxPerAgentInflight": null,
+    "resultTTLSec": null,
+    "workerCount": null,
+    "maxBatchSize": null
+  },
+  "observability": {
+    "activity": {
+      "enabled": true,
+      "sessionIdleSec": 300,
+      "retentionDays": 9,
+      "stateDir": "",
+      "events": {
+        "dashboard": true,
+        "server": true,
+        "bridge": true,
+        "orchestrator": true,
+        "scheduler": true,
+        "mcp": true,
+        "other": true
+      }
+    }
+  },
+  "sessions": {
+    "dashboard": {
+      "persist": true,
+      "idleTimeoutSec": 600,
+      "maxLifetimeSec": 7200,
+      "elevationWindowSec": 90,
+      "persistElevationAcrossRestart": true,
+      "requireElevation": true
+    },
+    "agent": {
+      "enabled": true,
+      "mode": "strict",
+      "idleTimeoutSec": 120,
+      "maxLifetimeSec": 3600
+    }
+  },
+  "autoSolver": {
+    "enabled": true,
+    "autoTrigger": true,
+    "triggerOnNavigate": true,
+    "triggerOnAction": true,
+    "maxAttempts": 4,
+    "solverTimeoutSec": 30,
+    "retryBaseDelayMs": 100,
+    "retryMaxDelayMs": 900,
+    "solvers": [
+      "capsolver",
+      "2captcha"
+    ],
+    "llmProvider": "anthropic",
+    "llmFallback": true,
+    "handoffOnFailure": false,
+    "awaitOnNavigate": false,
+    "external": {
+      "capsolverKey": "ck",
+      "twoCaptchaKey": "tk"
+    },
+    "credentials": {
+      "login": {
+        "user": "lu",
+        "password": "lp"
+      },
+      "signup": {
+        "name": "sn",
+        "email": "se",
+        "password": "sp"
+      },
+      "form": {
+        "field1": "f1",
+        "field2": "f2",
+        "email": "fe"
+      }
+    }
+  }
+}

@@ -145,14 +145,14 @@ func TestTheCookiesReferenceStatesTheBrowserWideClearEffect(t *testing.T) {
 		}
 	}
 
-	// The same failure one verb over: `storage delete` with no --key runs storageObj.clear()
-	// through the identical handler `storage clear` reaches, so a doc describing --key as
-	// "a single item" reads narrower than a destructive command actually is. The last phrase
-	// pins the FLAG ROW as well as the prose: reverting only the row is the exact shape the
-	// defect had, and the sentence below the table does not stop it coming back.
-	for _, want := range []string{"no `--key`", "clears the whole store", "same call", "omit it and the whole store is cleared"} {
+	for _, want := range []string{"pinchtab storage delete token", "bare `storage delete` is refused", "only verb that wipes a store", "pinchtab storage clear"} {
 		if !strings.Contains(storage, want) {
-			t.Errorf("the storage section never says %q; `storage delete` with no --key clears the whole store, and a reader told only about single-key removal will run it expecting one item to go", want)
+			t.Errorf("the storage section never says %q; `storage delete` needs a key and `storage clear` is the one wipe verb, and the doc must teach both", want)
+		}
+	}
+	for _, stale := range []string{"no `--key`", "omit it and the whole store is cleared", "pinchtab storage delete  "} {
+		if strings.Contains(storage, stale) {
+			t.Errorf("the storage section still says %q, teaching a bare `storage delete` wipe the CLI now refuses", stale)
 		}
 	}
 }

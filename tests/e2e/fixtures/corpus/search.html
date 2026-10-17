@@ -1,0 +1,1245 @@
+<!DOCTYPE html>
+<html class="client-js vector-feature-language-in-header-enabled vector-feature-language-in-main-menu-disabled vector-feature-language-in-main-page-header-disabled vector-feature-page-tools-pinned-disabled vector-feature-toc-pinned-clientpref-1 vector-feature-main-menu-pinned-disabled vector-feature-limited-width-clientpref-1 vector-feature-limited-width-content-disabled vector-feature-custom-font-size-clientpref--excluded vector-feature-appearance-pinned-clientpref-1 skin-theme-clientpref-day vector-sticky-header-enabled vector-toc-not-available skin-thumbsize-clientpref-standard" lang="en" dir="ltr"><head>
+<meta charset="UTF-8">
+<title>headless browser - Search results - Wikipedia</title>
+
+
+<style>
+.client-js{}
+.client-js .mw-search-form-wrapper{min-height: 122.6px;}
+.client-js #mw-content-text{position: relative;}
+.client-js .mw-search-spinner{position: absolute; left: 25em; top: 7em; margin-left: -18px; white-space: nowrap; animation: 1500ms cubic-bezier(1, -0.5, 1, 1) 0s 1 normal none running mw-search-fadein;}
+.client-js .mw-search-spinner::before, .client-js .mw-search-spinner::after, .client-js .mw-search-spinner .mw-search-spinner-bounce{content: ""; background-color: rgb(114, 119, 125); display: block; float: left; width: 12px; height: 12px; border-radius: 50%; animation: 1600ms ease-in-out -160ms infinite normal both running mw-search-bounceDelay;}
+.client-js .mw-search-spinner::before{margin-right: 4px; animation-delay: -330ms;}
+.client-js .mw-search-spinner::after{margin-left: 4px; animation-delay: 0s;}
+.client-js #mw-searchoptions, .client-js .mw-search-profile-tabs{display: none;}
+.cdx-button{display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; min-height: 32px; max-width: 28rem; margin: 0px; border-width: 1px; border-style: solid; border-radius: 2px; padding-right: 11px; padding-left: 11px; font-family: inherit; font-size: var(--font-size-medium,1rem); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; transition-property: background-color, color, border-color, box-shadow; transition-duration: 0.1s;}
+.cdx-button--size-large{min-height: 44px; padding-right: 15px; padding-left: 15px;}
+.cdx-button--icon-only{min-width: 32px; padding-right: 0px; padding-left: 0px;}
+.cdx-button .cdx-button__icon{vertical-align: middle;}
+.cdx-button--fake-button, .cdx-button--fake-button:hover, .cdx-button--fake-button:focus{text-decoration: none;}
+.cdx-button:enabled, .cdx-button.cdx-button--fake-button--enabled{background-color: var(--background-color-interactive-subtle,#f8f9fa); color: var(--color-neutral,#404244); border-color: var(--border-color-interactive,#72777d);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){.cdx-button:enabled .cdx-button__icon, .cdx-button.cdx-button--fake-button--enabled .cdx-button__icon{background-color: var(--color-neutral,#404244);}
+}
+.cdx-button:enabled:hover, .cdx-button.cdx-button--fake-button--enabled:hover{background-color: var(--background-color-interactive-subtle--hover,#eaecf0); border-color: var(--border-color-interactive--hover,#27292d); cursor: pointer;}
+.cdx-button:enabled:active, .cdx-button.cdx-button--fake-button--enabled:active{background-color: var(--background-color-interactive-subtle--active,#dadde3); border-color: var(--border-color-interactive--active,#202122);}
+.cdx-button:enabled:focus, .cdx-button.cdx-button--fake-button--enabled:focus{outline: transparent solid 1px;}
+ .cdx-button.cdx-button--fake-button--enabled.cdx-button--action-progressive{background-color: var(--background-color-progressive-subtle,#e8eeff); color: var(--color-progressive,#36c); border-color: var(--border-color-progressive,#36c);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--enabled.cdx-button--action-progressive .cdx-button__icon{background-color: var(--color-progressive,#36c);}
+}
+ .cdx-button.cdx-button--fake-button--enabled.cdx-button--action-progressive:hover{background-color: var(--background-color-progressive-subtle--hover,#d9e2ff); color: var(--color-progressive--hover,#3056a9); border-color: var(--border-color-progressive--hover,#3056a9);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--enabled.cdx-button--action-progressive:hover .cdx-button__icon{background-color: var(--color-progressive--hover,#3056a9);}
+}
+ .cdx-button.cdx-button--fake-button--enabled.cdx-button--action-progressive:active{background-color: var(--background-color-progressive-subtle--active,#b6d4fb); color: var(--color-progressive--active,#233566); border-color: var(--border-color-progressive--active,#233566);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--enabled.cdx-button--action-progressive:active .cdx-button__icon{background-color: var(--color-progressive--active,#233566);}
+}
+.cdx-button:enabled.cdx-button--weight-quiet, .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet{background-color: var(--background-color-transparent,transparent); border-color: var(--border-color-transparent,transparent);}
+.cdx-button:enabled.cdx-button--weight-quiet:hover, .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet:hover{background-color: var(--background-color-interactive-subtle--hover,#eaecf0); mix-blend-mode: var(--mix-blend-mode-blend,multiply);}
+.cdx-button:enabled.cdx-button--weight-quiet:active, .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet:active{background-color: var(--background-color-interactive-subtle--active,#dadde3);}
+ .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet.cdx-button--action-progressive{color: var(--color-progressive,#36c);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet.cdx-button--action-progressive .cdx-button__icon{background-color: var(--color-progressive,#36c);}
+}
+ .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet.cdx-button--action-progressive:hover{background-color: var(--background-color-progressive-subtle--hover,#d9e2ff); color: var(--color-progressive--hover,#3056a9); border-color: var(--border-color-transparent,transparent);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet.cdx-button--action-progressive:hover .cdx-button__icon{background-color: var(--color-progressive--hover,#3056a9);}
+}
+ .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet.cdx-button--action-progressive:active{background-color: var(--background-color-progressive-subtle--active,#b6d4fb); color: var(--color-progressive--active,#233566); border-color: var(--border-color-transparent,transparent);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet.cdx-button--action-progressive:active .cdx-button__icon{background-color: var(--color-progressive--active,#233566);}
+}
+ .cdx-button.cdx-button--fake-button--disabled{background-color: var(--background-color-disabled,#dadde3); color: var(--color-disabled-emphasized,#a2a9b1); border-color: var(--border-color-transparent,transparent);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--disabled .cdx-button__icon{background-color: var(--color-inverted,#fff);}
+}
+ .cdx-button.cdx-button--fake-button--disabled.cdx-button--weight-quiet{background-color: var(--background-color-transparent,transparent); color: var(--color-disabled,#a2a9b1);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--disabled.cdx-button--weight-quiet .cdx-button__icon{background-color: var(--color-disabled,#a2a9b1);}
+}
+#mw-indicator-mw-helplink a{display: flex; align-items: center;}
+#mw-indicator-mw-helplink a .mw-helplink-icon{padding-right: 10px; min-width: 10px; min-height: 10px; width: calc(var(--font-size-medium,1rem) + 4px); height: calc(var(--font-size-medium,1rem) + 4px); display: inline-block; vertical-align: text-bottom;}
+@supports not ((-webkit-mask-image:none) or (mask-image:none)){#mw-indicator-mw-helplink a .mw-helplink-icon{background-position: center center; background-repeat: no-repeat; background-size: calc(max(calc(var(--font-size-medium,1rem) + 4px),10px));}
+}
+@supports (-webkit-mask-image:none) or (mask-image:none){#mw-indicator-mw-helplink a .mw-helplink-icon{mask-position: center center; mask-repeat: no-repeat; mask-size: calc(max(calc(var(--font-size-medium,1rem) + 4px),10px));}
+}
+@supports not ((-webkit-mask-image:none) or (mask-image:none)){#mw-indicator-mw-helplink a .mw-helplink-icon{background-image: url("data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"%23000\"><path d=\"M11 15.5H9v-2h2zm-1-11c1.015 0 1.787.469 2.283 1.074.473.576.717 1.299.717 1.926 0 .68-.174 1.242-.467 1.706-.283.448-.646.753-.933.969-.136.101-.29.208-.385.276a3 3 0 00-.215.166v.883H9v-1c0-.645.346-1.08.637-1.347a4 4 0 01.414-.327c.139-.1.235-.165.35-.25.212-.16.349-.293.44-.438.083-.13.159-.319.159-.638 0-.152-.076-.43-.264-.658A.9.9 0 0010 6.5c-.282 0-.518.133-.714.375C9.066 7.146 9 7.43 9 7.5H7c0-.611.28-1.327.733-1.886C8.211 5.026 8.975 4.5 10 4.5\"/><path d=\"M10 1a9 9 0 110 18 9 9 0 010-18m0 2a7 7 0 100 14 7 7 0 000-14\"/></svg>"); filter: invert(var(--filter-invert-icon,0)); opacity: var(--opacity-icon-base,0.87);}
+}
+@supports (-webkit-mask-image:none) or (mask-image:none){#mw-indicator-mw-helplink a .mw-helplink-icon{mask-image: url("data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"%23000\"><path d=\"M11 15.5H9v-2h2zm-1-11c1.015 0 1.787.469 2.283 1.074.473.576.717 1.299.717 1.926 0 .68-.174 1.242-.467 1.706-.283.448-.646.753-.933.969-.136.101-.29.208-.385.276a3 3 0 00-.215.166v.883H9v-1c0-.645.346-1.08.637-1.347a4 4 0 01.414-.327c.139-.1.235-.165.35-.25.212-.16.349-.293.44-.438.083-.13.159-.319.159-.638 0-.152-.076-.43-.264-.658A.9.9 0 0010 6.5c-.282 0-.518.133-.714.375C9.066 7.146 9 7.43 9 7.5H7c0-.611.28-1.327.733-1.886C8.211 5.026 8.975 4.5 10 4.5\"/><path d=\"M10 1a9 9 0 110 18 9 9 0 010-18m0 2a7 7 0 100 14 7 7 0 000-14\"/></svg>"); background-color: var(--color-base,#202122);}
+}
+.cdx-table-pager__limit-form{display: flex; align-items: center;}
+.cdx-table-pager__limit-form .cdx-table-pager__limit-form__submit{margin-left: 8px;}
+.client-js .cdx-table-pager .cdx-table-pager__limit-form__submit{display: none;}
+.cdx-button{display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; min-height: 32px; max-width: 28rem; margin: 0px; border-width: 1px; border-style: solid; border-radius: 2px; padding-right: 11px; padding-left: 11px; font-family: inherit; font-size: var(--font-size-medium,1rem); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; transition-property: background-color, color, border-color, box-shadow; transition-duration: 0.1s;}
+.cdx-button--size-large{min-height: 44px; padding-right: 15px; padding-left: 15px;}
+.cdx-button--icon-only{min-width: 32px; padding-right: 0px; padding-left: 0px;}
+.cdx-button .cdx-button__icon{vertical-align: middle;}
+.cdx-button--fake-button, .cdx-button--fake-button:hover, .cdx-button--fake-button:focus{text-decoration: none;}
+.cdx-button:enabled, .cdx-button.cdx-button--fake-button--enabled{background-color: var(--background-color-interactive-subtle,#f8f9fa); color: var(--color-neutral,#404244); border-color: var(--border-color-interactive,#72777d);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){.cdx-button:enabled .cdx-button__icon, .cdx-button.cdx-button--fake-button--enabled .cdx-button__icon{background-color: var(--color-neutral,#404244);}
+}
+.cdx-button:enabled:hover, .cdx-button.cdx-button--fake-button--enabled:hover{background-color: var(--background-color-interactive-subtle--hover,#eaecf0); border-color: var(--border-color-interactive--hover,#27292d); cursor: pointer;}
+.cdx-button:enabled:active, .cdx-button.cdx-button--fake-button--enabled:active{background-color: var(--background-color-interactive-subtle--active,#dadde3); border-color: var(--border-color-interactive--active,#202122);}
+.cdx-button:enabled:focus, .cdx-button.cdx-button--fake-button--enabled:focus{outline: transparent solid 1px;}
+ .cdx-button.cdx-button--fake-button--enabled.cdx-button--action-progressive{background-color: var(--background-color-progressive-subtle,#e8eeff); color: var(--color-progressive,#36c); border-color: var(--border-color-progressive,#36c);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--enabled.cdx-button--action-progressive .cdx-button__icon{background-color: var(--color-progressive,#36c);}
+}
+ .cdx-button.cdx-button--fake-button--enabled.cdx-button--action-progressive:hover{background-color: var(--background-color-progressive-subtle--hover,#d9e2ff); color: var(--color-progressive--hover,#3056a9); border-color: var(--border-color-progressive--hover,#3056a9);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--enabled.cdx-button--action-progressive:hover .cdx-button__icon{background-color: var(--color-progressive--hover,#3056a9);}
+}
+ .cdx-button.cdx-button--fake-button--enabled.cdx-button--action-progressive:active{background-color: var(--background-color-progressive-subtle--active,#b6d4fb); color: var(--color-progressive--active,#233566); border-color: var(--border-color-progressive--active,#233566);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--enabled.cdx-button--action-progressive:active .cdx-button__icon{background-color: var(--color-progressive--active,#233566);}
+}
+.cdx-button:enabled.cdx-button--weight-quiet, .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet{background-color: var(--background-color-transparent,transparent); border-color: var(--border-color-transparent,transparent);}
+.cdx-button:enabled.cdx-button--weight-quiet:hover, .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet:hover{background-color: var(--background-color-interactive-subtle--hover,#eaecf0); mix-blend-mode: var(--mix-blend-mode-blend,multiply);}
+.cdx-button:enabled.cdx-button--weight-quiet:active, .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet:active{background-color: var(--background-color-interactive-subtle--active,#dadde3);}
+ .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet.cdx-button--action-progressive{color: var(--color-progressive,#36c);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet.cdx-button--action-progressive .cdx-button__icon{background-color: var(--color-progressive,#36c);}
+}
+ .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet.cdx-button--action-progressive:hover{background-color: var(--background-color-progressive-subtle--hover,#d9e2ff); color: var(--color-progressive--hover,#3056a9); border-color: var(--border-color-transparent,transparent);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet.cdx-button--action-progressive:hover .cdx-button__icon{background-color: var(--color-progressive--hover,#3056a9);}
+}
+ .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet.cdx-button--action-progressive:active{background-color: var(--background-color-progressive-subtle--active,#b6d4fb); color: var(--color-progressive--active,#233566); border-color: var(--border-color-transparent,transparent);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet.cdx-button--action-progressive:active .cdx-button__icon{background-color: var(--color-progressive--active,#233566);}
+}
+ .cdx-button.cdx-button--fake-button--disabled{background-color: var(--background-color-disabled,#dadde3); color: var(--color-disabled-emphasized,#a2a9b1); border-color: var(--border-color-transparent,transparent);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--disabled .cdx-button__icon{background-color: var(--color-inverted,#fff);}
+}
+ .cdx-button.cdx-button--fake-button--disabled.cdx-button--weight-quiet{background-color: var(--background-color-transparent,transparent); color: var(--color-disabled,#a2a9b1);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--disabled.cdx-button--weight-quiet .cdx-button__icon{background-color: var(--color-disabled,#a2a9b1);}
+}
+.cdx-select{align-content: center; box-sizing: border-box; min-width: 256px; min-height: 32px; border-width: 1px; border-style: solid; border-radius: 2px; padding-top: 4px; padding-bottom: 4px; padding-left: 8px; padding-right: calc(8px + 8px + calc(var(--font-size-medium,1rem) + 4px)); font-size: var(--font-size-medium,1rem); line-height: 1; appearance: none; background-position: right 12px center; background-repeat: no-repeat; background-size: max(calc(var(--font-size-medium,1rem) - 4px),10px);}
+.cdx-select:enabled{background-color: var(--background-color-interactive-subtle,#f8f9fa); color: var(--color-subtle,#54595d); border-color: var(--border-color-interactive,#72777d); transition-property: background-color, color, border-color, box-shadow; transition-duration: 0.1s; background-image: url("data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"%23202122\"><path d=\"m16.7 8-6 6H9.3l-6-6 1.4-1.4 5.3 5.3 5.3-5.3z\"/></svg>");}
+.cdx-select:enabled:hover{background-color: var(--background-color-interactive-subtle--hover,#eaecf0); border-color: var(--border-color-interactive--hover,#27292d); cursor: pointer;}
+.cdx-select:enabled:active{background-color: var(--background-color-interactive-subtle--active,#dadde3); border-color: var(--border-color-interactive--active,#202122);}
+.cdx-table-pager{display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 12px;}
+@media screen and (min-width: 640px){.cdx-table-pager{flex-wrap: nowrap;}
+}
+.cdx-table-pager__start .cdx-select{min-width: 8rem;}
+.cdx-table-pager__end{display: flex; flex: 1 0 100%; justify-content: space-between; gap: 4px;}
+@media screen and (min-width: 640px){.cdx-table-pager__end{flex: 0 1 auto;}
+}
+.cdx-table-pager__icon--first{min-width: 10px; min-height: 10px; width: calc(var(--font-size-medium,1rem) + 4px); height: calc(var(--font-size-medium,1rem) + 4px); display: inline-block; vertical-align: text-bottom;}
+@supports not (((-webkit-mask-image:none) or (mask-image:none))){.cdx-table-pager__icon--first{background-position: center center; background-repeat: no-repeat; background-size: max(calc(var(--font-size-medium,1rem) + 4px),10px);}
+}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){.cdx-table-pager__icon--first{mask-position: center center; mask-repeat: no-repeat; mask-size: max(calc(var(--font-size-medium,1rem) + 4px),10px);}
+}
+@supports not (((-webkit-mask-image:none) or (mask-image:none))){.cdx-table-pager__icon--first{background-image: url("data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"%23000\"><path d=\"M6 17H4V3h2zM16.417 4.707 11.124 10l5.293 5.293-1.414 1.414-6-6V9.293l6-6z\"/></svg>"); filter: invert(var(--filter-invert-icon,0)); opacity: var(--opacity-icon-base,.87);}
+}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){.cdx-table-pager__icon--first{mask-image: url("data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"%23000\"><path d=\"M6 17H4V3h2zM16.417 4.707 11.124 10l5.293 5.293-1.414 1.414-6-6V9.293l6-6z\"/></svg>"); background-color: var(--color-base,#202122);}
+}
+.cdx-table-pager__icon--previous{min-width: 10px; min-height: 10px; width: calc(var(--font-size-medium,1rem) + 4px); height: calc(var(--font-size-medium,1rem) + 4px); display: inline-block; vertical-align: text-bottom;}
+@supports not (((-webkit-mask-image:none) or (mask-image:none))){.cdx-table-pager__icon--previous{background-position: center center; background-repeat: no-repeat; background-size: max(calc(var(--font-size-medium,1rem) + 4px),10px);}
+}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){.cdx-table-pager__icon--previous{mask-position: center center; mask-repeat: no-repeat; mask-size: max(calc(var(--font-size-medium,1rem) + 4px),10px);}
+}
+@supports not (((-webkit-mask-image:none) or (mask-image:none))){.cdx-table-pager__icon--previous{background-image: url("data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"%23000\"><path d=\"M13.417 4.707 8.124 10l5.293 5.293-1.414 1.414-6-6V9.293l6-6z\"/></svg>"); filter: invert(var(--filter-invert-icon,0)); opacity: var(--opacity-icon-base,.87);}
+}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){.cdx-table-pager__icon--previous{mask-image: url("data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"%23000\"><path d=\"M13.417 4.707 8.124 10l5.293 5.293-1.414 1.414-6-6V9.293l6-6z\"/></svg>"); background-color: var(--color-base,#202122);}
+}
+.cdx-table-pager__icon--next{min-width: 10px; min-height: 10px; width: calc(var(--font-size-medium,1rem) + 4px); height: calc(var(--font-size-medium,1rem) + 4px); display: inline-block; vertical-align: text-bottom;}
+@supports not (((-webkit-mask-image:none) or (mask-image:none))){.cdx-table-pager__icon--next{background-position: center center; background-repeat: no-repeat; background-size: max(calc(var(--font-size-medium,1rem) + 4px),10px);}
+}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){.cdx-table-pager__icon--next{mask-position: center center; mask-repeat: no-repeat; mask-size: max(calc(var(--font-size-medium,1rem) + 4px),10px);}
+}
+@supports not (((-webkit-mask-image:none) or (mask-image:none))){.cdx-table-pager__icon--next{background-image: url("data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"%23000\"><path d=\"M14 9.293v1.414l-5.982 6-1.415-1.414L11.896 10 6.603 4.707l1.414-1.414z\"/></svg>"); filter: invert(var(--filter-invert-icon,0)); opacity: var(--opacity-icon-base,.87);}
+}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){.cdx-table-pager__icon--next{mask-image: url("data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"%23000\"><path d=\"M14 9.293v1.414l-5.982 6-1.415-1.414L11.896 10 6.603 4.707l1.414-1.414z\"/></svg>"); background-color: var(--color-base,#202122);}
+}
+.mw-searchresults-has-iw{}
+.mw-searchresults-has-iw .iw-results{list-style: none; margin: 0px;}
+.mw-searchresults-has-iw .iw-resultset{box-sizing: border-box; vertical-align: top; width: 100%; float: left; margin-bottom: 2em; word-break: break-word;}
+.mw-searchresults-has-iw .iw-result__title{font-size: 108%;}
+ .mw-searchresults-has-iw .iw-result__content::after{visibility: hidden; display: block; font-size: 0px; content: " "; clear: both; height: 0px;}
+.mw-searchresults-has-iw .iw-result__header{font-size: 1.2em; margin-bottom: 0.1em;}
+.mw-searchresults-has-iw .iw-result__header a{vertical-align: middle; color: var(--color-emphasized,#101418);}
+.mw-searchresults-has-iw .iw-result__footer{margin-top: 0.1em;}
+.mw-searchresults-has-iw .iw-result__footer a{vertical-align: middle;}
+.mw-searchresults-has-iw .iw-result__header .oo-ui-iconElement-icon{margin-right: 0.5em;}
+.mw-searchresults-has-iw .iw-resultset:nth-child(1) .iw-result__header{border-top: 1px solid var(--border-color-subtle,#c8ccd1); padding-top: 12px;}
+@media only screen and (min-width: 640px){.mw-searchresults-has-iw #mw-interwiki-results{display: inline-block; width: calc(33.3333%); margin-left: calc(8.33333%);}
+.mw-searchresults-has-iw .iw-resultset:nth-child(1) .iw-result__header{border-top: unset;}
+}
+@media only screen and (min-width: 1440px){.mw-searchresults-has-iw #mw-interwiki-results{margin-right: calc(8.33333%); width: calc(25%);}
+}
+@media only screen and (min-width: 1120px){.vector-feature-main-menu-pinned-disabled .mw-searchresults-has-iw #mw-interwiki-results{display: inline-block; width: calc(25%); margin-left: calc(8.33333%); margin-right: calc(8.33333%);}
+}
+#mw-content-text .searchresults{margin-bottom: 1em;}
+#mw-content-text .searchresults .searchresult{word-break: break-word;}
+#mw-content-text .mw-search-results{margin-top: 32px;}
+.searchmatch{font-weight: bold;}
+.mw-search-form-wrapper{margin-bottom: 24px;}
+.mw-search-results{margin: 0px;}
+.mw-search-results li{list-style: none; margin-bottom: 24px;}
+.mw-search-results li a{font-size: 114%;}
+.mw-search-results-container, .mw-search-results-info{float: left;}
+@media only screen and (min-width: 640px){.mw-search-results-container, .mw-search-results-info{width: calc(58.3333%);}
+}
+.searchResultImage{display: flex;}
+.searchResultImage .searchResultImage-thumbnail{flex-shrink: 0; width: 90px; height: 90px; text-align: center; vertical-align: top; padding-right: 1em;}
+.searchResultImage .searchResultImage-thumbnail > div{padding: 0.5em;}
+.searchResultImage .searchResultImage-thumbnail .searchResultImage-thumbnail-placeholder{background-color: var(--background-color-neutral-subtle,#f8f9fa); box-sizing: border-box; width: inherit; height: inherit; border: 1px solid var(--border-color-subtle,#c8ccd1); fill: var(--color-placeholder,#72777d); display: flex; justify-content: center; align-items: center;}
+.searchResultImage .searchResultImage-thumbnail img{width: 100%; object-fit: cover; object-position: center top; border: 1px solid var(--border-color-subtle,#c8ccd1); height: 100% !important;}
+.searchResultImage .searchResultImage-text{vertical-align: top;}
+.mw-search-visualclear{clear: both;}
+.mw-search-result-data{color: var(--color-subtle,#54595d); font-size: 93%;}
+.mw-search-profile-tabs{background-color: var(--background-color-neutral-subtle,#f8f9fa); margin-top: 1em; border: 1px solid var(--border-color-subtle,#c8ccd1); border-radius: 2px; max-width: 50em;}
+.search-types{float: left; padding-left: 0.25em;}
+.search-types ul{margin: 0px; padding: 0px; list-style: none;}
+.search-types li{float: left; margin: 0px; padding: 0px;}
+.search-types a{display: block; padding: 0.5em;}
+.search-types .current a{color: var(--color-base,#202122); cursor: default;}
+.search-types .current a:hover{text-decoration: none;}
+.results-info{float: right; padding: 0.5em 0.75em 0.5em 0.5em; color: var(--color-subtle,#54595d); font-size: 95%;}
+#mw-search-top-table div.oo-ui-actionFieldLayout{float: left; width: 100%;}
+#mw-searchoptions{background-color: var(--background-color-neutral-subtle,#f8f9fa); clear: both; padding: 0.5em 0.75em 0.75em; margin: -1px 0px 0px; border: 1px solid var(--border-color-subtle,#c8ccd1); border-radius: 0px 0px 2px 2px;}
+#mw-searchoptions legend{display: none;}
+#mw-searchoptions h4{padding: 0px; margin: 0px; float: left;}
+#mw-searchoptions .divider{clear: both; border-bottom: 1px solid var(--border-color-subtle,#c8ccd1); padding-top: 0.5em; margin-bottom: 0.5em;}
+#mw-searchoptions .checkbox-wrapper{column-width: 13em;}
+#mw-searchoptions .checkbox-wrapper > *{break-inside: avoid-column; padding-bottom: 1.5em;}
+.searchalttitle{font-size: 95%;}
+#mw-search-togglebox{float: right;}
+#mw-search-togglebox label{margin-right: 0.25em;}
+#mw-search-togglebox input{margin-left: 0.25em;}
+.mw-widget-searchInputWidget{display: inline-block;}
+.oo-ui-icon-check{background-image: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2220%22 height=%2220%22 viewBox=%220 0 20 20%22%3E%3Ctitle%3E check %3C/title%3E%3Cpath d=%22M18.154 3.837 8 16.8H6.65l-4.8-3.6 1.2-1.6 4.02 3.015 9.517-12.02z%22/%3E%3C/svg%3E");}
+.oo-ui-image-invert.oo-ui-icon-check{background-image: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2220%22 height=%2220%22 viewBox=%220 0 20 20%22%3E%3Ctitle%3E check %3C/title%3E%3Cg fill=%22%23fff%22%3E%3Cpath d=%22M18.154 3.837 8 16.8H6.65l-4.8-3.6 1.2-1.6 4.02 3.015 9.517-12.02z%22/%3E%3C/g%3E%3C/svg%3E");}
+.oo-ui-icon-search, .mw-ui-icon-search::before{background-image: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2220%22 height=%2220%22 viewBox=%220 0 20 20%22%3E%3Ctitle%3E search %3C/title%3E%3Cpath d=%22M8 1a7 7 0 0 1 5.605 11.191l5.102 5.102-1.414 1.414-5.102-5.102A7 7 0 1 1 8 1m0 2a5 5 0 1 0 0 10A5 5 0 0 0 8 3%22/%3E%3C/svg%3E");}
+.oo-ui-buttonElement{display: inline-block; line-height: normal; vertical-align: middle;}
+.oo-ui-buttonElement > .oo-ui-buttonElement-button{cursor: pointer; display: inline-block; box-sizing: border-box; vertical-align: middle; font-family: inherit; font-size: inherit; white-space: nowrap; user-select: none;}
+.oo-ui-buttonElement-framed > .oo-ui-buttonElement-button{vertical-align: top; text-align: center;}
+.oo-ui-buttonElement > .oo-ui-buttonElement-button{position: relative; min-height: 32px; border-radius: 2px; padding-top: 2.14286em; font-weight: 700; text-decoration: none;}
+.oo-ui-buttonElement.oo-ui-labelElement > .oo-ui-buttonElement-button{line-height: 1;}
+ .oo-ui-buttonElement.oo-ui-labelElement > .oo-ui-buttonElement-button > .oo-ui-labelElement-label{line-height: 1.42857em;}
+.oo-ui-buttonElement.oo-ui-widget-enabled > .oo-ui-buttonElement-button{transition-property: background-color, color, border-color, box-shadow; transition-duration: 100ms;}
+.oo-ui-buttonElement.oo-ui-widget-enabled > .oo-ui-buttonElement-button > .oo-ui-iconElement-icon, .oo-ui-buttonElement.oo-ui-widget-enabled > .oo-ui-buttonElement-button > .oo-ui-indicatorElement-indicator{transition-property: opacity; transition-duration: 100ms;}
+.oo-ui-buttonElement.oo-ui-widget-enabled > .oo-ui-buttonElement-button:focus{outline: transparent solid 1px;}
+.oo-ui-buttonElement-framed > .oo-ui-buttonElement-button{border-style: solid; border-width: 1px; border-radius: 2px; padding-left: 12px; padding-right: 12px;}
+.oo-ui-buttonElement-framed.oo-ui-labelElement > .oo-ui-buttonElement-button{padding-top: 5px; padding-bottom: 5px;}
+.oo-ui-buttonElement-framed.oo-ui-widget-enabled > .oo-ui-buttonElement-button{background-color: var(--background-color-interactive-subtle,#f8f9fa); color: var(--color-base,#202122); border-color: var(--border-color-base,#a2a9b1);}
+.oo-ui-buttonElement-framed.oo-ui-widget-enabled > .oo-ui-buttonElement-button:hover{background-color: var(--background-color-base,#fff); color: var(--color-base--hover,#404244); border-color: var(--border-color-base,#a2a9b1);}
+.oo-ui-buttonElement-framed.oo-ui-widget-enabled > .oo-ui-buttonElement-button:focus{border-color: var(--border-color-progressive--focus,#36c); box-shadow: inset 0 0 0 1px var(--box-shadow-color-progressive--focus,#36c);}
+.oo-ui-buttonElement-framed.oo-ui-widget-enabled > .oo-ui-buttonElement-button:active{background-color: var(--background-color-interactive,#eaecf0); color: var(--color-emphasized,#000); border-color: var(--border-color-interactive,#72777d); box-shadow: none;}
+.oo-ui-buttonElement-framed.oo-ui-widget-enabled.oo-ui-flaggedElement-progressive > .oo-ui-buttonElement-button{color: var(--color-progressive,#36c); background-color: var(--background-color-progressive-subtle,#eaf3ff); border-color: var(--border-color-progressive,#36c);}
+.oo-ui-buttonElement-framed.oo-ui-widget-enabled.oo-ui-flaggedElement-progressive > .oo-ui-buttonElement-button:hover{color: var(--color-progressive--hover,#4b77d6); background-color: var(--background-color-progressive-subtle--hover,#d9e2ff); border-color: var(--border-color-progressive--hover,#4b77d6);}
+.oo-ui-buttonElement-framed.oo-ui-widget-enabled.oo-ui-flaggedElement-progressive > .oo-ui-buttonElement-button:focus{border-color: var(--color-progressive--focus,#36c); box-shadow: inset 0 0 0 1px var(--color-progressive--focus,#36c); outline: transparent solid 1px;}
+.oo-ui-buttonElement-framed.oo-ui-widget-enabled.oo-ui-flaggedElement-progressive > .oo-ui-buttonElement-button:active{color: var(--color-progressive--active,#233566); background-color: var(--background-color-progressive-subtle--active,#c8d9f1); border-color: var(--border-color-progressive--active,#233566); box-shadow: none;}
+.oo-ui-buttonElement-framed.oo-ui-widget-enabled.oo-ui-flaggedElement-primary.oo-ui-flaggedElement-progressive > .oo-ui-buttonElement-button{color: var(--color-inverted-fixed,#fff); background-color: var(--background-color-progressive,#36c); border-color: var(--background-color-progressive,#36c);}
+.oo-ui-buttonElement-framed.oo-ui-widget-enabled.oo-ui-flaggedElement-primary.oo-ui-flaggedElement-progressive > .oo-ui-buttonElement-button:hover{background-color: var(--color-progressive--hover,#4b77d6); border-color: var(--color-progressive--hover,#4b77d6);}
+.oo-ui-buttonElement-framed.oo-ui-widget-enabled.oo-ui-flaggedElement-primary.oo-ui-flaggedElement-progressive > .oo-ui-buttonElement-button:focus{border-color: var(--color-progressive--focus,#36c); box-shadow: inset 0 0 0 1px var(--color-progressive--focus,#36c),inset 0 0 0 2px var(--color-inverted-fixed,#fff); outline: transparent solid 1px;}
+.oo-ui-buttonElement-framed.oo-ui-widget-enabled.oo-ui-flaggedElement-primary.oo-ui-flaggedElement-progressive > .oo-ui-buttonElement-button:active{color: var(--color-inverted-fixed,#fff); background-color: var(--color-progressive--active,#233566); border-color: var(--color-progressive--active,#233566); box-shadow: none;}
+.oo-ui-buttonElement-framed.oo-ui-widget-enabled.oo-ui-flaggedElement-primary > .oo-ui-buttonElement-button > .oo-ui-iconElement-icon, .oo-ui-buttonElement-framed.oo-ui-widget-enabled.oo-ui-flaggedElement-primary > .oo-ui-buttonElement-button > .oo-ui-indicatorElement-indicator{opacity: 1;}
+.oo-ui-labelElement .oo-ui-labelElement-label{box-sizing: border-box;}
+.oo-ui-labelElement-invisible{display: block; position: absolute; clip: rect(1px, 1px, 1px, 1px); width: 1px; height: 1px; margin: -1px; border: 0px; padding: 0px; overflow: hidden;}
+.oo-ui-labelElement .oo-ui-labelElement-label{line-height: 1.42857em;}
+.oo-ui-iconElement-icon{background-size: contain; background-position: center center; background-repeat: no-repeat; position: absolute; top: 0px; min-width: 20px; width: 1.42857em; min-height: 20px; height: 100%;}
+.oo-ui-iconElement-noIcon{display: none;}
+@media (forced-colors: active) and (prefers-color-scheme: dark){.oo-ui-iconElement-icon:not(.oo-ui-image-invert){filter: invert(1) hue-rotate(180deg);}
+}
+.oo-ui-indicatorElement-indicator{background-size: contain; background-position: center center; background-repeat: no-repeat; position: absolute; top: 0px; min-width: 12px; width: 0.857143em; min-height: 12px; height: 100%;}
+.oo-ui-indicatorElement-noIndicator{display: none;}
+@media (forced-colors: active) and (prefers-color-scheme: dark){.oo-ui-indicatorElement-indicator:not(.oo-ui-image-invert){filter: invert(1) hue-rotate(180deg);}
+}
+.oo-ui-fieldLayout{display: block; margin-top: 16px;}
+.oo-ui-fieldLayout::before, .oo-ui-fieldLayout::after{content: " "; display: table;}
+.oo-ui-fieldLayout::after{clear: both;}
+.oo-ui-fieldLayout.oo-ui-fieldLayout-align-inline{overflow-wrap: break-word;}
+.oo-ui-fieldLayout.oo-ui-fieldLayout-align-inline > .oo-ui-fieldLayout-body{display: table; width: 100%;}
+.oo-ui-fieldLayout.oo-ui-fieldLayout-align-inline > .oo-ui-fieldLayout-body > .oo-ui-fieldLayout-header, .oo-ui-fieldLayout.oo-ui-fieldLayout-align-inline > .oo-ui-fieldLayout-body > .oo-ui-fieldLayout-field{display: table-cell;}
+.oo-ui-fieldLayout.oo-ui-fieldLayout-align-inline > .oo-ui-fieldLayout-body > .oo-ui-fieldLayout-header{vertical-align: middle;}
+.oo-ui-fieldLayout.oo-ui-fieldLayout-align-inline > .oo-ui-fieldLayout-body > .oo-ui-fieldLayout-field{width: 1px; vertical-align: top;}
+.oo-ui-fieldLayout.oo-ui-fieldLayout-align-top > .oo-ui-fieldLayout-body > .oo-ui-fieldLayout-header, .oo-ui-fieldLayout.oo-ui-fieldLayout-align-top > .oo-ui-fieldLayout-body > .oo-ui-fieldLayout-field{display: block;}
+.oo-ui-fieldLayout.oo-ui-labelElement, .oo-ui-fieldLayout.oo-ui-fieldLayout-align-inline{margin-top: 12px;}
+.oo-ui-fieldLayout:first-child, .oo-ui-fieldLayout.oo-ui-labelElement:first-child, .oo-ui-fieldLayout.oo-ui-fieldLayout-align-inline:first-child{margin-top: 0px;}
+.oo-ui-fieldLayout.oo-ui-labelElement > .oo-ui-fieldLayout-body > .oo-ui-fieldLayout-header{padding-bottom: 4px;}
+ .oo-ui-fieldLayout.oo-ui-labelElement.oo-ui-fieldLayout-align-inline > .oo-ui-fieldLayout-body{max-width: 50em;}
+.oo-ui-fieldLayout.oo-ui-labelElement.oo-ui-fieldLayout-align-inline > .oo-ui-fieldLayout-body > .oo-ui-fieldLayout-header{padding-top: 0px; padding-bottom: 0px; padding-left: 6px;}
+.oo-ui-actionFieldLayout-input, .oo-ui-actionFieldLayout-button{display: table-cell; vertical-align: middle;}
+.oo-ui-actionFieldLayout-button{width: 1%; white-space: nowrap;}
+.oo-ui-actionFieldLayout.oo-ui-fieldLayout-align-top{max-width: 50em;}
+.oo-ui-actionFieldLayout .oo-ui-actionFieldLayout-input > .oo-ui-widget{margin-right: 8px;}
+.oo-ui-actionFieldLayout .oo-ui-actionFieldLayout-input > .oo-ui-widget.oo-ui-textInputWidget > .oo-ui-inputWidget-input{border-radius: 2px 0px 0px 2px; position: relative;}
+.oo-ui-actionFieldLayout .oo-ui-actionFieldLayout-button .oo-ui-buttonElement-framed > .oo-ui-buttonElement-button{border-radius: 0px 2px 2px 0px; margin-left: -1px;}
+.oo-ui-actionFieldLayout .oo-ui-actionFieldLayout-input > .oo-ui-textInputWidget > .oo-ui-inputWidget-input:hover, .oo-ui-actionFieldLayout .oo-ui-actionFieldLayout-input > .oo-ui-textInputWidget > .oo-ui-inputWidget-input:focus, .oo-ui-actionFieldLayout .oo-ui-actionFieldLayout-input > .oo-ui-textInputWidget > .oo-ui-inputWidget-input:hover ~ *, .oo-ui-actionFieldLayout .oo-ui-actionFieldLayout-input > .oo-ui-textInputWidget > .oo-ui-inputWidget-input:focus ~ *{z-index: 1;}
+.oo-ui-actionFieldLayout .oo-ui-actionFieldLayout-button > .oo-ui-buttonElement > .oo-ui-buttonElement-button:hover, .oo-ui-actionFieldLayout .oo-ui-actionFieldLayout-button > .oo-ui-buttonElement > .oo-ui-buttonElement-button:focus{z-index: 1;}
+.oo-ui-iconWidget{vertical-align: middle; user-select: none; clip: auto; margin: 0px; text-indent: -9999px; line-height: 2.5; display: inline-block; position: static; top: auto; height: 1.42857em;}
+.oo-ui-inputWidget{margin-right: 8px;}
+.oo-ui-inputWidget:last-child{margin-right: 0px;}
+.oo-ui-buttonInputWidget > button{background-color: transparent; margin: 0px; border: 0px; padding: 0px;}
+.oo-ui-checkboxInputWidget{display: inline-block; z-index: 0; position: relative; line-height: 1.42857em; white-space: nowrap;}
+.oo-ui-checkboxInputWidget *{font: inherit; vertical-align: middle;}
+.oo-ui-checkboxInputWidget [type="checkbox"]{position: relative; max-width: none; width: 1.42857em; height: 1.42857em; margin: 0px; opacity: 0; z-index: 1;}
+.oo-ui-checkboxInputWidget [type="checkbox"] + span{background-color: var(--background-color-base,#fff); background-size: 0px 0px; box-sizing: border-box; position: absolute; left: 0px; width: 1.42857em; height: 1.42857em; border-color: var(--border-color-input-binary,#72777d); border-style: solid; border-radius: 2px; border-width: 1px;}
+.oo-ui-checkboxInputWidget [type="checkbox"]:checked:not(:indeterminate) + span{background-size: 1em 1em;}
+.oo-ui-checkboxInputWidget.oo-ui-widget-enabled [type="checkbox"]{cursor: pointer;}
+.oo-ui-checkboxInputWidget.oo-ui-widget-enabled [type="checkbox"] + span{cursor: pointer; transition-property: background-color, border-color, box-shadow; transition-duration: 100ms;}
+.oo-ui-checkboxInputWidget.oo-ui-widget-enabled [type="checkbox"]:focus + span{border-color: var(--border-color-progressive--focus,#36c); box-shadow: inset 0 0 0 1px var(--box-shadow-color-progressive--focus,#36c); outline: transparent solid 1px;}
+.oo-ui-checkboxInputWidget.oo-ui-widget-enabled [type="checkbox"]:hover + span{background-color: var(--background-color-interactive-subtle--hover,#eaecf0); border-color: var(--border-color-interactive--hover,#27292d);}
+.oo-ui-checkboxInputWidget.oo-ui-widget-enabled [type="checkbox"]:active + span{background-color: var(--background-color-interactive-subtle--hover,#dadde3); border-color: var(--border-color-interactive--active,#202122);}
+.oo-ui-checkboxInputWidget.oo-ui-widget-enabled [type="checkbox"]:checked + span{background-color: var(--background-color-progressive,#36c); border-color: var(--border-color-input-binary--checked,#36c);}
+.oo-ui-checkboxInputWidget.oo-ui-widget-enabled [type="checkbox"]:checked:focus + span{background-color: var(--background-color-progressive--focus,#36c); border-color: var(--border-color-input-binary--checked,#36c); box-shadow: inset 0 0 0 1px var(--box-shadow-color-progressive--focus,#36c),inset 0 0 0 2px var(--box-shadow-color-inverted,#fff);}
+.oo-ui-checkboxInputWidget.oo-ui-widget-enabled [type="checkbox"]:checked:hover + span{background-color: var(--background-color-progressive--hover,#4b77d6); border-color: var(--border-color-progressive--hover,#4b77d6);}
+.oo-ui-checkboxInputWidget.oo-ui-widget-enabled [type="checkbox"]:checked:active + span{background-color: var(--background-color-progressive--active,#233566); border-color: var(--border-color-input-binary--active,#233566); box-shadow: inset 0 0 0 1px var(--box-shadow-color-progressive--active,#233566);}
+.oo-ui-textInputWidget{position: relative; vertical-align: middle; box-sizing: border-box; width: 100%; max-width: 50em;}
+.oo-ui-textInputWidget .oo-ui-inputWidget-input{appearance: none; display: block; width: 100%; box-sizing: border-box;}
+.oo-ui-textInputWidget [type="search"]::-webkit-search-decoration, .oo-ui-textInputWidget [type="search"]::-webkit-search-cancel-button{display: none;}
+.oo-ui-textInputWidget > .oo-ui-iconElement-icon{left: 0px;}
+.oo-ui-textInputWidget > .oo-ui-indicatorElement-indicator{right: 0px;}
+.oo-ui-textInputWidget-php > .oo-ui-iconElement-icon, .oo-ui-textInputWidget-php > .oo-ui-indicatorElement-indicator{pointer-events: none;}
+.oo-ui-textInputWidget.oo-ui-widget-enabled > .oo-ui-iconElement-icon, .oo-ui-textInputWidget.oo-ui-widget-enabled > .oo-ui-indicatorElement-indicator{cursor: text;}
+.oo-ui-textInputWidget .oo-ui-inputWidget-input{background-color: var(--background-color-base,#fff); color: var(--color-emphasized,#000); margin: 0px; border: 1px solid var(--border-color-base,#a2a9b1); border-radius: 2px; padding: 5px 8px; font-size: inherit; font-family: inherit; line-height: 1.42857em;}
+.oo-ui-textInputWidget input{height: 2.28571em;}
+.oo-ui-textInputWidget.oo-ui-iconElement .oo-ui-inputWidget-input{padding-left: 2.42857em;}
+.oo-ui-textInputWidget.oo-ui-iconElement > .oo-ui-iconElement-icon{left: 9px;}
+.oo-ui-textInputWidget.oo-ui-widget-enabled .oo-ui-inputWidget-input{box-shadow: inset 0 0 0 1px var(--box-shadow-color-transparent,transparent); transition-property: border-color, box-shadow; transition-duration: 250ms;}
+.oo-ui-textInputWidget.oo-ui-widget-enabled .oo-ui-inputWidget-input::-webkit-input-placeholder{color: var(--color-placeholder,#72777d); opacity: 1;}
+.oo-ui-textInputWidget.oo-ui-widget-enabled .oo-ui-inputWidget-input::placeholder{color: var(--color-placeholder,#72777d); opacity: 1;}
+.oo-ui-textInputWidget.oo-ui-widget-enabled .oo-ui-inputWidget-input:focus{border-color: var(--border-color-progressive--focus,#36c); outline: transparent solid 1px; box-shadow: inset 0 0 0 1px var(--box-shadow-color-progressive--focus,#36c);}
+.oo-ui-textInputWidget.oo-ui-widget-enabled .oo-ui-inputWidget-input:focus ~ .oo-ui-iconElement-icon, .oo-ui-textInputWidget.oo-ui-widget-enabled .oo-ui-inputWidget-input:focus ~ .oo-ui-indicatorElement-indicator{opacity: 1;}
+.oo-ui-textInputWidget.oo-ui-widget-enabled:hover .oo-ui-inputWidget-input{border-color: var(--border-color-input--hover,#72777d);}
+.oo-ui-textInputWidget.oo-ui-widget-enabled:hover .oo-ui-inputWidget-input:focus{border-color: var(--border-color-progressive--focus,#36c);}
+.oo-ui-textInputWidget.oo-ui-widget-enabled > .oo-ui-iconElement-icon{opacity: 0.67;}
+.oo-ui-textInputWidget.oo-ui-widget-enabled > .oo-ui-indicatorElement-indicator{opacity: 0.87;}
+.oo-ui-icon-logoWikibooks{background-image: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2220%22 height=%2220%22 viewBox=%220 0 20 20%22%3E%3Ctitle%3E Wikibooks logo %3C/title%3E%3Cpath d=%22M14.222.03c-1.812 1.753-3.604 3.49-3.604 3.49l.644 1.31c.873-.864 1.75-1.625 2.587-2.472 1.762 3.869 2.963 6.987 4.44 11.109.483 1.339.384 1.399-.771 2.122-1.857.923-2.445 1.53-4.658 3.884h1.515c1.85-1.673 2.536-2.263 4.853-3.484.82-.473.932-1.07.596-2C18.74 10.977 16.39 4.484 14.222.03%22/%3E%3Cpath d=%22M9.498.071C8.172.966 7.149 2.254 5.996 3.358l.473 1.508c.903-.71 1.688-1.569 2.5-2.38l4.376 10.977c.252.743-.145 1.405-.944 2.125-.956.769-2.925 2.56-3.818 3.926h1.358c1.426-1.464 1.683-1.663 3.306-3.068 1.09-1.112 2.074-1.681 1.56-3.106z%22/%3E%3Cpath d=%22M5.023 0C4.67.12 4.376.347 4.1.588a880 880 0 0 0-3.889 3.75c-.196.182-.213.45-.21.718L.017 6.57S1.743 4.892 4.32 2.41c1.39 3.615 2.837 7.21 4.263 10.813.195.544-.272.99-.864 1.585-.818.798-2.53 2.44-4.281 4.635h1.756l4.22-4.629c.402-.552.9-1.091.69-1.591L5.024 0Z%22/%3E%3C/svg%3E");}
+.oo-ui-icon-logoWikiquote{background-image: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2220%22 height=%2220%22 viewBox=%220 0 20 20%22%3E%3Ctitle%3E Wikiquote logo %3C/title%3E%3Cpath d=%22M9.133 4.643a6.52 6.52 0 0 1 2.79 5.354 6.52 6.52 0 0 1-2.672 5.269l-.12.086-.923-1.322a4.91 4.91 0 0 0 2.103-4.033c0-1.578-.748-3.03-1.988-3.95l-.114-.082zM13.874 0a13.08 13.08 0 0 1 4.627 9.997c0 3.86-1.678 7.448-4.538 9.92l-.096.083-1.15-1.357a11.3 11.3 0 0 0 4.006-8.646c0-3.33-1.444-6.424-3.908-8.562l-.091-.079L13.873 0Z%22/%3E%3Cpath d=%22M11.453 2.386a9.71 9.71 0 0 1 3.668 7.611 9.71 9.71 0 0 1-3.576 7.537l-.09.073-1.074-1.347A7.99 7.99 0 0 0 13.4 9.997a7.99 7.99 0 0 0-2.932-6.194l-.087-.07 1.073-1.347Z%22/%3E%3Ccircle cx=%225.35%22 cy=%229.93%22 r=%223.35%22/%3E%3C/svg%3E");}
+.oo-ui-icon-logoWikisource{background-image: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2220%22 height=%2220%22 viewBox=%220 0 20 20%22%3E%3Ctitle%3E Wikisource logo %3C/title%3E%3Cpath d=%22M9.94 0a10 10 0 0 0-8.08 4.2h4.21c.06-.35.16-.72.49-1.04.2-.23.67-.2 1-.26.33-.07.87-.92 1.4-1.17.64.33 1.34.83 1.7 1.08.62-.49 1.16-1.33 1.4-.65.2-.33.53-.54.9-.63.17-.04.4-.03.52-.05.14-.06.42-.27.66-.34-.38.58-.43 2.25-.44 3.06v.35c.55.12 1.25.03 1.49-.35h2.95A9.99 9.99 0 0 0 10 0zm-.36 2.5c.17.47.31.94.26 1.4-.06.3.07.28.31.16s.36-.26.72-.37c.27-.07.08-.26-.05-.4-.4-.34-.82-.56-1.24-.8zm-8.3 2.6A9.95 9.95 0 0 0 0 10a10 10 0 0 0 20 0 9.94 9.94 0 0 0-1.28-4.9H2.8c.52 1.1.81 1.7 2.6 1.46.62-.1 1-.16 1 .48.08.39.38.52 1.15.38.3-.11.57-.28.79-.14h.02v.01a.04.04 0 0 1 .01.02c0 .1-.19.31.04.57.57.55 1.12 1.04 1.7 1.6.13.64.7.55 1.15.42.68-.2.38.1.63.41.14.22.46.81.84.6.01 1.08.28 1.85.84 2.27-.17.63-.33 1.5-.03 2.02-.5-.16-.3.81-.45 1.22-.26.68-.48.65-.72.71.22.24.5.49.92.64v.01l.02.01c0 .23.04.43.18.57-.26-.06-.57-.42-1.08-.19-.56.25-.68.08-.48-.29.26-.57-.3-.78-.88-.92v-.23c.12-.04.26-.08.42-.1.25-.05.42-.14.4-.5-.01-.5-.03-1 0-1.48a6 6 0 0 1 .18-1.21c.07-.2.44-.38.13-.64A42 42 0 0 0 8.3 9.3l-.06-.02 1.65 2.93c.2.49.58 1-.1 1.13v.01c-.03.47.06 1.28-.26 1.44-.36.25-.39.48-.42.86-.06.4-.06.86.06 1.18.12.05.24.08.37.1l.32.04c-.43.56-.96.39-1.27-.13l-1.67-2.58c.08-2.51.13-4.2-.05-6.3-.92.08-1.85.01-2.83-.56-.22-.4-.47-.36-.89-.26.05-.37-.1-.73-.32-1.1l-.1-.93H1.29zm14.51 1.03c1.6-.04 1.14 2.78 1.14 4.15h.01l-.13.7-.2 1.21c.07.6-.09.68-.2 1.02 0 1.32-.18 1.7-1.29 2.7a2.16 2.16 0 0 1-1.17-2.25c.04-.24.2-.51-.01-.9a7.4 7.4 0 0 1 .14-3.35.6.6 0 0 1 .2-.02.63.63 0 0 0 .57-.74 3.3 3.3 0 0 0 .6-.2c-.81-.76-.52-2.3.34-2.32%22/%3E%3C/svg%3E");}
+.oo-ui-icon-logoWiktionary{background-image: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2220%22 height=%2220%22 viewBox=%220 0 20 20%22%3E%3Ctitle%3E Wiktionary logo %3C/title%3E%3Cpath d=%22M2.22 18.6v.01c-.35-.21-.61-.5-.71-.84l-.07-.37L.21 3.36c-.03-.45.17-.9.57-1.25.39-.36.97-.6 1.62-.66L15.35.22a2.8 2.8 0 0 1 1.7.35 1.5 1.5 0 0 1 .77 1.13l1.23 14.12c.03.45-.17.9-.57 1.25a2.85 2.85 0 0 1-1.62.67L3.92 18.95a2.75 2.75 0 0 1-1.7-.35m-1-1.1c.02.18.07.35.15.5l.02.25c.05.56.4 1.03.9 1.34.51.3 1.19.46 1.9.4l13.34-1.27a3.15 3.15 0 0 0 1.8-.74c.45-.4.71-.93.66-1.49L18.73 1.87a1.77 1.77 0 0 0-.9-1.33 2.9 2.9 0 0 0-1.24-.4 3.2 3.2 0 0 0-1.27-.12L2.4 1.23a3.1 3.1 0 0 0-1.74.72c-.44.39-.7.9-.64 1.44l1.22 14.1zm1.2 1.9a1.6 1.6 0 0 1-.78-1 2 2 0 0 0 .47.39c.49.3 1.14.44 1.84.38l12.93-1.22c.7-.06 1.31-.33 1.74-.72.44-.38.7-.9.64-1.43L18.04 1.69a1.62 1.62 0 0 0-.62-1.11c.1.04.2.09.29.15.46.28.76.7.8 1.16l1.26 14.62c.04.48-.18.94-.59 1.3-.4.37-1 .63-1.67.7L4.17 19.75a2.9 2.9 0 0 1-1.76-.36ZM1.21 5.3l4.34-.5.06.47-.28.04c-.28.03-.48.12-.6.26a.57.57 0 0 0-.15.46 12 12 0 0 0 .53 1.33l2.91 6.12 1.15-5.56-.8-1.68c-.16-.27-.31-.5-.48-.7a1 1 0 0 0-.28-.23 1.4 1.4 0 0 0-.42-.17c-.1-.02-.25-.02-.48 0l-.08.02-.06-.48 4.56-.53.06.48-.38.04c-.3.04-.5.13-.6.26a.67.67 0 0 0-.13.53c0 .02 0 .06.03.15l.15.4 3.2 6.84 1.32-6.48c.16-.75.22-1.25.18-1.51a.57.57 0 0 0-.14-.32.57.57 0 0 0-.3-.18c-.2-.05-.47-.06-.8-.02h-.08l-.06-.48 3.53-.4.06.48h-.08c-.29.04-.5.12-.66.24-.15.12-.3.33-.42.64-.08.2-.2.7-.35 1.5l-2.01 9.9-.45.05-3.4-7.06-1.61 7.64-.42.04-4.56-9.42q-.51-1.05-.63-1.23a1 1 0 0 0-.47-.4 1.6 1.6 0 0 0-.76-.07h-.08Z%22/%3E%3C/svg%3E");}
+.vector-icon.mw-ui-icon-wikimedia-verticalEllipsis{mask-image: none;}
+.vector-icon.mw-ui-icon-wikimedia-heart{mask-image: none;}
+.vector-icon.mw-ui-icon-wikimedia-logIn{mask-image: none;}
+.vector-icon.mw-ui-icon-wikimedia-search{mask-image: none;}
+.vector-icon.mw-ui-icon-wikimedia-menu{mask-image: none;}
+.vector-icon.mw-ui-icon-wikimedia-star{mask-image: none;}
+.vector-icon.mw-ui-icon-wikimedia-userAvatar{mask-image: none;}
+@media (prefers-reduced-motion: reduce){*, ::before, ::after{animation-delay: -0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: 0ms !important;}
+}
+body{margin: 0px;}
+button, input, select{margin: 0px;}
+legend{padding: 0px;}
+:root{--image-size-small: 180px; --image-size-standard: 250px; --image-size-large: 400px; --image-size-user: var(--image-size-standard);}
+@media screen{.mw-body-content::after{clear: both; content: ""; display: block;}
+#catlinks{text-align: left;}
+.catlinks{background-color: var(--background-color-neutral-subtle,#f8f9fa); margin-top: 1em; border: 1px solid var(--border-color-base,#a2a9b1); padding: 5px; clear: both;}
+ .catlinks-allhidden{display: none;}
+.emptyPortlet{display: none;}
+.printfooter{display: none;}
+a{text-decoration: none; color: var(--color-progressive,#36c); background: none;}
+a:not([href]){cursor: pointer;}
+a:visited{color: var(--color-visited,#6a60b0);}
+a:active{color: var(--color-progressive--active,#233566);}
+a:hover, a:focus{text-decoration: underline;}
+img{border: 0px; vertical-align: middle;}
+ h1, h4{color: var(--color-emphasized,#101418); font-weight: bold; margin: 0px; padding-top: 0.5em; padding-bottom: 0.17em; display: flow-root; word-break: break-word;}
+ h1{margin-bottom: 0.6em; border-bottom: 1px solid var(--border-color-base,#a2a9b1);}
+ h4{margin-bottom: 0.3em;}
+ h1{font-size: 188%; font-weight: normal;}
+ h4{font-size: 116%;}
+ul{margin: 0.3em 0px 0px 1.6em; margin-inline: 1.6em 0px; padding: 0px;}
+li{margin-bottom: 0.1em;}
+fieldset{border: 1px solid rgb(42, 75, 141); margin: 1em 0px; padding: 0px 1em 1em;}
+legend{padding: 0.5em;}
+form{border: 0px; margin: 0px;}
+}
+@media print{ .catlinks{display: none;}
+ .mw-indicators, #siteNotice{display: none;}
+.printfooter{clear: both; padding: 1em 0px;}
+a{background: none !important; padding: 0px !important;}
+a{color: inherit !important; text-decoration: inherit !important;}
+ h1, h4{font-weight: bold; break-after: avoid;}
+img{break-inside: avoid;}
+img{border: 0px; vertical-align: middle;}
+ul{list-style-type: square;}
+}
+@media screen{:root, .skin-invert{--color-base: #202122; --color-base-fixed: #202122; --color-base--hover: #404244; --color-emphasized: #101418; --color-neutral: #404244; --color-subtle: #54595d; --color-placeholder: #72777d; --color-disabled: #a2a9b1; --color-disabled-emphasized: #a2a9b1; --color-inverted: #fff; --color-inverted-fixed: #fff; --color-progressive: #36c; --color-progressive--hover: #3056a9; --color-progressive--active: #233566; --color-progressive--focus: #36c; --color-destructive: #bf3c2c; --color-destructive--hover: #9f3526; --color-destructive--active: #612419; --color-destructive--focus: #36c; --color-visited: #6a60b0; --color-visited--hover: #534fa3; --color-visited--active: #353262; --color-destructive--visited: #9f5555; --color-destructive--visited--hover: #854848; --color-destructive--visited--active: #512e2e; --color-error: #bf3c2c; --color-error--hover: #9f3526; --color-error--active: #612419; --color-warning: #886425; --color-success: #177860; --color-notice: #404244; --color-icon-error: #f54739; --color-icon-warning: #ab7f2a; --color-icon-success: #099979; --color-icon-notice: #72777d; --color-icon-progressive: #36c; --color-content-added: #006400; --color-content-removed: #8b0000; --color-option-red: #bf3c2c; --color-option-orange: #a95226; --color-option-yellow: #886425; --color-option-lime: #1f7a39; --color-option-green: #177860; --color-option-blue: #36c; --color-option-purple: #6a60b0; --color-option-pink: #9b527f; --color-option-maroon: #9f5555; --filter-invert-icon: 0; --filter-invert-primary-button-icon: 1; --box-shadow-color-base: #a2a9b1; --box-shadow-color-progressive--active: #233566; --box-shadow-color-progressive--focus: #36c; --box-shadow-color-progressive-selected: #36c; --box-shadow-color-progressive-selected--hover: #3056a9; --box-shadow-color-progressive-selected--active: #233566; --box-shadow-color-destructive--focus: #36c; --box-shadow-color-inverted: #fff; --box-shadow-color-alpha-base: rgba(0,0,0,0.06); --box-shadow-color-transparent: transparent; --mix-blend-mode-base: normal; --mix-blend-mode-blend: multiply; --background-color-base: #fff; --background-color-base-fixed: #fff; --background-color-neutral: #eaecf0; --background-color-neutral-subtle: #f8f9fa; --background-color-interactive: #eaecf0; --background-color-interactive--hover: #dadde3; --background-color-interactive--active: #c8ccd1; --background-color-interactive-subtle: #f8f9fa; --background-color-interactive-subtle--hover: #eaecf0; --background-color-interactive-subtle--active: #dadde3; --background-color-disabled: #dadde3; --background-color-disabled-subtle: #eaecf0; --background-color-inverted: #101418; --background-color-progressive: #36c; --background-color-progressive--hover: #3056a9; --background-color-progressive--active: #233566; --background-color-progressive--focus: #36c; --background-color-progressive-subtle: #e8eeff; --background-color-progressive-subtle--hover: #d9e2ff; --background-color-progressive-subtle--active: #b6d4fb; --background-color-destructive: #bf3c2c; --background-color-destructive--hover: #9f3526; --background-color-destructive--active: #612419; --background-color-destructive--focus: #36c; --background-color-destructive-subtle: #ffe9e5; --background-color-destructive-subtle--hover: #ffdad3; --background-color-destructive-subtle--active: #ffc8bd; --background-color-error: #f54739; --background-color-error--hover: #d74032; --background-color-error--active: #bf3c2c; --background-color-error-subtle: #ffe9e5; --background-color-error-subtle--hover: #ffdad3; --background-color-error-subtle--active: #ffc8bd; --background-color-warning-subtle: #fdf2d5; --background-color-success-subtle: #dff2eb; --background-color-notice-subtle: #eaecf0; --background-color-content-added: #a3d3ff; --background-color-content-removed: #ffe49c; --background-color-target-text: #ffead4; --background-color-option-red: #ffe9e5; --background-color-option-orange: #ffead4; --background-color-option-yellow: #fdf2d5; --background-color-option-lime: #e3f2e4; --background-color-option-green: #dff2eb; --background-color-option-blue: #e8eeff; --background-color-option-purple: #f0ecf6; --background-color-option-pink: #f5ebf2; --background-color-option-maroon: #f6ebeb; --background-color-transparent: transparent; --background-color-backdrop-light: rgba(255,255,255,0.65); --background-color-backdrop-dark: rgba(0,0,0,0.65); --background-color-button-quiet--hover: rgba(0,24,73,0.027); --background-color-button-quiet--active: rgba(0,24,73,0.082); --background-color-input-binary--checked: #36c; --background-color-tab-list-item-framed--hover: rgba(255,255,255,0.3); --background-color-tab-list-item-framed--active: rgba(255,255,255,0.65); --opacity-icon-base: 0.87; --opacity-icon-base--hover: 0.74; --opacity-icon-base--selected: 1; --opacity-icon-base--disabled: 0.51; --opacity-icon-placeholder: 0.51; --opacity-icon-subtle: 0.67; --border-color-base: #a2a9b1; --border-color-emphasized: #202122; --border-color-subtle: #c8ccd1; --border-color-muted: #dadde3; --border-color-interactive: #72777d; --border-color-interactive--hover: #27292d; --border-color-interactive--active: #202122; --border-color-disabled: #c8ccd1; --border-color-inverted: #fff; --border-color-inverted-fixed: #fff; --border-color-progressive: #36c; --border-color-progressive--hover: #3056a9; --border-color-progressive--active: #233566; --border-color-progressive--focus: #36c; --border-color-destructive: #f54739; --border-color-destructive--hover: #9f3526; --border-color-destructive--active: #612419; --border-color-destructive--focus: #36c; --border-color-error: #f54739; --border-color-error--hover: #9f3526; --border-color-error--active: #612419; --border-color-warning: #ab7f2a; --border-color-warning--hover: #735421; --border-color-warning--active: #453217; --border-color-success: #099979; --border-color-notice: #72777d; --border-color-content-added: #a3d3ff; --border-color-content-removed: #ffe49c; --border-color-option-red: #f54739; --border-color-option-orange: #d46926; --border-color-option-yellow: #ab7f2a; --border-color-option-lime: #259948; --border-color-option-green: #099979; --border-color-option-blue: #6485d1; --border-color-option-purple: #8d7ebd; --border-color-option-pink: #b5739e; --border-color-option-maroon: #b57775; --border-color-transparent: transparent; --border-color-divider: #a2a9b1; --outline-color-progressive--focus: #36c; --color-link: var(--color-progressive); --color-link--hover: var(--color-progressive--hover); --color-link--active: var(--color-progressive--active); --color-link--focus: var(--color-progressive--focus); --color-link--visited: var(--color-visited); --color-link--visited--hover: var(--color-visited--hover); --color-link--visited--active: var(--color-visited--active); --color-link-red: var(--color-destructive); --color-link-red--hover: var(--color-destructive--hover); --color-link-red--active: var(--color-destructive--active); --color-link-red--focus: var(--color-destructive--focus); --color-link-red--visited: var(--color-destructive--visited); --color-link-red--visited--hover: var(--color-destructive--visited--hover); --color-link-red--visited--active: var(--color-destructive--visited--active); --accent-color-base: #36c; --border-color-input--hover: var(--border-color-interactive); --border-color-input-binary: var(--border-color-interactive); --border-color-input-binary--hover: var(--border-color-progressive--hover); --border-color-input-binary--active: var(--border-color-progressive--active); --border-color-input-binary--focus: var(--border-color-progressive--focus); --border-color-input-binary--checked: var(--border-color-progressive); --color-base--subtle: #54595d;}
+html.vector-feature-custom-font-size-clientpref--excluded, .no-font-mode-scale{--font-size-medium: var(--font-size-small,0.875rem); --line-height-medium: 1.5714285; --line-height-content: 1.5714285;}
+ .vector-icon{--font-size-medium: var(--font-size-medium,1rem); --line-height-medium: 1.6; --line-height-content: 1.625;}
+}
+@media screen{body{background-color: var(--background-color-neutral-subtle,#f8f9fa); color: var(--color-base,#202122);}
+.client-js.vector-sticky-header-enabled{scroll-padding-top: 3.125rem;}
+.mw-body{direction: ltr;}
+.mw-body .firstHeading{overflow-wrap: break-word; margin-bottom: 0px;}
+.mw-header{position: relative; z-index: 3;}
+#mw-content-text{margin-top: 16px;}
+.mw-indicators{z-index: 1;}
+.vector-page-titlebar{box-shadow: none;}
+.vector-page-titlebar::after{clear: both; content: ""; display: block;}
+.vector-page-titlebar::after{content: ""; display: block; position: absolute; bottom: 0px; left: 0px; right: 0px; height: 1px; background-color: var(--border-color-base,#a2a9b1);}
+.vector-body-before-content{overflow: hidden;}
+.vector-body{position: relative; z-index: 0;}
+#contentSub:not(:empty){font-size: var(--font-size-small,0.875rem); color: var(--color-subtle,#54595d); width: auto; margin: 8px 0px 0px;}
+.mw-page-container{min-width: 18.75em; max-width: 99.75rem; box-sizing: border-box; position: relative; z-index: 0; margin: 0px auto; padding-top: 0.05px; padding-left: 1.5rem; padding-right: 1.5rem; background-color: var(--background-color-base,#fff);}
+.vector-header-container{width: 100%; display: flex; justify-content: center;}
+.vector-header-container .mw-header, .vector-header-container .vector-sticky-header{width: 100%; min-height: 3.125rem; background-color: var(--background-color-base,#fff); min-width: 18.75em; max-width: 99.75rem; padding-left: 1.5rem; padding-right: 1.5rem; box-sizing: border-box;}
+.skin--responsive .mw-page-container{min-width: auto;}
+html{touch-action: manipulation;}
+.vector-feature-main-menu-pinned-disabled.vector-toc-not-available .mw-page-container-inner{grid-template-columns: minmax(0px, 1fr); grid-template-areas: "siteNotice" "pageContent" "columnStart" "footer";}
+.vector-feature-main-menu-pinned-disabled.vector-toc-not-available .mw-page-container-inner .mw-body{justify-content: center;}
+.vector-column-start{margin-left: -12px;}
+.vector-column-start .vector-main-menu-container{margin-left: 12px;}
+html, body{height: 100%;}
+:focus{outline-color: var(--outline-color-progressive--focus,#36c);}
+html{font-size: 100%;}
+html, body{font-family: sans-serif;}
+ul{list-style-type: disc;}
+.mw-body h1{font-family: "Linux Libertine", Georgia, Times, "Source Serif 4", serif; line-height: 1.375;}
+.mw-body h1{font-size: 1.8em;}
+ .mw-body h4{padding-bottom: 0px; line-height: 1.6;}
+ .mw-body h4{margin: 0.25em 0px;}
+ .mw-body h4{font-weight: bold;}
+ .mw-body h4{font-size: 100%;}
+.vector-body{font-size: var(--font-size-medium); line-height: var(--line-height-content);}
+a:where(:not([role="button"])){color: var(--color-progressive,#36c); border-radius: 2px; text-decoration: none;}
+a:where(:not([role="button"])):visited{color: var(--color-visited,#6a60b0);}
+a:where(:not([role="button"])):visited:hover{color: var(--color-visited--hover,#534fa3);}
+a:where(:not([role="button"])):visited:active{color: var(--color-visited--active,#353262);}
+a:where(:not([role="button"])):hover{color: var(--color-progressive--hover,#3056a9); text-decoration: underline;}
+a:where(:not([role="button"])):active{color: var(--color-progressive--active,#233566); text-decoration: underline;}
+@supports not selector(:focus-visible){a:where(:not([role="button"])):focus{outline: solid 2px var(--outline-color-progressive--focus,#36c);}
+}
+.vector-dropdown{position: relative;}
+.vector-dropdown .vector-dropdown-label:not(.cdx-button--icon-only){display: inline-flex; align-items: center;}
+.vector-dropdown .vector-dropdown-label:not(.cdx-button--icon-only)::after{content: ""; min-width: 10px; min-height: 10px; display: inline-block; vertical-align: text-bottom; width: 0.75rem; height: 0.75rem;}
+@supports not ((-webkit-mask-image:none) or (mask-image:none)){.vector-dropdown .vector-dropdown-label:not(.cdx-button--icon-only)::after{background-position: center center; background-repeat: no-repeat; background-size: calc(max(calc(var(--font-size-medium,1rem) - 4px),10px));}
+}
+@supports (-webkit-mask-image:none) or (mask-image:none){.vector-dropdown .vector-dropdown-label:not(.cdx-button--icon-only)::after{mask-position: center center; mask-repeat: no-repeat; mask-size: calc(max(calc(var(--font-size-medium,1rem) - 4px),10px));}
+}
+@supports not ((-webkit-mask-image:none) or (mask-image:none)){.vector-dropdown .vector-dropdown-label:not(.cdx-button--icon-only)::after{background-image: url("data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"%23000\"><path d=\"m16.7 8-6 6H9.3l-6-6 1.4-1.4 5.3 5.3 5.3-5.3z\"/></svg>"); filter: invert(var(--filter-invert-icon,0)); opacity: var(--opacity-icon-base,0.87);}
+}
+@supports (-webkit-mask-image:none) or (mask-image:none){.vector-dropdown .vector-dropdown-label:not(.cdx-button--icon-only)::after{mask-image: url("data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"%23000\"><path d=\"m16.7 8-6 6H9.3l-6-6 1.4-1.4 5.3 5.3 5.3-5.3z\"/></svg>"); background-color: var(--color-base,#202122);}
+}
+.vector-dropdown .vector-dropdown-label-text{font-size: var(--font-size-small,0.875rem);}
+.vector-dropdown .vector-dropdown-checkbox{cursor: pointer; position: absolute; top: 0px; left: 0px; z-index: 1; opacity: 0; width: 100%; height: 100%; margin: 0px; padding: 0px;}
+.vector-dropdown .vector-dropdown-content{position: absolute; top: 100%; left: -1px; opacity: 0; height: 0px; visibility: hidden; overflow: hidden auto; z-index: 50; background-color: var(--background-color-base,#fff); padding: 16px; font-size: var(--font-size-small,0.875rem); box-shadow: rgba(0, 0, 0, 0.2) 0px 2px 6px -1px; transition-property: opacity; transition-duration: 100ms; width: max-content; max-width: 200px; max-height: 75vh;}
+.vector-pinnable-element .vector-menu-heading{color: var(--color-subtle,#54595d); font-weight: normal; cursor: default; padding: 6px 0px; margin: 6px 0px; border-bottom: 1px solid var(--background-color-interactive,#eaecf0);}
+.vector-pinnable-element .mw-list-item, .vector-dropdown-content .mw-list-item{padding: 0px;}
+.vector-pinnable-element .mw-list-item a, .vector-dropdown-content .mw-list-item a{display: flex; align-items: center; padding: 6px 0px;}
+ .vector-dropdown-content .mw-list-item a .vector-icon{margin-right: 6px;}
+.vector-pinnable-element .mw-list-item a:not(.mw-selflink):visited, .vector-dropdown-content .mw-list-item a:not(.mw-selflink):visited{color: var(--color-progressive,#36c);}
+.vector-pinnable-element .mw-list-item a:not(.mw-selflink):visited:hover, .vector-dropdown-content .mw-list-item a:not(.mw-selflink):visited:hover{color: var(--color-progressive--hover,#3056a9);}
+ .vector-feature-main-menu-pinned-disabled .vector-main-menu-container .vector-main-menu-landmark{display: none;}
+.vector-main-menu #p-navigation .vector-menu-heading{display: none;}
+.vector-pinnable-element{font-size: var(--font-size-small,0.875rem);}
+.vector-pinned-container{background-color: var(--background-color-base,#fff); padding: 0px 16px; margin-bottom: 2rem; display: none;}
+@supports (display:grid){.vector-pinned-container{display: block;}
+}
+.vector-column-start, .vector-column-end{contain: paint;}
+.vector-sticky-pinned-container{overflow: hidden auto; position: sticky; top: 24px; box-sizing: border-box; max-height: calc(-48px + 100vh); transition: top 250ms linear, max-height 250ms linear;}
+.vector-sticky-pinned-container::after{content: ""; display: block; position: sticky; bottom: 0px; left: 0px; right: 0px; height: 16px; background-image: ; background-position-x: ; background-position-y: ; background-size: ; background-attachment: ; background-origin: ; background-clip: ; background-color: ; background-repeat: no-repeat; pointer-events: none;}
+.vector-pinnable-header{padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--background-color-interactive,#eaecf0); line-height: 1.6;}
+.vector-pinnable-header-label{display: inline-block; vertical-align: middle; font-size: var(--font-size-small,0.875rem); padding: 0px; border: 0px; font-weight: bold; margin: 0px 0.5rem 0px 0px !important;}
+.vector-pinnable-header-toggle-button{display: none; border: 0px; padding: 4px 8px; background-color: var(--background-color-interactive,#eaecf0); color: var(--color-base,#202122); cursor: pointer; text-align: left; font-size: 0.75rem; border-radius: 2px;}
+.vector-pinnable-header-toggle-button:hover{background-color: var(--background-color-neutral-subtle,#f8f9fa);}
+ .vector-feature-page-tools-pinned-disabled .vector-column-end .vector-page-tools-landmark{display: none;}
+.cdx-button.cdx-button--icon-only span + span{display: block; clip: rect(1px, 1px, 1px, 1px); width: 1px; height: 1px; margin: -1px; border: 0px; padding: 0px; overflow: hidden; user-select: none; position: absolute !important;}
+input:hover + .cdx-button--weight-quiet:not(.cdx-button--action-progressive){background-color: var(--background-color-interactive-subtle--hover,#eaecf0);}
+input:active + .cdx-button--weight-quiet:not(.cdx-button--action-progressive){background-color: var(--background-color-interactive-subtle--active,#dadde3); color: var(--color-emphasized,#101418);}
+.vector-feature-appearance-pinned-clientpref-1 .vector-user-links .vector-appearance-landmark{display: none;}
+#vector-appearance-dropdown .vector-dropdown-content{left: auto; right: 0px;}
+.vector-user-links{display: flex; align-items: center; position: relative; justify-content: flex-end; flex-shrink: 1;}
+.vector-user-links .mw-list-item, .vector-user-links .vector-dropdown-label{margin: 0px 4px;}
+.vector-user-links .vector-dropdown-content .mw-list-item{margin: 0px;}
+.vector-user-menu .vector-dropdown-content{left: auto; right: 0px;}
+.vector-user-links-main{display: flex; align-items: center;}
+.vector-user-links-main .vector-menu-content{display: flex;}
+.vector-user-links-main .vector-menu-content-list{display: flex; align-items: center; font-size: var(--font-size-small,0.875rem);}
+.mw-header{display: flex; flex-wrap: wrap; align-items: center; padding-top: 8px; padding-bottom: 8px; gap: 16px;}
+.mw-header .vector-header-start{gap: 20px;}
+.mw-header .vector-header-start, .mw-header .vector-header-end{display: flex; align-items: center;}
+.mw-header .vector-header-end{flex-grow: 1;}
+.mw-header .search-toggle{display: inline-flex; float: right; font-size: 1rem;}
+.mw-header .vector-typeahead-search-container{display: none;}
+.vector-icon{mask-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="); min-width: 10px; min-height: 10px; width: calc(var(--font-size-medium,1rem) + 4px); height: calc(var(--font-size-medium,1rem) + 4px); display: inline-block; vertical-align: text-bottom; background-color: var(--color-base,#202122);}
+@supports not ((-webkit-mask-image:none) or (mask-image:none)){.vector-icon{background-position: center center; background-repeat: no-repeat; background-size: calc(max(calc(var(--font-size-medium,1rem) + 4px),10px));}
+}
+@supports (-webkit-mask-image:none) or (mask-image:none){.vector-icon{mask-position: center center; mask-repeat: no-repeat; mask-size: calc(max(calc(var(--font-size-medium,1rem) + 4px),10px));}
+}
+.vector-icon[class*="-progressive"]{background-color: var(--color-progressive,#36c);}
+.mw-indicators{font-size: var(--font-size-small,0.875rem); line-height: 1.6; position: relative; float: right; display: flex; column-gap: 8px; flex-wrap: wrap;}
+.mw-indicator{display: inline-block;}
+.mw-footer-container{padding-top: 50px; padding-bottom: 82px;}
+.mw-footer{direction: ltr; border-top: 1px solid var(--border-color-base,#a2a9b1); padding: 0.75em 0px;}
+.mw-footer ul{list-style: none; margin: 0px; padding: 0px;}
+.mw-footer li{color: var(--color-base,#202122); margin: 0px; padding: 0.5em 0px; font-size: 0.75em;}
+#footer-icons{float: right;}
+#footer-icons li{float: left; margin-left: 0.5em; line-height: 2; text-align: right;}
+#footer-icons a{padding-left: 8px; padding-right: 8px; background-color: rgb(248, 249, 250);}
+#footer-info{}
+#footer-places li{float: left; margin-right: 1em; line-height: 2;}
+.vector-menu .vector-menu-content-list{list-style: none; margin: 0px;}
+.vector-menu-tabs{}
+.vector-menu-tabs .vector-menu-content{width: 100%;}
+.vector-menu-tabs .vector-menu-content-list{display: flex; align-items: center; justify-content: end;}
+.vector-page-titlebar{position: relative; display: flex; flex-wrap: nowrap; justify-content: flex-end; align-items: center;}
+.vector-page-titlebar .firstHeading{flex-grow: 1; padding: 0px; border: 0px;}
+.vector-page-toolbar-container{display: flex; flex-flow: row; justify-content: space-between; font-size: var(--font-size-small,0.875rem); box-shadow: 0 1px var(--border-color-subtle,#c8ccd1); margin-bottom: 1px;}
+.vector-page-toolbar-container .cdx-button{font-weight: normal; font-size: var(--font-size-small,0.875rem);}
+#right-navigation, #left-navigation{display: flex; align-items: center; margin: 0px -8px;}
+#left-navigation > nav{display: flex;}
+#right-navigation{justify-content: flex-end;}
+#right-navigation > nav:first-child{width: 100%;}
+#right-navigation .vector-dropdown-content{left: auto; right: 0px;}
+.vector-search-box{font-size: var(--font-size-small,0.875rem); flex-grow: 1;}
+.vector-search-box .vector-typeahead-search-container{max-width: 31.25rem; margin-right: 12px;}
+.vector-search-box .cdx-typeahead-search--show-thumbnail.cdx-typeahead-search--auto-expand-width:not(.cdx-typeahead-search--expanded){margin-left: calc(26px);}
+#siteNotice{font-size: 0.8em; margin: 24px 0px; position: relative; text-align: center;}
+.mw-portlet-dock-bottom{display: none;}
+.vector-sticky-header-container{display: none;}
+}
+@media screen and (min-width: 1120px){.mw-page-container, .vector-header-container .mw-header, .vector-header-container .vector-sticky-header{padding-left: 2.75rem; padding-right: 2.75rem;}
+}
+@media screen and (min-width: 1680px){.mw-page-container, .vector-header-container .mw-header, .vector-header-container .vector-sticky-header{padding-left: 3.25rem; padding-right: 3.25rem;}
+}
+@media screen and (min-width: 1120px){.mw-page-container-inner{display: grid; column-gap: 24px; grid-template: "siteNotice siteNotice" min-content "columnStart pageContent" 1fr "footer footer" min-content / 12.25rem minmax(0px, 1fr);}
+.vector-sitenotice-container{grid-area: siteNotice;}
+.vector-column-start{grid-area: columnStart; overflow-anchor: none;}
+.mw-content-container{grid-area: pageContent;}
+.mw-footer-container{grid-area: footer;}
+ .vector-feature-appearance-pinned-clientpref-1 .vector-column-end{width: 12.25rem;}
+.vector-column-start, .vector-column-end{margin-top: 2.8rem; border-top: 1px solid transparent;}
+}
+@media screen and (min-width: 1680px){.mw-page-container-inner{grid-template-columns: 15.5rem minmax(0px, 1fr);}
+.mw-header{display: grid; column-gap: 24px; grid-template: "headerStart headerEnd" / 15.5rem minmax(0px, 1fr);}
+.mw-header .vector-header-start{grid-area: headerStart;}
+.mw-header .vector-header-end{grid-area: headerEnd;}
+ .vector-feature-appearance-pinned-clientpref-1 .vector-column-end{width: 15.5rem;}
+}
+@media screen and (min-width: 1120px){.mw-body{display: grid; grid-template: "titlebar-cx ." min-content "titlebar columnEnd" min-content "toolbar columnEnd" min-content "content columnEnd" 1fr / minmax(0px, 59.25rem) min-content;}
+.mw-body .vector-page-titlebar{grid-area: titlebar;}
+.mw-body .vector-page-toolbar{grid-area: toolbar;}
+.mw-body #bodyContent{grid-area: content;}
+.mw-body .vector-column-end{grid-area: columnEnd; overflow-anchor: none;}
+ .vector-feature-appearance-pinned-clientpref-1 .mw-body{column-gap: 24px;}
+ .vector-feature-limited-width-content-disabled .mw-body{grid-template-columns: minmax(0px, 1fr) min-content;}
+}
+@media screen and (max-width: calc(1119px)){.client-js .vector-pinned-container{display: none;}
+.client-js .vector-sticky-pinned-container{display: none;}
+}
+@media screen and (min-width: 1120px){.client-js .vector-pinnable-header-unpinned .vector-pinnable-header-pin-button, .client-js .vector-pinnable-header-pinned .vector-pinnable-header-unpin-button{display: inline-block;}
+}
+@media screen and (max-width: calc(1119px)){ .vector-header .cdx-button.cdx-button--icon-only{min-height: 44px; min-width: 44px;}
+}
+@media screen and (min-width: 1120px){.vector-button-flush-left{margin-left: calc(-6px);}
+}
+@media screen and (max-width: calc(1119px)){.vector-button-flush-left{margin-left: calc(-12px);}
+}
+@media screen and (min-width: 1120px){.vector-button-flush-right{margin-right: calc(-6px);}
+}
+@media screen and (max-width: calc(1119px)){.vector-button-flush-right{margin-right: calc(-12px);}
+}
+@media screen and (min-width: 640px){.vector-user-menu .vector-menu-item--collapsible, .vector-user-menu.vector-user-links-dropdown--collapsible{display: none;}
+}
+@media screen and (max-width: calc(639px)){ .vector-user-links-main .vector-menu-item--collapsible{display: none;}
+}
+@media screen and (min-width: 1120px){.mw-header .search-toggle{display: none !important;}
+}
+@media screen and (min-width: 1120px){.mw-header .vector-typeahead-search-container{display: block;}
+}
+@media screen and (max-width: calc(1119px)){.mw-header{}
+}
+@media screen and (max-width: calc(639px)){.vector-page-titlebar{flex-wrap: wrap;}
+}
+@media screen and (max-width: calc(639px)){.vector-page-titlebar .firstHeading{flex-basis: 70%;}
+}
+@media screen and (min-width: 1680px){.client-js .vector-search-box.vector-search-box-auto-expand-width{margin-left: calc(-24px);}
+}
+@media all{.mw-logo{display: flex; height: 100%; align-items: center;}
+.mw-logo-icon{float: left; margin-right: 10px; display: none; width: 3.125em; height: 3.125em;}
+.mw-logo-container{float: left; max-width: 120px;}
+.mw-logo-container img{width: 100%;}
+.mw-logo-wordmark{display: block; margin: 0px auto;}
+.mw-logo-tagline{display: block; margin: 5px auto 0px;}
+}
+@media (min-width: 640px){.mw-logo-icon{display: block;}
+}
+@media (min-width: 640px){.mw-logo-container{max-width: none;}
+.mw-logo-container img{width: auto;}
+}
+@media print{ body{padding: 10px; font-family: "Linux Libertine", Georgia, Times, "Source Serif 4", serif;}
+.printfooter, .mw-footer, ul, h4{font-family: sans-serif;}
+img{font-family: "Linux Libertine", Georgia, Times, "Source Serif 4", serif;}
+.mw-body a:not(.image){border-bottom: 1px solid rgb(170, 170, 170);}
+.firstHeading{font-size: 25pt; line-height: 28pt; margin-bottom: 20px; padding-bottom: 5px;}
+.firstHeading{overflow: hidden; border-bottom: 2px solid var(--color-emphasized,#101418);}
+ h4{margin: 30px 0px 0px;}
+ h4{padding: 0px; position: relative;}
+ h4{font-size: 12pt; line-height: 16pt;}
+ ul{margin: 10px 0px 0px 1.6em; padding: 0px;}
+ ul li{padding: 2px 0px; font-size: 12pt;}
+#mw-navigation, .noprint, .mw-jump-link{display: none;}
+.printfooter{margin-top: 10px; border-top: 3px solid var(--color-emphasized,#101418); padding-top: 10px; font-size: 10pt; clear: both;}
+.mw-footer{margin-top: 12px; border-top: 1px solid rgb(238, 238, 238); padding-top: 5px;}
+#footer-info{margin: 0px; padding: 0px;}
+.vector-page-toolbar, .vector-header-start > :not(.mw-logo), .vector-header-end, #vector-sticky-header, nav, #footer{display: none !important;}
+}
+.cdx-button{display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; min-height: 32px; max-width: 28rem; margin: 0px; border-width: 1px; border-style: solid; border-radius: 2px; padding-right: 11px; padding-left: 11px; font-family: inherit; font-size: var(--font-size-medium,1rem); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; transition-property: background-color, color, border-color, box-shadow; transition-duration: 0.1s;}
+.cdx-button--size-large{min-height: 44px; padding-right: 15px; padding-left: 15px;}
+.cdx-button--icon-only{min-width: 32px; padding-right: 0px; padding-left: 0px;}
+.cdx-button .cdx-button__icon{vertical-align: middle;}
+.cdx-button--fake-button, .cdx-button--fake-button:hover, .cdx-button--fake-button:focus{text-decoration: none;}
+.cdx-button:enabled, .cdx-button.cdx-button--fake-button--enabled{background-color: var(--background-color-interactive-subtle,#f8f9fa); color: var(--color-neutral,#404244); border-color: var(--border-color-interactive,#72777d);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){.cdx-button:enabled .cdx-button__icon, .cdx-button.cdx-button--fake-button--enabled .cdx-button__icon{background-color: var(--color-neutral,#404244);}
+}
+.cdx-button:enabled:hover, .cdx-button.cdx-button--fake-button--enabled:hover{background-color: var(--background-color-interactive-subtle--hover,#eaecf0); border-color: var(--border-color-interactive--hover,#27292d); cursor: pointer;}
+.cdx-button:enabled:active, .cdx-button.cdx-button--fake-button--enabled:active{background-color: var(--background-color-interactive-subtle--active,#dadde3); border-color: var(--border-color-interactive--active,#202122);}
+.cdx-button:enabled:focus, .cdx-button.cdx-button--fake-button--enabled:focus{outline: transparent solid 1px;}
+ .cdx-button.cdx-button--fake-button--enabled.cdx-button--action-progressive{background-color: var(--background-color-progressive-subtle,#e8eeff); color: var(--color-progressive,#36c); border-color: var(--border-color-progressive,#36c);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--enabled.cdx-button--action-progressive .cdx-button__icon{background-color: var(--color-progressive,#36c);}
+}
+ .cdx-button.cdx-button--fake-button--enabled.cdx-button--action-progressive:hover{background-color: var(--background-color-progressive-subtle--hover,#d9e2ff); color: var(--color-progressive--hover,#3056a9); border-color: var(--border-color-progressive--hover,#3056a9);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--enabled.cdx-button--action-progressive:hover .cdx-button__icon{background-color: var(--color-progressive--hover,#3056a9);}
+}
+ .cdx-button.cdx-button--fake-button--enabled.cdx-button--action-progressive:active{background-color: var(--background-color-progressive-subtle--active,#b6d4fb); color: var(--color-progressive--active,#233566); border-color: var(--border-color-progressive--active,#233566);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--enabled.cdx-button--action-progressive:active .cdx-button__icon{background-color: var(--color-progressive--active,#233566);}
+}
+.cdx-button:enabled.cdx-button--weight-quiet, .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet{background-color: var(--background-color-transparent,transparent); border-color: var(--border-color-transparent,transparent);}
+.cdx-button:enabled.cdx-button--weight-quiet:hover, .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet:hover{background-color: var(--background-color-interactive-subtle--hover,#eaecf0); mix-blend-mode: var(--mix-blend-mode-blend,multiply);}
+.cdx-button:enabled.cdx-button--weight-quiet:active, .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet:active{background-color: var(--background-color-interactive-subtle--active,#dadde3);}
+ .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet.cdx-button--action-progressive{color: var(--color-progressive,#36c);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet.cdx-button--action-progressive .cdx-button__icon{background-color: var(--color-progressive,#36c);}
+}
+ .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet.cdx-button--action-progressive:hover{background-color: var(--background-color-progressive-subtle--hover,#d9e2ff); color: var(--color-progressive--hover,#3056a9); border-color: var(--border-color-transparent,transparent);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet.cdx-button--action-progressive:hover .cdx-button__icon{background-color: var(--color-progressive--hover,#3056a9);}
+}
+ .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet.cdx-button--action-progressive:active{background-color: var(--background-color-progressive-subtle--active,#b6d4fb); color: var(--color-progressive--active,#233566); border-color: var(--border-color-transparent,transparent);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--enabled.cdx-button--weight-quiet.cdx-button--action-progressive:active .cdx-button__icon{background-color: var(--color-progressive--active,#233566);}
+}
+ .cdx-button.cdx-button--fake-button--disabled{background-color: var(--background-color-disabled,#dadde3); color: var(--color-disabled-emphasized,#a2a9b1); border-color: var(--border-color-transparent,transparent);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--disabled .cdx-button__icon{background-color: var(--color-inverted,#fff);}
+}
+ .cdx-button.cdx-button--fake-button--disabled.cdx-button--weight-quiet{background-color: var(--background-color-transparent,transparent); color: var(--color-disabled,#a2a9b1);}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){ .cdx-button.cdx-button--fake-button--disabled.cdx-button--weight-quiet .cdx-button__icon{background-color: var(--color-disabled,#a2a9b1);}
+}
+.cdx-text-input{position: relative; box-sizing: border-box; min-width: 256px; border-radius: 2px; overflow: hidden;}
+.cdx-text-input .cdx-text-input__start-icon{position: absolute; top: 50%; min-width: 18px; min-height: 18px; width: calc(var(--font-size-medium,1rem) + 4px); height: calc(var(--font-size-medium,1rem) + 4px); transition-property: color; transition-duration: 0.1s; left: 9px; transform: translateY(-50%);}
+.cdx-text-input__input{display: block; box-sizing: border-box; min-height: 32px; width: 100%; max-height: 2rem; margin: 0px; border-width: 1px; border-style: solid; border-radius: inherit; padding: 4px 8px; font-family: inherit; font-size: var(--font-size-medium,1rem); line-height: var(--line-height-small,1.375rem);}
+.cdx-text-input__input:enabled{background-color: var(--background-color-base,#fff); color: var(--color-base,#202122); border-color: var(--border-color-interactive,#72777d); box-shadow: inset 0 0 0 1px var(--box-shadow-color-transparent,transparent); transition-property: background-color, color, border-color, box-shadow; transition-duration: 0.25s;}
+.cdx-text-input__input:enabled ~ .cdx-text-input__icon{opacity: var(--opacity-icon-placeholder,.51);}
+.cdx-text-input__input:enabled:hover{border-color: var(--border-color-interactive--hover,#27292d);}
+.cdx-text-input__input:enabled:focus ~ .cdx-text-input__icon{opacity: 1;}
+.cdx-text-input__input:enabled:focus{border-color: var(--border-color-progressive--focus,#36c); box-shadow: inset 0 0 0 1px var(--box-shadow-color-progressive--focus,#36c); outline: transparent solid 1px;}
+.cdx-text-input__input::placeholder{color: var(--color-placeholder,#72777d); opacity: 1;}
+.cdx-text-input__input[type="search"]{appearance: none;}
+.cdx-text-input__input[type="search"]::-webkit-search-decoration, .cdx-text-input__input[type="search"]::-webkit-search-cancel-button{display: none;}
+.cdx-text-input--has-start-icon .cdx-text-input__input{padding-left: calc(8px + 8px + calc(var(--font-size-medium,1rem) + 4px));}
+.cdx-search-input--has-end-button{background-color: var(--background-color-base,#fff); display: flex; border: 1px solid var(--border-color-base,#a2a9b1); border-radius: 2px;}
+.cdx-search-input--has-end-button .cdx-search-input__input-wrapper{flex-grow: 1; margin: -1px;}
+.cdx-search-input--has-end-button .cdx-search-input__input-wrapper .cdx-text-input{border-top-right-radius: 0px; border-bottom-right-radius: 0px;}
+.cdx-search-input__end-button.cdx-button{flex-shrink: 0; margin: -1px -1px -1px 0px; border-top-left-radius: 0px; border-bottom-left-radius: 0px;}
+.cdx-search-input__end-button.cdx-button:hover, .cdx-search-input__end-button.cdx-button:focus{z-index: 1;}
+.cdx-search-input__input-wrapper{position: relative;}
+.cdx-search-input .cdx-text-input__icon.cdx-text-input__start-icon{min-width: 10px; min-height: 10px; width: calc(var(--font-size-medium,1rem) + 4px); height: calc(var(--font-size-medium,1rem) + 4px); display: inline-block; vertical-align: text-bottom;}
+@supports not (((-webkit-mask-image:none) or (mask-image:none))){.cdx-search-input .cdx-text-input__icon.cdx-text-input__start-icon{background-position: center center; background-repeat: no-repeat; background-size: max(calc(var(--font-size-medium,1rem) + 4px),10px);}
+}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){.cdx-search-input .cdx-text-input__icon.cdx-text-input__start-icon{mask-position: center center; mask-repeat: no-repeat; mask-size: max(calc(var(--font-size-medium,1rem) + 4px),10px);}
+}
+@supports not (((-webkit-mask-image:none) or (mask-image:none))){.cdx-search-input .cdx-text-input__icon.cdx-text-input__start-icon{background-image: url("data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"%23000\"><path d=\"M8 1a7 7 0 015.605 11.191l5.102 5.102-1.414 1.414-5.102-5.102A7 7 0 118 1m0 2a5 5 0 100 10A5 5 0 008 3\"/></svg>"); filter: invert(var(--filter-invert-icon,0)); opacity: var(--opacity-icon-base,.87);}
+}
+@supports ((-webkit-mask-image:none) or (mask-image:none)){.cdx-search-input .cdx-text-input__icon.cdx-text-input__start-icon{mask-image: url("data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"%23000\"><path d=\"M8 1a7 7 0 015.605 11.191l5.102 5.102-1.414 1.414-5.102-5.102A7 7 0 118 1m0 2a5 5 0 100 10A5 5 0 008 3\"/></svg>"); background-color: var(--color-base,#202122);}
+}
+ #t-upload{display: none;}
+.mw-logo-icon{display: none;}
+.mw-logo{margin: 6px 0px;}
+@media print{#firstHeading{margin: 0px;}
+}
+</style>
+
+<meta name="ResourceLoaderDynamicStyles" content="">
+
+<meta name="generator" content="MediaWiki 1.47.0-wmf.19">
+<meta name="referrer" content="origin">
+<meta name="referrer" content="origin-when-cross-origin">
+<meta name="robots" content="noindex,nofollow,max-image-preview:standard">
+<meta name="format-detection" content="telephone=no">
+<meta name="viewport" content="width=1120">
+<meta property="og:title" content="headless browser - Search results - Wikipedia">
+<meta property="og:type" content="website">
+
+
+
+
+
+
+
+
+</head>
+<body class="skin--responsive skin-vector skin-vector-search-vue mediawiki ltr sitedir-ltr mw-hide-empty-elt ns--1 ns-special mw-special-Search page-Special_Search rootpage-Special_Search skin-vector-2022 action-view">
+<div id="mw-aria-live-region" class="mw-aria-live-region" aria-live="polite"></div><a class="mw-jump-link" href="#bodyContent">Jump to content</a>
+<div class="vector-header-container">
+	<header class="vector-header mw-header no-font-mode-scale">
+		<div class="vector-header-start">
+			<nav class="vector-main-menu-landmark" aria-label="Site">
+				
+<div id="vector-main-menu-dropdown" class="vector-dropdown vector-main-menu-dropdown vector-button-flush-left vector-button-flush-right" title="Main menu">
+	<input type="checkbox" id="vector-main-menu-dropdown-checkbox" role="button" aria-haspopup="true" data-event-name="ui.dropdown-vector-main-menu-dropdown" class="vector-dropdown-checkbox " aria-label="Main menu">
+	<label id="vector-main-menu-dropdown-label" for="vector-main-menu-dropdown-checkbox" class="vector-dropdown-label cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only " aria-hidden="true"><span class="vector-icon mw-ui-icon-menu mw-ui-icon-wikimedia-menu cdx-button__icon"></span>
+
+<span class="vector-dropdown-label-text">Main menu</span>
+	</label>
+	<div class="vector-dropdown-content">
+
+
+				<div id="vector-main-menu-unpinned-container" class="vector-unpinned-container">
+		
+<div id="vector-main-menu" class="vector-main-menu vector-pinnable-element">
+	<div class="vector-pinnable-header vector-main-menu-pinnable-header vector-pinnable-header-unpinned" data-feature-name="main-menu-pinned" data-pinnable-element-id="vector-main-menu" data-pinned-container-id="vector-main-menu-pinned-container" data-unpinned-container-id="vector-main-menu-unpinned-container">
+	<div class="vector-pinnable-header-label">Main menu</div>
+	<button class="vector-pinnable-header-toggle-button vector-pinnable-header-pin-button" data-event-name="pinnable-header.vector-main-menu.pin" aria-label="Move Main menu to sidebar">move to sidebar</button>
+	<button class="vector-pinnable-header-toggle-button vector-pinnable-header-unpin-button" data-event-name="pinnable-header.vector-main-menu.unpin" aria-label="Hide Main menu">hide</button>
+</div>
+
+	
+<div id="p-navigation" class="vector-menu mw-portlet mw-portlet-navigation">
+	<div class="vector-menu-heading">
+		Navigation
+	</div>
+	<div class="vector-menu-content">
+		
+		<ul class="vector-menu-content-list">
+			
+			<li id="n-mainpage-description" class="mw-list-item"><a href="/wiki/Main_Page" title="Visit the main page [z]" accesskey="z"><span>Main page</span></a></li><li id="n-contents" class="mw-list-item"><a href="/wiki/Wikipedia:Contents" title="Guides to browsing Wikipedia"><span>Contents</span></a></li><li id="n-currentevents" class="mw-list-item"><a href="/wiki/Portal:Current_events" title="Articles related to current events"><span>Current events</span></a></li><li id="n-randompage" class="mw-list-item"><a href="/wiki/Special:Random" title="Visit a randomly selected article [x]" accesskey="x"><span>Random article</span></a></li><li id="n-aboutsite" class="mw-list-item"><a href="/wiki/Wikipedia:About" title="Learn about Wikipedia and how it works"><span>About Wikipedia</span></a></li><li id="n-contactpage" class="mw-list-item"><a href="//en.wikipedia.org/wiki/Wikipedia:Contact_us" title="How to contact Wikipedia"><span>Contact us</span></a></li>
+		</ul>
+		
+	</div>
+</div>
+
+	
+<div id="p-interaction" class="vector-menu mw-portlet mw-portlet-interaction">
+	<div class="vector-menu-heading">
+		Contribute
+	</div>
+	<div class="vector-menu-content">
+		
+		<ul class="vector-menu-content-list">
+			
+			<li id="n-help" class="mw-list-item"><a href="/wiki/Help:Contents" title="Guidance on how to use and edit Wikipedia"><span>Help</span></a></li><li id="n-introduction" class="mw-list-item"><a href="/wiki/Help:Introduction" title="Learn how to edit Wikipedia"><span>Learn to edit</span></a></li><li id="n-portal" class="mw-list-item"><a href="/wiki/Wikipedia:Community_portal" title="The hub for editors"><span>Community portal</span></a></li><li id="n-recentchanges" class="mw-list-item"><a href="/wiki/Special:RecentChanges" title="A list of recent changes to Wikipedia [r]" accesskey="r"><span>Recent changes</span></a></li><li id="n-upload" class="mw-list-item"><a href="/wiki/Wikipedia:File_upload_wizard" title="Add images or other media for use on Wikipedia"><span>Upload file</span></a></li><li id="n-specialpages" class="mw-list-item"><a href="/wiki/Special:SpecialPages" title="A list of all special pages [q]" accesskey="q"><span>Special pages</span></a></li>
+		</ul>
+		
+	</div>
+</div>
+
+</div>
+
+				</div>
+
+	</div>
+</div>
+
+		</nav>
+			
+<a href="/wiki/Main_Page" class="mw-logo">
+	<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" class="mw-logo-icon" alt="" aria-hidden="true" height="50" width="50">
+	<span class="mw-logo-container skin-invert">
+		<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" class="mw-logo-wordmark" alt="Wikipedia" style="width: 8.75em; height: 1.375em;">
+		<img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" class="mw-logo-tagline" alt="The Free Encyclopedia" width="140" height="11" style="width: 8.75em; height: 0.6875em;">
+	</span>
+</a>
+
+		</div>
+		<div class="vector-header-end">
+			
+<div id="p-search" role="search" class="vector-search-box-vue  vector-search-box-collapses vector-search-box-show-thumbnail vector-search-box-auto-expand-width vector-search-box">
+	<a href="/wiki/Special:Search" class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only search-toggle" title="Search Wikipedia [f]" accesskey="f"><span class="vector-icon mw-ui-icon-search mw-ui-icon-wikimedia-search cdx-button__icon"></span>
+
+<span>Search</span>
+	</a>
+	<div class="vector-typeahead-search-container">
+		<div class="cdx-typeahead-search cdx-typeahead-search--show-thumbnail cdx-typeahead-search--auto-expand-width">
+			<form action="/w/index.php" id="searchform" class="cdx-search-input cdx-search-input--has-end-button">
+				<div id="simpleSearch" class="cdx-search-input__input-wrapper" data-search-loc="header-moved">
+					<div class="cdx-text-input cdx-text-input--has-start-icon">
+						<input class="cdx-text-input__input mw-searchInput" autocomplete="off" type="search" name="search" placeholder="Search Wikipedia" aria-label="Search Wikipedia" autocapitalize="none" spellcheck="false" title="Search Wikipedia [f]" accesskey="f" id="searchInput">
+						<span class="cdx-text-input__icon cdx-text-input__start-icon"></span>
+					</div>
+					<input type="hidden" name="title" value="Special:Search">
+				</div>
+				<button class="cdx-button cdx-search-input__end-button">Search</button>
+			</form>
+		</div>
+	</div>
+</div>
+
+			<nav class="vector-user-links vector-user-links-wide" aria-label="Personal tools">
+	<div class="vector-user-links-main">
+	
+<div id="p-vector-user-menu-preferences" class="vector-menu mw-portlet emptyPortlet">
+	<div class="vector-menu-content">
+		
+		<ul class="vector-menu-content-list">
+			
+			
+		</ul>
+		
+	</div>
+</div>
+
+	
+<div id="p-vector-user-menu-userpage" class="vector-menu mw-portlet emptyPortlet">
+	<div class="vector-menu-content">
+		
+		<ul class="vector-menu-content-list">
+			
+			
+		</ul>
+		
+	</div>
+</div>
+
+	<nav class="vector-appearance-landmark" aria-label="Appearance">
+		
+<div id="vector-appearance-dropdown" class="vector-dropdown " title="Change the appearance of the page's font size, width, and color">
+	<input type="checkbox" id="vector-appearance-dropdown-checkbox" role="button" aria-haspopup="true" data-event-name="ui.dropdown-vector-appearance-dropdown" class="vector-dropdown-checkbox " aria-label="Appearance">
+	<label id="vector-appearance-dropdown-label" for="vector-appearance-dropdown-checkbox" class="vector-dropdown-label cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only " aria-hidden="true"><span class="vector-icon mw-ui-icon-appearance mw-ui-icon-wikimedia-appearance cdx-button__icon"></span>
+
+<span class="vector-dropdown-label-text">Appearance</span>
+	</label>
+	<div class="vector-dropdown-content">
+
+
+			<div id="vector-appearance-unpinned-container" class="vector-unpinned-container">
+				
+			</div>
+		
+	</div>
+</div>
+
+	</nav>
+	
+<div id="p-vector-user-menu-notifications" class="vector-menu mw-portlet emptyPortlet">
+	<div class="vector-menu-content">
+		
+		<ul class="vector-menu-content-list">
+			
+			
+		</ul>
+		
+	</div>
+</div>
+
+	
+<div id="p-vector-user-menu-overflow" class="vector-menu mw-portlet">
+	<div class="vector-menu-content">
+		
+		<ul class="vector-menu-content-list">
+			<li id="pt-sitesupport-2" class="mw-list-item vector-menu-item--collapsible"><a data-mw-interface="" href="https://donate.wikimedia.org/?wmf_source=donate&amp;wmf_medium=sidebar&amp;wmf_campaign=en.wikipedia.org&amp;uselang=en" data-mw-donate-attempt="top_link" class=""><span>Donate</span></a>
+</li>
+<li id="pt-createaccount-2" class="mw-list-item vector-menu-item--collapsible"><a data-mw-interface="" href="/w/index.php?title=Special:CreateAccount&amp;returnto=Special%3ASearch&amp;returntoquery=fulltext%3D1%26ns0%3D1%26profile%3Dadvanced%26search%3Dheadless%2Bbrowser" title="You are encouraged to create an account and log in; however, it is not mandatory" class=""><span>Create account</span></a>
+</li>
+<li id="pt-login-2" class="mw-list-item vector-menu-item--collapsible"><a data-mw-interface="" href="/w/index.php?title=Special:UserLogin&amp;returnto=Special%3ASearch&amp;returntoquery=fulltext%3D1%26ns0%3D1%26profile%3Dadvanced%26search%3Dheadless%2Bbrowser" title="You're encouraged to log in; however, it's not mandatory. [o]" accesskey="o" class=""><span>Log in</span></a>
+</li>
+
+			
+		</ul>
+		
+	</div>
+</div>
+
+	</div>
+	
+<div id="vector-user-links-dropdown" class="vector-dropdown vector-user-menu vector-button-flush-right vector-user-menu-logged-out vector-user-links-dropdown--collapsible" title="Log in and more options">
+	<input type="checkbox" id="vector-user-links-dropdown-checkbox" role="button" aria-haspopup="true" data-event-name="ui.dropdown-vector-user-links-dropdown" class="vector-dropdown-checkbox " aria-label="Personal tools">
+	<label id="vector-user-links-dropdown-label" for="vector-user-links-dropdown-checkbox" class="vector-dropdown-label cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only " aria-hidden="true"><span class="vector-icon mw-ui-icon-userAvatar mw-ui-icon-wikimedia-userAvatar cdx-button__icon"></span>
+
+<span class="vector-dropdown-label-text">Personal tools</span>
+	</label>
+	<div class="vector-dropdown-content">
+
+
+		
+<div id="p-personal" class="vector-menu mw-portlet mw-portlet-personal" title="User menu">
+	<div class="vector-menu-content">
+		
+		<ul class="vector-menu-content-list">
+			<li id="pt-sitesupport" class="mw-list-item vector-menu-item--collapsible"><a data-mw-interface="" href="https://donate.wikimedia.org/?wmf_source=donate&amp;wmf_medium=sidebar&amp;wmf_campaign=en.wikipedia.org&amp;uselang=en" data-mw-donate-attempt="top_link" class=""><span class="vector-icon mw-ui-icon-heart mw-ui-icon-wikimedia-heart cdx-button__icon"></span>
+
+<span>Donate</span></a>
+</li>
+<li id="pt-createaccount" class="mw-list-item vector-menu-item--collapsible"><a data-mw-interface="" href="/w/index.php?title=Special:CreateAccount&amp;returnto=Special%3ASearch&amp;returntoquery=fulltext%3D1%26ns0%3D1%26profile%3Dadvanced%26search%3Dheadless%2Bbrowser" title="You are encouraged to create an account and log in; however, it is not mandatory" class=""><span class="vector-icon mw-ui-icon-userAvatar mw-ui-icon-wikimedia-userAvatar cdx-button__icon"></span>
+
+<span>Create account</span></a>
+</li>
+<li id="pt-login" class="mw-list-item vector-menu-item--collapsible"><a data-mw-interface="" href="/w/index.php?title=Special:UserLogin&amp;returnto=Special%3ASearch&amp;returntoquery=fulltext%3D1%26ns0%3D1%26profile%3Dadvanced%26search%3Dheadless%2Bbrowser" title="You're encouraged to log in; however, it's not mandatory. [o]" accesskey="o" class=""><span class="vector-icon mw-ui-icon-logIn mw-ui-icon-wikimedia-logIn cdx-button__icon"></span>
+
+<span>Log in</span></a>
+</li>
+
+			
+		</ul>
+		
+	</div>
+</div>
+
+	
+	</div>
+</div>
+
+</nav>
+
+		</div>
+	</header>
+</div>
+<div class="mw-page-container">
+	<div class="mw-page-container-inner">
+		<div class="vector-sitenotice-container">
+			<div id="siteNotice"><!-- CentralNotice --></div>
+		</div>
+		<div class="vector-column-start">
+			<div class="vector-main-menu-container">
+		<div id="mw-navigation">
+			<nav id="mw-panel" class="vector-main-menu-landmark" aria-label="Site">
+				<div id="vector-main-menu-pinned-container" class="vector-pinned-container">
+				
+				</div>
+		</nav>
+		</div>
+	</div>
+</div>
+		<div class="mw-content-container">
+			<main id="content" class="mw-body">
+				<header class="mw-body-header vector-page-titlebar no-font-mode-scale">
+					<h1 id="firstHeading" class="firstHeading mw-first-heading">Search results</h1>
+		<div class="mw-indicators">
+	<div id="mw-indicator-mw-helplink" class="mw-indicator"><a href="/wiki/Help:Searching" target="_blank" class="mw-helplink"><span class="mw-helplink-icon"></span>Help</a></div>
+	</div>
+</header>
+				<div class="vector-page-toolbar">
+					<div class="vector-page-toolbar-container">
+						<div id="left-navigation">
+							<nav aria-label="Namespaces">
+								
+<div id="p-associated-pages" class="vector-menu vector-menu-tabs mw-portlet mw-portlet-associated-pages emptyPortlet">
+	<div class="vector-menu-content">
+		
+		<ul class="vector-menu-content-list">
+			
+			
+		</ul>
+		
+	</div>
+</div>
+
+								
+<div id="vector-variants-dropdown" class="vector-dropdown emptyPortlet">
+	<input type="checkbox" id="vector-variants-dropdown-checkbox" role="button" aria-haspopup="true" data-event-name="ui.dropdown-vector-variants-dropdown" class="vector-dropdown-checkbox " aria-label="Change language variant">
+	<label id="vector-variants-dropdown-label" for="vector-variants-dropdown-checkbox" class="vector-dropdown-label cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet" aria-hidden="true"><span class="vector-dropdown-label-text">English</span>
+	</label>
+	<div class="vector-dropdown-content">
+
+
+					
+<div id="p-variants" class="vector-menu mw-portlet mw-portlet-variants emptyPortlet">
+	<div class="vector-menu-content">
+		
+		<ul class="vector-menu-content-list">
+			
+			
+		</ul>
+		
+	</div>
+</div>
+
+				
+	</div>
+</div>
+
+							</nav>
+						</div>
+						<div id="right-navigation" class="vector-collapsible">
+							<nav aria-label="Views">
+			    
+<div id="p-views" class="vector-menu vector-menu-tabs mw-portlet mw-portlet-views emptyPortlet">
+	<div class="vector-menu-content">
+		
+		<ul class="vector-menu-content-list">
+			
+			
+		</ul>
+		
+	</div>
+</div>
+
+			</nav>
+
+							<nav class="vector-page-tools-landmark" aria-label="Page tools">
+								
+<div id="vector-page-tools-dropdown" class="vector-dropdown vector-page-tools-dropdown">
+	<input type="checkbox" id="vector-page-tools-dropdown-checkbox" role="button" aria-haspopup="true" data-event-name="ui.dropdown-vector-page-tools-dropdown" class="vector-dropdown-checkbox " aria-label="Tools">
+	<label id="vector-page-tools-dropdown-label" for="vector-page-tools-dropdown-checkbox" class="vector-dropdown-label cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only " aria-hidden="true"><span class="vector-icon mw-ui-icon-verticalEllipsis mw-ui-icon-wikimedia-verticalEllipsis cdx-button__icon"></span>
+
+<span class="vector-dropdown-label-text">Tools</span>
+	</label>
+	<div class="vector-dropdown-content">
+
+
+									<div id="vector-page-tools-unpinned-container" class="vector-unpinned-container">
+						
+<div id="vector-page-tools" class="vector-page-tools vector-pinnable-element">
+	<div class="vector-pinnable-header vector-page-tools-pinnable-header vector-pinnable-header-unpinned" data-feature-name="page-tools-pinned" data-pinnable-element-id="vector-page-tools" data-pinned-container-id="vector-page-tools-pinned-container" data-unpinned-container-id="vector-page-tools-unpinned-container">
+	<div class="vector-pinnable-header-label">Tools</div>
+	<button class="vector-pinnable-header-toggle-button vector-pinnable-header-pin-button" data-event-name="pinnable-header.vector-page-tools.pin" aria-label="Move Tools to sidebar">move to sidebar</button>
+	<button class="vector-pinnable-header-toggle-button vector-pinnable-header-unpin-button" data-event-name="pinnable-header.vector-page-tools.unpin" aria-label="Hide Tools">hide</button>
+</div>
+
+	
+<div id="p-cactions" class="vector-menu mw-portlet mw-portlet-cactions emptyPortlet">
+	<div class="vector-menu-heading">
+		Actions
+	</div>
+	<div class="vector-menu-content">
+		
+		<ul class="vector-menu-content-list">
+			
+			
+		</ul>
+		
+	</div>
+</div>
+
+<div id="p-tb" class="vector-menu mw-portlet mw-portlet-tb">
+	<div class="vector-menu-heading">
+		General
+	</div>
+	<div class="vector-menu-content">
+		
+		<ul class="vector-menu-content-list">
+			
+			<li id="t-upload" class="mw-list-item"><a href="//en.wikipedia.org/wiki/Wikipedia:File_Upload_Wizard" title="Upload files [u]" accesskey="u"><span>Upload file</span></a></li><li id="t-print" class="mw-list-item"><a href="javascript:print();" rel="alternate" title="Printable version of this page [p]" accesskey="p"><span>Printable version</span></a></li><li id="t-urlshortener" class="mw-list-item"><a href="/w/index.php?title=Special:UrlShortener&amp;url=https%3A%2F%2Fen.wikipedia.org%2Fw%2Findex.php%3Ftitle%3DSpecial%3ASearch%26fulltext%3D1%26ns0%3D1%26profile%3Dadvanced%26search%3Dheadless%2Bbrowser"><span>Get shortened URL</span></a></li>
+		</ul>
+		
+	</div>
+</div>
+
+<div id="p-wikibase-otherprojects" class="vector-menu mw-portlet mw-portlet-wikibase-otherprojects emptyPortlet">
+	<div class="vector-menu-heading">
+		In other projects
+	</div>
+	<div class="vector-menu-content">
+		
+		<ul class="vector-menu-content-list">
+			
+			
+		</ul>
+		
+	</div>
+</div>
+
+</div>
+
+									</div>
+				
+	</div>
+</div>
+
+							</nav>
+						</div>
+					</div>
+				</div>
+				<div class="vector-column-end no-font-mode-scale">
+					<div class="vector-sticky-pinned-container">
+						<nav class="vector-page-tools-landmark" aria-label="Page tools">
+							<div id="vector-page-tools-pinned-container" class="vector-pinned-container">
+				
+							</div>
+		</nav>
+						<nav class="vector-appearance-landmark" aria-label="Appearance">
+							<div id="vector-appearance-pinned-container" class="vector-pinned-container">
+				<div id="vector-appearance" class="vector-appearance vector-pinnable-element">
+	<div class="vector-pinnable-header vector-appearance-pinnable-header vector-pinnable-header-pinned" data-feature-name="appearance-pinned" data-pinnable-element-id="vector-appearance" data-pinned-container-id="vector-appearance-pinned-container" data-unpinned-container-id="vector-appearance-unpinned-container">
+	<div class="vector-pinnable-header-label">Appearance</div>
+	<button class="vector-pinnable-header-toggle-button vector-pinnable-header-pin-button" data-event-name="pinnable-header.vector-appearance.pin" aria-label="Move Appearance to sidebar">move to sidebar</button>
+	<button class="vector-pinnable-header-toggle-button vector-pinnable-header-unpin-button" data-event-name="pinnable-header.vector-appearance.unpin" aria-label="Hide Appearance">hide</button>
+</div>
+
+
+</div>
+
+							</div>
+		</nav>
+					</div>
+				</div>
+				<div id="bodyContent" class="vector-body" aria-labelledby="firstHeading" data-mw-ve-target-container="">
+					<div class="vector-body-before-content">
+					
+						
+					</div>
+					<div id="contentSub"><div id="mw-content-subtitle"></div></div>
+					
+					
+					<div id="mw-content-text" class="mw-body-content"><div class="mw-search-spinner"><div class="mw-search-spinner-bounce"></div></div><div class="mw-search-form-wrapper"><form id="powersearch" method="get" action="/w/index.php"><div id="mw-search-top-table"><div class="oo-ui-layout oo-ui-fieldLayout oo-ui-fieldLayout-align-top oo-ui-actionFieldLayout"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-header"><label for="ooui-php-1" class="oo-ui-labelElement-label"></label></span><div class="oo-ui-fieldLayout-field"><div class="oo-ui-actionFieldLayout-input"><div id="searchText" class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-iconElement oo-ui-textInputWidget oo-ui-textInputWidget-type-text oo-ui-textInputWidget-php mw-widget-titleInputWidget mw-widget-searchInputWidget" data-ooui="{&quot;_&quot;:&quot;mw.widgets.SearchInputWidget&quot;,&quot;performSearchOnClick&quot;:true,&quot;dataLocation&quot;:&quot;content&quot;,&quot;$overlay&quot;:true,&quot;highlightFirst&quot;:false,&quot;validateTitle&quot;:false,&quot;name&quot;:&quot;search&quot;,&quot;value&quot;:&quot;headless browser&quot;,&quot;inputId&quot;:&quot;ooui-php-1&quot;,&quot;title&quot;:&quot;Search Wikipedia&quot;,&quot;icon&quot;:&quot;search&quot;,&quot;required&quot;:false}"><input type="search" tabindex="0" title="Search Wikipedia" name="search" value="headless browser" autocapitalize="none" id="ooui-php-1" class="oo-ui-inputWidget-input"><span class="oo-ui-iconElement-icon oo-ui-icon-search"></span><span class="oo-ui-indicatorElement-indicator oo-ui-indicatorElement-noIndicator"></span></div></div><span class="oo-ui-actionFieldLayout-button"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-buttonElement oo-ui-buttonElement-framed oo-ui-buttonElement-size-medium oo-ui-labelElement oo-ui-flaggedElement-progressive oo-ui-flaggedElement-primary oo-ui-buttonInputWidget"><button type="submit" tabindex="0" value="" class="oo-ui-inputWidget-input oo-ui-buttonElement-button"><span class="oo-ui-iconElement-icon oo-ui-iconElement-noIcon oo-ui-image-invert"></span><span class="oo-ui-labelElement-label">Search</span><span class="oo-ui-indicatorElement-indicator oo-ui-indicatorElement-noIndicator oo-ui-image-invert"></span></button></span></span></div></div></div><div class="results-info" data-mw-num-results-offset="0" data-mw-num-results-total="105" data-mw-num-results-approximate-total="false">Results <strong>1 – 20</strong> of <strong>105</strong></div><input type="hidden" value="Special:Search" name="title"><input type="hidden" value="advanced" name="profile"><input type="hidden" value="1" name="fulltext"></div><div class="mw-search-visualclear"></div><div class="mw-search-profile-tabs"><div class="search-types"><ul><li class="normal"><a href="/w/index.php?title=Special:Search&amp;profile=default&amp;search=headless+browser&amp;fulltext=1" title="Search in (Article)">Content pages</a></li><li class="normal"><a href="/w/index.php?title=Special:Search&amp;profile=images&amp;search=headless+browser&amp;fulltext=1" title="Search for files">Multimedia</a></li><li class="normal"><a href="/w/index.php?title=Special:Search&amp;profile=all&amp;search=headless+browser&amp;fulltext=1" title="Search all of content (including talk pages)">Everything</a></li><li class="current"><a href="/w/index.php?title=Special:Search&amp;profile=advanced&amp;search=headless+browser&amp;fulltext=1" title="Search in custom namespaces">Advanced</a></li></ul></div><div style="clear:both"></div></div><fieldset id="mw-searchoptions"><legend>Advanced search</legend><h4>Search in namespaces:</h4><div id="mw-search-togglebox"><label>Check:</label><input type="button" id="mw-search-toggleall" value="All"><input type="button" id="mw-search-togglenone" value="None"></div><div class="divider"></div><div class="checkbox-wrapper"><div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns0" value="1" id="mw-search-ns0" checked="checked" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns0" class="oo-ui-labelElement-label">(Article)</label></span></div></div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns1" value="1" id="mw-search-ns1" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns1" class="oo-ui-labelElement-label">Talk</label></span></div></div></div><div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns2" value="1" id="mw-search-ns2" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns2" class="oo-ui-labelElement-label">User</label></span></div></div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns3" value="1" id="mw-search-ns3" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns3" class="oo-ui-labelElement-label">User talk</label></span></div></div></div><div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns4" value="1" id="mw-search-ns4" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns4" class="oo-ui-labelElement-label">Wikipedia</label></span></div></div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns5" value="1" id="mw-search-ns5" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns5" class="oo-ui-labelElement-label">Wikipedia talk</label></span></div></div></div><div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns6" value="1" id="mw-search-ns6" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns6" class="oo-ui-labelElement-label">File</label></span></div></div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns7" value="1" id="mw-search-ns7" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns7" class="oo-ui-labelElement-label">File talk</label></span></div></div></div><div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns8" value="1" id="mw-search-ns8" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns8" class="oo-ui-labelElement-label">MediaWiki</label></span></div></div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns9" value="1" id="mw-search-ns9" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns9" class="oo-ui-labelElement-label">MediaWiki talk</label></span></div></div></div><div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns10" value="1" id="mw-search-ns10" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns10" class="oo-ui-labelElement-label">Template</label></span></div></div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns11" value="1" id="mw-search-ns11" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns11" class="oo-ui-labelElement-label">Template talk</label></span></div></div></div><div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns12" value="1" id="mw-search-ns12" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns12" class="oo-ui-labelElement-label">Help</label></span></div></div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns13" value="1" id="mw-search-ns13" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns13" class="oo-ui-labelElement-label">Help talk</label></span></div></div></div><div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns14" value="1" id="mw-search-ns14" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns14" class="oo-ui-labelElement-label">Category</label></span></div></div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns15" value="1" id="mw-search-ns15" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns15" class="oo-ui-labelElement-label">Category talk</label></span></div></div></div><div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns100" value="1" id="mw-search-ns100" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns100" class="oo-ui-labelElement-label">Portal</label></span></div></div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns101" value="1" id="mw-search-ns101" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns101" class="oo-ui-labelElement-label">Portal talk</label></span></div></div></div><div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns118" value="1" id="mw-search-ns118" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns118" class="oo-ui-labelElement-label">Draft</label></span></div></div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns119" value="1" id="mw-search-ns119" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns119" class="oo-ui-labelElement-label">Draft talk</label></span></div></div></div><div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns126" value="1" id="mw-search-ns126" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns126" class="oo-ui-labelElement-label">MOS</label></span></div></div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns127" value="1" id="mw-search-ns127" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns127" class="oo-ui-labelElement-label">MOS talk</label></span></div></div></div><div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns710" value="1" id="mw-search-ns710" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns710" class="oo-ui-labelElement-label">TimedText</label></span></div></div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns711" value="1" id="mw-search-ns711" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns711" class="oo-ui-labelElement-label">TimedText talk</label></span></div></div></div><div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns828" value="1" id="mw-search-ns828" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns828" class="oo-ui-labelElement-label">Module</label></span></div></div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns829" value="1" id="mw-search-ns829" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns829" class="oo-ui-labelElement-label">Module talk</label></span></div></div></div><div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns1728" value="1" id="mw-search-ns1728" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns1728" class="oo-ui-labelElement-label">Event</label></span></div></div><div class="oo-ui-layout oo-ui-labelElement oo-ui-fieldLayout oo-ui-fieldLayout-align-inline"><div class="oo-ui-fieldLayout-body"><span class="oo-ui-fieldLayout-field"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-inputWidget oo-ui-checkboxInputWidget"><input type="checkbox" tabindex="0" name="ns1729" value="1" id="mw-search-ns1729" class="oo-ui-inputWidget-input"><span class="oo-ui-checkboxInputWidget-checkIcon oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-check oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget oo-ui-image-invert"></span></span></span><span class="oo-ui-fieldLayout-header"><label for="mw-search-ns1729" class="oo-ui-labelElement-label">Event talk</label></span></div></div></div></div></fieldset></form></div><div class="searchresults mw-searchresults-has-iw"><div class="mw-search-results-info"></div><div class="mw-search-visualclear"></div><div class="mw-search-pager-top"><div class="cdx-table-pager">
+<div class="cdx-table-pager__start"><form method="get" action="/w/index.php" class="cdx-table-pager__limit-form">
+<select name="limit" class="cdx-select"><option value="20" selected="">20 items</option><option value="50">50 items</option><option value="100">100 items</option><option value="250">250 items</option><option value="500">500 items</option></select>
+<button class="cdx-button cdx-table-pager__limit-form__submit" type="submit">Go</button>
+<input type="hidden" value="1" name="fulltext">
+<input type="hidden" value="1" name="ns0">
+<input type="hidden" value="advanced" name="profile">
+<input type="hidden" value="headless browser" name="search">
+<input type="hidden" value="Special:Search" name="title">
+</form>
+</div>
+<div class="cdx-table-pager__end"><a class="cdx-button cdx-button--fake-button cdx-button--fake-button--disabled cdx-button--weight-quiet cdx-button--icon-only" role="button" aria-label="First page" title="First page" disabled="" rel="first"><span class="cdx-button__icon cdx-table-pager__icon--first"></span></a><a class="cdx-button cdx-button--fake-button cdx-button--fake-button--disabled cdx-button--weight-quiet cdx-button--icon-only" role="button" aria-label="Previous page" title="Previous page" disabled="" rel="prev"><span class="cdx-button__icon cdx-table-pager__icon--previous"></span></a><a class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only" role="button" aria-label="Next page" title="Next page" href="/w/index.php?title=Special:Search&amp;limit=20&amp;offset=20&amp;ns0=1&amp;search=headless+browser" rel="next"><span class="cdx-button__icon cdx-table-pager__icon--next"></span></a></div>
+</div></div>
+<div class="mw-search-results-container"><ul class="mw-search-results"><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><div class="searchResultImage-thumbnail-placeholder" aria-hidden="true"><!--?xml version="1.0" encoding="UTF-8"?--><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><title>
+		frameless image layout
+	</title><path d="M19 19H1V1h18zm-8.5-6-2-2L5 15h10V8zm-4-8a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3"></path></svg>
+</div></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/Headless_browser" title="Headless browser" data-serp-pos="0"><span class="searchmatch">Headless</span> <span class="searchmatch">browser</span></a>    </div><div class="searchresult">A <span class="searchmatch">headless</span> <span class="searchmatch">browser</span> is a web <span class="searchmatch">browser</span> without a graphical user interface. <span class="searchmatch">Headless</span> <span class="searchmatch">browsers</span> provide automated control of a web page in an environment similar...</div> <div class="mw-search-result-data">11 KB (1,061 words) – 13:46, 6 September 2026</div></div></div></li><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><a href="/wiki/PhantomJS" title="PhantomJS"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="Thumbnail for PhantomJS" decoding="async" loading="lazy" width="400" height="133" data-file-width="240" data-file-height="80"></a></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/PhantomJS" title="PhantomJS" data-serp-pos="1">PhantomJS</a>  <span class="searchalttitle">(category Web <span class="searchmatch">browsers</span>)</span>  </div><div class="searchresult">run <span class="searchmatch">browser</span>-based unit tests in a <span class="searchmatch">headless</span> system like a continuous integration environment. PhantomJS is based on WebKit making it a similar <span class="searchmatch">browsing</span> environment...</div> <div class="mw-search-result-data">6 KB (534 words) – 04:27, 24 January 2026</div></div></div></li><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><div class="searchResultImage-thumbnail-placeholder" aria-hidden="true"><!--?xml version="1.0" encoding="UTF-8"?--><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><title>
+		frameless image layout
+	</title><path d="M19 19H1V1h18zm-8.5-6-2-2L5 15h10V8zm-4-8a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3"></path></svg>
+</div></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/Headless" title="Headless" data-serp-pos="2"><span class="searchmatch">Headless</span></a>    </div><div class="searchresult">device without a graphical user interface <span class="searchmatch">Headless</span> <span class="searchmatch">browser</span>, a web <span class="searchmatch">browser</span> without a graphical user interface <span class="searchmatch">Headless</span> CMS, a backend-only content management...</div> <div class="mw-search-result-data">2 KB (314 words) – 21:28, 5 June 2026</div></div></div></li><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><a href="/wiki/Web_browser" title="Web browser"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="Thumbnail for Web browser" decoding="async" loading="lazy" width="180" height="118" data-file-width="3078" data-file-height="2012"></a></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/Web_browser" title="Web browser" data-serp-pos="3">Web <span class="searchmatch">browser</span></a>    </div><div class="searchresult">A web <span class="searchmatch">browser</span>, often abbreviated as <span class="searchmatch">browser</span>, is an application for accessing websites. When a user requests a web page from a particular website, the...</div> <div class="mw-search-result-data">34 KB (2,940 words) – 18:53, 17 August 2026</div></div></div></li><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><a href="/wiki/AI_browser" title="AI browser"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="Thumbnail for AI browser" decoding="async" loading="lazy" width="180" height="216" data-file-width="541" data-file-height="649"></a></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/AI_browser" title="AI browser" data-serp-pos="4">AI <span class="searchmatch">browser</span></a>    </div><div class="searchresult">"Browserbase launches <span class="searchmatch">headless</span> <span class="searchmatch">browser</span> platform that lets LLMs automate web tasks". VentureBeat. Retrieved 2 November 2025. "AI <span class="searchmatch">Browser</span>". AI <span class="searchmatch">Browser</span>. Retrieved 3...</div> <div class="mw-search-result-data">8 KB (757 words) – 02:02, 11 May 2026</div></div></div></li><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><div class="searchResultImage-thumbnail-placeholder" aria-hidden="true"><!--?xml version="1.0" encoding="UTF-8"?--><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><title>
+		frameless image layout
+	</title><path d="M19 19H1V1h18zm-8.5-6-2-2L5 15h10V8zm-4-8a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3"></path></svg>
+</div></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/Headless_software" title="Headless software" data-serp-pos="5"><span class="searchmatch">Headless</span> software</a>    </div><div class="searchresult">(SSH) <span class="searchmatch">Headless</span> <span class="searchmatch">browser</span> <span class="searchmatch">Headless</span> computer <span class="searchmatch">Headless</span> content management system <span class="searchmatch">Headless</span> commerce Compositing window manager Clarification of "<span class="searchmatch">headless</span> Linux"...</div> <div class="mw-search-result-data">6 KB (569 words) – 01:53, 24 August 2026</div></div></div></li><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><div class="searchResultImage-thumbnail-placeholder" aria-hidden="true"><!--?xml version="1.0" encoding="UTF-8"?--><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><title>
+		frameless image layout
+	</title><path d="M19 19H1V1h18zm-8.5-6-2-2L5 15h10V8zm-4-8a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3"></path></svg>
+</div></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/Playwright_(software)" title="Playwright (software)" data-serp-pos="6">Playwright (software)</a>    </div><div class="searchresult">ability to automate <span class="searchmatch">browser</span> tasks in Chromium, Firefox, and WebKit with a single API. It can also operate against branded <span class="searchmatch">browsers</span> such as Google Chrome...</div> <div class="mw-search-result-data">12 KB (1,122 words) – 19:25, 17 August 2026</div></div></div></li><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><div class="searchResultImage-thumbnail-placeholder" aria-hidden="true"><!--?xml version="1.0" encoding="UTF-8"?--><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><title>
+		frameless image layout
+	</title><path d="M19 19H1V1h18zm-8.5-6-2-2L5 15h10V8zm-4-8a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3"></path></svg>
+</div></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/Selenium_(software)" title="Selenium (software)" data-serp-pos="7">Selenium (software)</a>    </div><div class="searchresult">HtmlUnit <span class="searchmatch">browser</span> driver, which simulates a <span class="searchmatch">browser</span> using the <span class="searchmatch">headless</span> <span class="searchmatch">browser</span> HtmlUnit. Since Selenium 4 and Google Chrome version 109, <span class="searchmatch">headless</span> mode has...</div> <div class="mw-search-result-data">19 KB (2,044 words) – 23:17, 25 August 2026</div></div></div></li><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><div class="searchResultImage-thumbnail-placeholder" aria-hidden="true"><!--?xml version="1.0" encoding="UTF-8"?--><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><title>
+		frameless image layout
+	</title><path d="M19 19H1V1h18zm-8.5-6-2-2L5 15h10V8zm-4-8a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3"></path></svg>
+</div></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/Bot_prevention" title="Bot prevention" data-serp-pos="8">Bot prevention</a>    </div><div class="searchresult">a <span class="searchmatch">headless</span> <span class="searchmatch">browser</span> to simulate a real web <span class="searchmatch">browser</span> and execute the client-side JavaScript detection scripts. There are a variety of <span class="searchmatch">headless</span> <span class="searchmatch">browsers</span> that...</div> <div class="mw-search-result-data">11 KB (1,130 words) – 23:42, 9 September 2026</div></div></div></li><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><a href="/wiki/Archive.today" title="Archive.today"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="Thumbnail for Archive.today" decoding="async" loading="lazy" width="180" height="127" data-file-width="1230" data-file-height="871"></a></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/Archive.today" title="Archive.today" data-serp-pos="9">Archive.today</a>    </div><div class="searchresult">29&nbsp;November&nbsp;2019,[update] when archive.today changed their <span class="searchmatch">browser</span> engine from PhantomJS to Chromium (non-<span class="searchmatch">headless</span>). archive.today does not obey robots.txt because...</div> <div class="mw-search-result-data">44 KB (4,081 words) – 03:40, 10 September 2026</div></div></div></li><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><div class="searchResultImage-thumbnail-placeholder" aria-hidden="true"><!--?xml version="1.0" encoding="UTF-8"?--><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><title>
+		frameless image layout
+	</title><path d="M19 19H1V1h18zm-8.5-6-2-2L5 15h10V8zm-4-8a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3"></path></svg>
+</div></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/Front_end_and_back_end" title="Front end and back end" data-serp-pos="10">Front end and back end</a>    </div><div class="searchresult">usage) Responsive web design Cross-<span class="searchmatch">browser</span> compatibility issues and workarounds End-to-end testing with a <span class="searchmatch">headless</span> <span class="searchmatch">browser</span> Build automation to transform and...</div> <div class="mw-search-result-data">9 KB (953 words) – 00:58, 26 August 2026</div></div></div></li><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><div class="searchResultImage-thumbnail-placeholder" aria-hidden="true"><!--?xml version="1.0" encoding="UTF-8"?--><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><title>
+		frameless image layout
+	</title><path d="M19 19H1V1h18zm-8.5-6-2-2L5 15h10V8zm-4-8a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3"></path></svg>
+</div></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/Test_automation" title="Test automation" data-serp-pos="11">Test automation</a>    </div><div class="searchresult">For testing a web site, the GUI is the <span class="searchmatch">browser</span> and interaction is via DOM events and HTML. A <span class="searchmatch">headless</span> <span class="searchmatch">browser</span> or solutions based on Selenium Web Driver...</div> <div class="mw-search-result-data">13 KB (1,448 words) – 08:57, 1 September 2026</div></div></div></li><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><a href="/wiki/CodeSandbox" title="CodeSandbox"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="Thumbnail for CodeSandbox" decoding="async" loading="lazy" width="180" height="93" data-file-width="5120" data-file-height="2653"></a></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/CodeSandbox" title="CodeSandbox" data-serp-pos="12">CodeSandbox</a>    </div><div class="searchresult">Fresh Docker Docusaurus Elixir FastHTML Application Gatsby Gleam Go <span class="searchmatch">Headless</span> <span class="searchmatch">Browser</span> (Chromium) HTML + CSS Hono + Next.js JavaScript Jupyter NEST Next.js...</div> <div class="mw-search-result-data">6 KB (429 words) – 17:54, 22 June 2026</div></div></div></li><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><div class="searchResultImage-thumbnail-placeholder" aria-hidden="true"><!--?xml version="1.0" encoding="UTF-8"?--><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><title>
+		frameless image layout
+	</title><path d="M19 19H1V1h18zm-8.5-6-2-2L5 15h10V8zm-4-8a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3"></path></svg>
+</div></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/Capybara_(software)" title="Capybara (software)" data-serp-pos="13">Capybara (software)</a>    </div><div class="searchresult">up for testing in <span class="searchmatch">headless</span> mode which is especially useful for CI scenarios. Capybara-webkit driver is used for true <span class="searchmatch">headless</span> <span class="searchmatch">browser</span> testing with JavaScript...</div> <div class="mw-search-result-data">8 KB (805 words) – 21:42, 2 December 2025</div></div></div></li><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><div class="searchResultImage-thumbnail-placeholder" aria-hidden="true"><!--?xml version="1.0" encoding="UTF-8"?--><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><title>
+		frameless image layout
+	</title><path d="M19 19H1V1h18zm-8.5-6-2-2L5 15h10V8zm-4-8a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3"></path></svg>
+</div></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/HtmlUnit" title="HtmlUnit" data-serp-pos="14">HtmlUnit</a>  <span class="searchalttitle">(category Web <span class="searchmatch">browsers</span>)</span>  </div><div class="searchresult">HtmlUnit is a <span class="searchmatch">headless</span> web <span class="searchmatch">browser</span> written in Java. It allows high-level manipulation of websites from other Java code, including filling and submitting...</div> <div class="mw-search-result-data">6 KB (457 words) – 12:59, 3 September 2026</div></div></div></li><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><div class="searchResultImage-thumbnail-placeholder" aria-hidden="true"><!--?xml version="1.0" encoding="UTF-8"?--><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><title>
+		frameless image layout
+	</title><path d="M19 19H1V1h18zm-8.5-6-2-2L5 15h10V8zm-4-8a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3"></path></svg>
+</div></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/Headless_computer" title="Headless computer" data-serp-pos="15"><span class="searchmatch">Headless</span> computer</a>    </div><div class="searchresult">gained using a web <span class="searchmatch">browser</span>, which allows for remote monitoring of the connected system console port. Administration of a <span class="searchmatch">headless</span> system typically takes...</div> <div class="mw-search-result-data">4 KB (462 words) – 21:28, 31 August 2026</div></div></div></li><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><div class="searchResultImage-thumbnail-placeholder" aria-hidden="true"><!--?xml version="1.0" encoding="UTF-8"?--><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><title>
+		frameless image layout
+	</title><path d="M19 19H1V1h18zm-8.5-6-2-2L5 15h10V8zm-4-8a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3"></path></svg>
+</div></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/Headless_commerce" title="Headless commerce" data-serp-pos="16"><span class="searchmatch">Headless</span> commerce</a>    </div><div class="searchresult"><span class="searchmatch">Headless</span> commerce is an e-commerce architecture where the front-end (head) is decoupled from the back-end commerce functionality and can thus be updated...</div> <div class="mw-search-result-data">16 KB (1,372 words) – 03:30, 8 September 2026</div></div></div></li><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><div class="searchResultImage-thumbnail-placeholder" aria-hidden="true"><!--?xml version="1.0" encoding="UTF-8"?--><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><title>
+		frameless image layout
+	</title><path d="M19 19H1V1h18zm-8.5-6-2-2L5 15h10V8zm-4-8a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3"></path></svg>
+</div></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/List_of_web_testing_tools" title="List of web testing tools" data-serp-pos="17">List of web testing tools</a>    </div><div class="searchresult">mainly scripting requirements, GUI functionalities and <span class="searchmatch">browser</span> compatibility. Comparison of GUI testing tools <span class="searchmatch">Headless</span> <span class="searchmatch">browser</span> OWASP list of Testing Tools...</div> <div class="mw-search-result-data">4 KB (62 words) – 06:35, 23 July 2026</div></div></div></li><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><a href="/wiki/Denial-of-service_attack" title="Denial-of-service attack"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="Thumbnail for Denial-of-service attack" decoding="async" loading="lazy" width="180" height="270" data-file-width="512" data-file-height="768"></a></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/Denial-of-service_attack" title="Denial-of-service attack" data-serp-pos="18">Denial-of-service attack</a>    </div><div class="searchresult">2017. Higgins, Kelly Jackson (17 October 2013). "DDoS Attack Used '<span class="searchmatch">Headless</span>' <span class="searchmatch">Browser</span> In 150-Hour Siege". Dark Reading. InformationWeek. Archived from the...</div> <div class="mw-search-result-data">115 KB (12,079 words) – 15:30, 1 September 2026</div></div></div></li><li class="mw-search-result mw-search-result-ns-0"><div class="searchResultImage"><div class="searchResultImage-thumbnail"><div class="searchResultImage-thumbnail-placeholder" aria-hidden="true"><!--?xml version="1.0" encoding="UTF-8"?--><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><title>
+		frameless image layout
+	</title><path d="M19 19H1V1h18zm-8.5-6-2-2L5 15h10V8zm-4-8a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3"></path></svg>
+</div></div><div class="searchResultImage-text"><div class="mw-search-result-heading"><a href="/wiki/DotNetBrowser" title="DotNetBrowser" data-serp-pos="19">DotNet<span class="searchmatch">Browser</span></a>    </div><div class="searchresult">embedding a <span class="searchmatch">browser</span> into various .NET desktop applications and displaying the web pages. DotNet<span class="searchmatch">Browser</span> can be used as a <span class="searchmatch">headless</span> <span class="searchmatch">browser</span>. The <span class="searchmatch">headless</span> mode is...</div> <div class="mw-search-result-data">8 KB (605 words) – 16:57, 2 August 2025</div></div></div></li></ul></div><div id="mw-interwiki-results"><ul class="iw-results"><li class="iw-resultset" data-iw-resultset-pos="1" data-iw-resultset-source="wikt"><div class="iw-result__header"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-logoWiktionary oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget"></span><a href="https://en.wiktionary.org/wiki/Special:Search?search=headless+browser&amp;fulltext=1" target="_blank">Word definitions from Wiktionary</a></div><div class="iw-result__title"><a href="https://en.wiktionary.org/wiki/headless_browser" class="extiw" title="wikt:headless browser"><span class="searchmatch">headless</span> <span class="searchmatch">browser</span></a> </div><div class="iw-result__content"><span class="searchmatch">headless</span> <span class="searchmatch">browser</span> (plural <span class="searchmatch">headless</span> <span class="searchmatch">browsers</span>) (Internet) A web <span class="searchmatch">browser</span> without a graphical user interface. <span class="searchmatch">headless</span> <span class="searchmatch">browser</span> on Wikipedia.Wikipedia</div><div class="iw-result__footer"><a href="https://en.wiktionary.org/wiki/Special:Search?search=headless+browser&amp;fulltext=1" target="_blank">See all results</a></div></li><li class="iw-resultset" data-iw-resultset-pos="2" data-iw-resultset-source="s"><div class="iw-result__header"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-logoWikisource oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget"></span><a href="https://en.wikisource.org/wiki/Special:Search?search=headless+browser&amp;fulltext=1" target="_blank">Texts from Wikisource</a></div><div class="iw-result__title"><a href="https://en.wikisource.org/wiki/The_Tourist%27s_Maritime_Provinces/Chapter_16" class="extiw" title="s:The Tourist's Maritime Provinces/Chapter 16">The Tourist's Maritime Provinces/Chapter 16</a> </div><div class="iw-result__content">a storm is a white eight-oared gig manned by a <span class="searchmatch">headless</span> crew. Another ghostly apparition is a <span class="searchmatch">headless</span> Frenchman who haunts the fish-houses of one of</div><div class="iw-result__footer"><a href="https://en.wikisource.org/wiki/Special:Search?search=headless+browser&amp;fulltext=1" target="_blank">See all results</a></div></li><li class="iw-resultset" data-iw-resultset-pos="3" data-iw-resultset-source="q"><div class="iw-result__header"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-logoWikiquote oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget"></span><a href="https://en.wikiquote.org/wiki/Special:Search?search=headless+browser&amp;fulltext=1" target="_blank">Quotes from Wikiquote</a></div><div class="iw-result__title"><a href="https://en.wikiquote.org/wiki/NCIS_(season_11)" class="extiw" title="q:NCIS (season 11)">NCIS (season 11)</a> </div><div class="iw-result__content">was going through files on Wells' computer when I saw this on his web <span class="searchmatch">browser</span>. [shows computer monitor with columns of numbers on it] I'm thinking it's</div><div class="iw-result__footer"><a href="https://en.wikiquote.org/wiki/Special:Search?search=headless+browser&amp;fulltext=1" target="_blank">See all results</a></div></li><li class="iw-resultset" data-iw-resultset-pos="4" data-iw-resultset-source="b"><div class="iw-result__header"><span class="oo-ui-widget oo-ui-widget-enabled oo-ui-iconElement-icon oo-ui-icon-logoWikibooks oo-ui-iconElement oo-ui-labelElement-invisible oo-ui-iconWidget"></span><a href="https://en.wikibooks.org/wiki/Special:Search?search=headless+browser&amp;fulltext=1" target="_blank">Textbooks from Wikibooks</a></div><div class="iw-result__title"><a href="https://en.wikibooks.org/wiki/Sidux/Useable_applications/Java_virtual_machine" class="extiw" title="b:Sidux/Useable applications/Java virtual machine">Sidux/Useable applications/Java virtual machine</a> </div><div class="iw-result__content">installation: apt-get install openjdk-6-jre openjdk-6-jre-<span class="searchmatch">headless</span> openjdk-6-jre-lib and it's web <span class="searchmatch">browser</span> plug-in: apt-get install icedtea6-plugin After installation</div><div class="iw-result__footer"><a href="https://en.wikibooks.org/wiki/Special:Search?search=headless+browser&amp;fulltext=1" target="_blank">See all results</a></div></li></ul></div><div class="mw-search-visualclear"></div><div class="mw-search-pager-bottom"><div class="cdx-table-pager">
+<div class="cdx-table-pager__start"><form method="get" action="/w/index.php" class="cdx-table-pager__limit-form">
+<select name="limit" class="cdx-select"><option value="20" selected="">20 items</option><option value="50">50 items</option><option value="100">100 items</option><option value="250">250 items</option><option value="500">500 items</option></select>
+<button class="cdx-button cdx-table-pager__limit-form__submit" type="submit">Go</button>
+<input type="hidden" value="1" name="fulltext">
+<input type="hidden" value="1" name="ns0">
+<input type="hidden" value="advanced" name="profile">
+<input type="hidden" value="headless browser" name="search">
+<input type="hidden" value="Special:Search" name="title">
+</form>
+</div>
+<div class="cdx-table-pager__end"><a class="cdx-button cdx-button--fake-button cdx-button--fake-button--disabled cdx-button--weight-quiet cdx-button--icon-only" role="button" aria-label="First page" title="First page" disabled="" rel="first"><span class="cdx-button__icon cdx-table-pager__icon--first"></span></a><a class="cdx-button cdx-button--fake-button cdx-button--fake-button--disabled cdx-button--weight-quiet cdx-button--icon-only" role="button" aria-label="Previous page" title="Previous page" disabled="" rel="prev"><span class="cdx-button__icon cdx-table-pager__icon--previous"></span></a><a class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only" role="button" aria-label="Next page" title="Next page" href="/w/index.php?title=Special:Search&amp;limit=20&amp;offset=20&amp;ns0=1&amp;search=headless+browser" rel="next"><span class="cdx-button__icon cdx-table-pager__icon--next"></span></a></div>
+</div></div>
+</div>
+<div class="printfooter" data-nosnippet="">Retrieved from "<a dir="ltr" href="https://en.wikipedia.org/wiki/Special:Search">https://en.wikipedia.org/wiki/Special:Search</a>"</div></div>
+					<div id="catlinks" class="catlinks catlinks-allhidden" data-mw-interface=""></div>
+				</div>
+			</main>
+			
+		</div>
+		<div class="mw-footer-container">
+			<footer id="footer" class="mw-footer">
+				<ul id="footer-info" class="mw-portlet mw-portlet-footer-info emptyPortlet">
+</ul>
+
+				<ul id="footer-places" class="mw-portlet mw-portlet-footer-places">
+	<li id="footer-places-privacy"><a href="https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Privacy_policy">Privacy policy</a></li>
+	<li id="footer-places-about"><a href="/wiki/Wikipedia:About">About Wikipedia</a></li>
+	<li id="footer-places-disclaimers"><a href="/wiki/Wikipedia:General_disclaimer">Disclaimers</a></li>
+	<li id="footer-places-contact"><a href="//en.wikipedia.org/wiki/Wikipedia:Contact_us">Contact Wikipedia</a></li>
+	<li id="footer-places-legal-safety-contacts"><a href="https://foundation.wikimedia.org/wiki/Special:MyLanguage/Legal:Wikimedia_Foundation_Legal_and_Safety_Contact_Information">Legal &amp; safety contacts</a></li>
+	<li id="footer-places-wm-codeofconduct"><a href="https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Universal_Code_of_Conduct">Code of Conduct</a></li>
+	<li id="footer-places-developers"><a href="https://developer.wikimedia.org">Developers</a></li>
+	<li id="footer-places-statslink"><a href="https://stats.wikimedia.org/#/en.wikipedia.org">Statistics</a></li>
+	<li id="footer-places-cookiestatement"><a href="https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Cookie_statement">Cookie statement</a></li>
+	<li id="footer-places-mobileview"><a href="//en.wikipedia.org/w/index.php?title=Special:Search&amp;fulltext=1&amp;ns0=1&amp;profile=advanced&amp;search=headless+browser&amp;mobileaction=toggle_view_mobile" class="noprint stopMobileRedirectToggle">Mobile view</a></li>
+</ul>
+
+				<ul id="footer-icons" class="mw-portlet mw-portlet-footer-icons noprint">
+	<li id="footer-copyrightico"><a href="https://www.wikimedia.org/" class="cdx-button cdx-button--fake-button cdx-button--size-large cdx-button--fake-button--enabled"><picture><source media="(min-width: 500px)" width="84" height="29"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" width="25" height="25" alt="Wikimedia Foundation" lang="en" loading="lazy"></picture></a></li>
+	<li id="footer-poweredbyico"><a href="https://www.mediawiki.org/" class="cdx-button cdx-button--fake-button cdx-button--size-large cdx-button--fake-button--enabled"><picture><source media="(min-width: 500px)" width="88" height="31"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="Powered by MediaWiki" lang="en" width="25" height="25" loading="lazy"></picture></a></li>
+</ul>
+
+			</footer>
+		</div>
+	</div> 
+</div> 
+<div class="vector-header-container vector-sticky-header-container no-font-mode-scale">
+	<div id="vector-sticky-header" class="vector-sticky-header">
+		<div class="vector-sticky-header-start">
+			<div class="vector-sticky-header-icon-start vector-button-flush-left" aria-hidden="true">
+				<button class="cdx-button cdx-button--weight-quiet cdx-button--icon-only vector-sticky-header-search-toggle" tabindex="-1" data-event-name="ui.vector-sticky-search-form.icon"><span class="vector-icon mw-ui-icon-search mw-ui-icon-wikimedia-search cdx-button__icon"></span>
+
+<span>Search</span>
+			</button>
+		</div>
+			
+		<div role="search" class="vector-search-box-vue  vector-search-box-show-thumbnail vector-search-box">
+			<div class="vector-typeahead-search-container">
+				<div class="cdx-typeahead-search cdx-typeahead-search--show-thumbnail">
+					<form action="/w/index.php" id="vector-sticky-search-form" class="cdx-search-input cdx-search-input--has-end-button">
+						<div class="cdx-search-input__input-wrapper" data-search-loc="header-moved">
+							<div class="cdx-text-input cdx-text-input--has-start-icon">
+								<input class="cdx-text-input__input mw-searchInput" autocomplete="off" type="search" name="search" placeholder="Search Wikipedia">
+								<span class="cdx-text-input__icon cdx-text-input__start-icon"></span>
+							</div>
+							<input type="hidden" name="title" value="Special:Search">
+						</div>
+						<button class="cdx-button cdx-search-input__end-button">Search</button>
+					</form>
+				</div>
+			</div>
+		</div>
+		<div class="vector-sticky-header-context-bar">
+				<div class="vector-sticky-header-context-bar-primary" aria-hidden="true">Search results</div>
+			</div>
+		</div>
+		<div class="vector-sticky-header-end" aria-hidden="true">
+			<div class="vector-sticky-header-icons">
+				<a href="#" class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only" id="ca-talk-sticky-header" tabindex="-1" data-event-name="talk-sticky-header"><span class="vector-icon mw-ui-icon-speechBubbles mw-ui-icon-wikimedia-speechBubbles cdx-button__icon"></span>
+
+<span></span>
+			</a>
+			<a href="#" class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only" id="ca-subject-sticky-header" tabindex="-1" data-event-name="subject-sticky-header"><span class="vector-icon mw-ui-icon-article mw-ui-icon-wikimedia-article cdx-button__icon"></span>
+
+<span></span>
+			</a>
+			<a href="#" class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only" id="ca-history-sticky-header" tabindex="-1" data-event-name="history-sticky-header"><span class="vector-icon mw-ui-icon-wikimedia-history mw-ui-icon-wikimedia-wikimedia-history cdx-button__icon"></span>
+
+<span></span>
+			</a>
+			<a href="#" class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only mw-watchlink" id="ca-watchstar-sticky-header" tabindex="-1" data-event-name="watch-sticky-header"><span class="vector-icon mw-ui-icon-wikimedia-star mw-ui-icon-wikimedia-wikimedia-star cdx-button__icon"></span>
+
+<span></span>
+			</a>
+			<a href="#" class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only" id="ca-edit-sticky-header" tabindex="-1" data-event-name="wikitext-edit-sticky-header"><span class="vector-icon mw-ui-icon-wikimedia-wikiText mw-ui-icon-wikimedia-wikimedia-wikiText cdx-button__icon"></span>
+
+<span></span>
+			</a>
+			<a href="#" class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only" id="ca-ve-edit-sticky-header" tabindex="-1" data-event-name="ve-edit-sticky-header"><span class="vector-icon mw-ui-icon-wikimedia-edit mw-ui-icon-wikimedia-wikimedia-edit cdx-button__icon"></span>
+
+<span></span>
+			</a>
+			<a href="#" class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only" id="ca-viewsource-sticky-header" tabindex="-1" data-event-name="ve-edit-protected-sticky-header"><span class="vector-icon mw-ui-icon-wikimedia-editLock mw-ui-icon-wikimedia-wikimedia-editLock cdx-button__icon"></span>
+
+<span></span>
+			</a>
+		</div>
+			<div class="vector-sticky-header-buttons">
+				<a href="#" class="cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--action-progressive" id="ca-addsection-sticky-header" tabindex="-1" data-event-name="addsection-sticky-header"><span class="vector-icon mw-ui-icon-speechBubbleAdd-progressive mw-ui-icon-wikimedia-speechBubbleAdd-progressive cdx-button__icon"></span>
+
+<span>Add topic</span>
+			</a>
+		</div>
+			<div class="vector-sticky-header-icon-end">
+				<div class="vector-user-links">
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+<div class="mw-portlet mw-portlet-dock-bottom emptyPortlet" id="p-dock-bottom">
+	<ul>
+		
+	</ul>
+</div>
+
+
+</body></html>

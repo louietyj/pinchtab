@@ -506,7 +506,29 @@ func TestAResponseWithoutIgnoredParamsCarriesNoDisclosure(t *testing.T) {
 
 const snapshotHandlerFile = "snapshot.go"
 
-var disclosureHelpers = map[string]bool{"attachIgnoredParams": true, "writeIgnoredParamsComment": true}
+// snapshotFraming belongs here for the same reason attachIgnoredParams does: it
+// discloses.
+// It emits ignoredParamsComment unconditionally as part of the framing it returns,
+// so a text branch that writes its framing has told the caller what was ignored.
+//
+// This is the scan being taught the helper that replaced writeIgnoredParamsComment,
+// not being relaxed. Every response
+// branch must still call one of these, and a branch that calls none still fails —
+// which is what caught the text branches when the disclosure moved inside the
+// framing and the scan could no longer see it by name.
+var disclosureHelpers = map[string]bool{
+	"attachIgnoredParams": true,
+	"snapshotFraming":     true,
+}
+
+// The framing helper only counts as a disclosure while it actually makes one, so
+// this fails if ignoredParamsComment ever stops being part of what it returns.
+func TestSnapshotFramingIsWhyItCountsAsADisclosure(t *testing.T) {
+	framing := snapshotFraming("compact", "# T | u | 1 nodes", "", []string{"bogusParam"}, false, 0)
+	if !strings.Contains(framing, "bogusParam") {
+		t.Fatalf("snapshotFraming is trusted by disclosureHelpers to disclose ignored params, but %q carries none; drop it from that set or restore the disclosure", framing)
+	}
+}
 
 func successResponseBlocks(fn *ast.FuncDecl) []ast.Node {
 	var stack, blocks []ast.Node
@@ -612,7 +634,7 @@ func TestEveryResponseBranchDisclosesIgnoredParams(t *testing.T) {
 	}
 	for _, block := range blocks {
 		if !disclosesIgnoredParams(block) {
-			t.Errorf("%s: this response branch calls neither attachIgnoredParams nor writeIgnoredParamsComment, so a caller served by it is never told which of its parameters did nothing; the helpers make the disclosure easy to add, and only this scan makes it hard to forget",
+			t.Errorf("%s: this response branch calls neither attachIgnoredParams nor snapshotFraming, so a caller served by it is never told which of its parameters did nothing; the helpers make the disclosure easy to add, and only this scan makes it hard to forget",
 				fset.Position(block.Pos()))
 		}
 	}

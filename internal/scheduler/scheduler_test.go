@@ -41,7 +41,7 @@ func newTestScheduler(t *testing.T) (*Scheduler, *httptest.Server) {
 	cfg.MaxPerAgentFlight = 3
 
 	resolver := &mockResolver{port: port}
-	s := New(cfg, resolver)
+	s := New(cfg, resolver, nil)
 	s.noAutoStart = true
 
 	return s, executor
@@ -192,7 +192,7 @@ func TestSchedulerDispatchAndComplete(t *testing.T) {
 	cfg.MaxPerAgentFlight = 5
 
 	resolver := &mockResolver{port: port}
-	s := New(cfg, resolver)
+	s := New(cfg, resolver, nil)
 	s.Start()
 	defer s.Stop()
 
@@ -240,7 +240,7 @@ func TestSchedulerDispatchFailure(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.WorkerCount = 1
 
-	s := New(cfg, &mockResolver{port: port})
+	s := New(cfg, &mockResolver{port: port}, nil)
 	s.Start()
 	defer s.Stop()
 
@@ -276,7 +276,7 @@ func TestSchedulerResolverError(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.WorkerCount = 1
 
-	s := New(cfg, &mockResolver{err: fmt.Errorf("no instance")})
+	s := New(cfg, &mockResolver{err: fmt.Errorf("no instance")}, nil)
 	s.Start()
 	defer s.Stop()
 

@@ -31,7 +31,15 @@ Targets accepted by `POST /frame` and `pinchtab frame`:
 - a selector for an iframe element
 - a frame name or frame URL
 
-Typical iframe flow:
+Response: `{tabId, scoped, target, current}` — unscoped, `target` and `current`
+are `"main"`; scoped, `target` is the frame ID and `current`/`frame` carry
+`{frameId, frameUrl, frameName, ownerRef}`. `POST` without `target` returns `400`;
+a target that is not an iframe or frame returns `400`.
+
+MCP: `pinchtab_frame` takes `target` (omit to read the current scope), `tabId`,
+`browser`.
+
+Typical iframe flow (API form exercised in `tests/e2e/scenarios/api/actions-extended.sh`):
 
 ```bash
 pinchtab snap -i
@@ -47,7 +55,8 @@ Notes:
 - selector scope is explicit; unscoped selectors do not automatically pierce into iframes
 - same-origin iframe content is supported; cross-origin iframe descendants are not currently exposed as frame scopes
 - nested iframes usually require multiple `frame` hops
-- the same frame scope applies to selector-based `/snapshot` and `/action` calls, and also to `/text` when `frameId` is not provided explicitly
+- the frame scope applies to `/snapshot`, `/capture`, selector-based `/action` calls, and `/text` when `frameId` is not provided explicitly
+- a read served from a frame scope carries a `frame` object (`frameId`, `frameUrl`, `frameName`, `ownerRef`, `frameTitle`) so a later reader can tell the content is not the top document
 - `/evaluate` is separate and does not inherit frame scope
 
 ## Related Pages

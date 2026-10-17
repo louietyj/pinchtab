@@ -88,26 +88,43 @@ func TestRenderAPIErrorKeepsApplicationErrors(t *testing.T) {
 	}
 }
 
-// The /action navigation guard reports a 409 whose details carry the way
-// forward; the renderer is what puts it in front of the user.
-func TestRenderAPIErrorBodyShowsNavigationChangedHintAndRemedy(t *testing.T) {
-	body := `{"code":"navigation_changed",` +
-		`"error":"unexpected page navigation: https://pinchtab.com/ -> https://pinchtab.com/docs/",` +
-		`"details":{"hint":"The action navigated the page; set waitNav true or submit true.",` +
-		`"remedy":"pinchtab click <ref> --wait-nav (use --submit instead when the click submits a form)",` +
-		`"url":"https://pinchtab.com/docs/"}}`
+// A refusal whose details carry the way forward; the renderer is what puts it in
+// front of the user. The sample used to be navigation_changed, which the server no
+// longer emits — a click that navigates succeeds — so it is an allowlist refusal,
+// which is a code the server does still produce with the same details shape.
+func TestRenderAPIErrorBodyShowsHintAndRemedy(t *testing.T) {
+	body := `{"code":"idpi_domain_blocked",` +
+		`"error":"navigation blocked by IDPI: domain \"evil.test\" is not in the allowed list",` +
+		`"details":{"hint":"the requested URL is outside security.allowedDomains, so the request was refused.",` +
+		`"remedy":"pinchtab config set security.allowedDomains \"...\" && pinchtab server restart",` +
+		`"url":"https://evil.test/"}}`
 
-	out := renderAPIErrorBody(409, []byte(body))
+	out := renderAPIErrorBody(403, []byte(body))
 
 	for _, want := range []string{
-		"Error 409: unexpected page navigation",
-		"💡 The action navigated the page",
-		"Remedy: pinchtab click <ref> --wait-nav",
-		"--submit",
+		"Error 403: navigation blocked by IDPI",
+		"💡 the requested URL is outside security.allowedDomains",
+		"Remedy: pinchtab config set security.allowedDomains",
+		"server restart",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("rendered error missing %q:\n%s", want, out)
 		}
+	}
+}
+
+// A tab_paused_handoff refusal must name the CLI resume command, not the HTTP route the
+// hint prose carries: the CLI user runs `pinchtab resume`, not a POST. The server ships
+// the command as details.remedy; renderGuidance prints it in the Remedy slot.
+func TestHandoffRefusalRendersTheCLIResumeCommand(t *testing.T) {
+	body := `{"code":"tab_paused_handoff",` +
+		`"error":"tab tab1 is paused for human handoff (manual_handoff)",` +
+		`"details":{"hint":"...then call POST /tabs/{id}/resume to continue","remedy":"pinchtab resume tab1"}}`
+
+	out := renderAPIErrorBody(http.StatusConflict, []byte(body))
+
+	if !strings.Contains(out, "Remedy: pinchtab resume tab1") {
+		t.Errorf("rendered refusal does not name the CLI resume command:\n%s", out)
 	}
 }
 
@@ -164,8 +181,8 @@ func TestUnrelatedTabNotFoundGetsNoRemedy(t *testing.T) {
 	}
 }
 
-// DoGetRawE and DoPostRawE return instead of terminating — one caller polls them
-// ten times a second — so rendering their error must leave the cache alone.
+// DoRawE returns instead of terminating — one caller polls it
+// ten times a second — so rendering its error must leave the cache alone.
 func TestReturningRequestPathsLeaveTheCacheIntact(t *testing.T) {
 	path := cachedTabFile(t, "CACHED-TAB")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -178,9 +195,11 @@ func TestReturningRequestPathsLeaveTheCacheIntact(t *testing.T) {
 		name string
 		call func() ([]byte, error)
 	}{
-		{"DoGetRawE", func() ([]byte, error) { return DoGetRawE(srv.Client(), srv.URL, "", "/tabs/CACHED-TAB/text", nil) }},
-		{"DoPostRawE", func() ([]byte, error) {
-			return DoPostRawE(srv.Client(), srv.URL, "", "/action", map[string]any{"kind": "click"})
+		{"GET", func() ([]byte, error) {
+			return DoRawE(srv.Client(), srv.URL, "", http.MethodGet, "/tabs/CACHED-TAB/text")
+		}},
+		{"POST", func() ([]byte, error) {
+			return DoRawE(srv.Client(), srv.URL, "", http.MethodPost, "/action", WithBody(map[string]any{"kind": "click"}))
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -14,7 +14,7 @@ import (
 // second set of literals has appeared inside New, which is how the defaults drifted
 // out of reach of `config get` in the first place.
 func TestNewFillsEveryKnobFromDefaultConfig(t *testing.T) {
-	got := New(Config{}, nil).cfg
+	got := New(Config{}, nil, nil).cfg
 	if want := DefaultConfig(); got != want {
 		t.Errorf("New(Config{}).cfg = %+v, want DefaultConfig() %+v", got, want)
 	}
@@ -128,7 +128,7 @@ func TestBatchSizeIsUnchangedAndComesThroughTheConversionSite(t *testing.T) {
 	if got := ConfigFromRuntime(runtime).MaxBatchSize; got != 5 {
 		t.Errorf("a configured maxBatchSize of 5 converted to %d; the conversion drops it, so config set writes a value nothing enforces", got)
 	}
-	if got := New(ConfigFromRuntime(runtime), nil).cfg.MaxBatchSize; got != 5 {
+	if got := New(ConfigFromRuntime(runtime), nil, nil).cfg.MaxBatchSize; got != 5 {
 		t.Errorf("the running scheduler enforces %d, want the configured 5", got)
 	}
 }

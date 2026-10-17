@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Markdown Fixture</title>
+  <meta name="description" content="A page that converts cleanly to Markdown.">
+</head>
+<body>
+  <article>
+    <h1>Markdown Fixture</h1>
+
+    <h2>First Section</h2>
+    <p>
+      This paragraph carries an
+      <a href="https://example.com/link">inline link</a>
+      and enough surrounding prose that the readability extractor keeps it as
+      the article body rather than discarding it as a thin fragment of the page.
+    </p>
+
+    <h2>Second Section</h2>
+    <ul>
+      <li>Alpha item describing the first point in the list</li>
+      <li>Beta item describing the second point in the list</li>
+      <li>Gamma item describing the third point in the list</li>
+    </ul>
+
+    <table>
+      <thead>
+        <tr><th>Column A</th><th>Column B</th><th>Column C</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>a1</td><td>b1</td><td>c1</td></tr>
+        <tr><td>a2</td><td>b2</td><td>c2</td></tr>
+        <tr><td>a3</td><td>b3</td><td>c3</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      A closing paragraph so the extracted article sits comfortably above any
+      thin-content threshold the converter applies before it returns Markdown.
+    </p>
+  </article>
+
+  <iframe
+    id="md-frame"
+    title="md-frame"
+    src="iframe-content.html"
+    width="600"
+    height="300"
+  ></iframe>
+</body>
+</html>

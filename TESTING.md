@@ -12,7 +12,7 @@ The `dev` developer toolkit is the easiest way to run checks and tests:
 ./dev e2e basic          # Basic suite (api + cli + infra)
 ./dev e2e extended       # Extended suite
 ./dev e2e smoke          # Smoke suite (smoke scenarios + Docker smoke)
-./dev e2e smoke-docker   # Host Docker smoke only
+./dev smoke              # Host Docker smoke only
 ./dev e2e api            # API basic tests
 ./dev e2e cli            # CLI basic tests
 ./dev e2e infra          # Infra basic tests
@@ -141,7 +141,7 @@ Runs `api-extended`, `cli-extended`, `infra-extended`, and `plugin` in sequence.
 ./dev e2e smoke
 ./dev e2e smoke-orchestrator
 ./dev e2e smoke-security
-./dev e2e smoke-docker
+./dev smoke
 ```
 
 Smoke is its own tier: it runs `*-smoke.sh` scenarios plus host-level Docker smoke checks, and it does not include basic or extended scenarios. Use the filtered smoke suites when you only need one smoke lane.

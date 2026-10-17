@@ -1,5 +1,29 @@
 {
   "scenarios": {
+    "api/vocab-reepoch-basic.sh": {
+      "tags": [
+        "vocab",
+        "pr"
+      ]
+    },
+    "cli/vocab-reepoch-basic.sh": {
+      "tags": [
+        "vocab",
+        "pr"
+      ]
+    },
+    "api/dialog-guard-basic.sh": {
+      "tags": [
+        "dialogs",
+        "pr"
+      ]
+    },
+    "cli/dialog-guard-basic.sh": {
+      "tags": [
+        "dialogs",
+        "pr"
+      ]
+    },
     "api/wait-url-basic.sh": {
       "tags": [
         "wait",
@@ -40,6 +64,42 @@
         "snapshot",
         "find",
         "text",
+        "pr"
+      ]
+    },
+    "api/text-markdown-basic.sh": {
+      "tags": [
+        "text",
+        "markdown",
+        "pr"
+      ]
+    },
+    "cli/text-markdown-basic.sh": {
+      "tags": [
+        "text",
+        "markdown",
+        "pr"
+      ]
+    },
+    "api/a11y-axe-basic.sh": {
+      "tags": [
+        "a11y",
+        "axe",
+        "pr"
+      ]
+    },
+    "cli/tab-default-basic.sh": {
+      "tags": [
+        "tabs",
+        "text",
+        "mouse",
+        "pr"
+      ]
+    },
+    "cli/a11y-axe-basic.sh": {
+      "tags": [
+        "a11y",
+        "axe",
         "pr"
       ]
     },
@@ -509,6 +569,81 @@
         "compare",
         "audit",
         "visualdiff"
+      ]
+    },
+    "api/extract-basic.sh": {
+      "tags": [
+        "extract",
+        "pr"
+      ]
+    },
+    "cli/extract-basic.sh": {
+      "tags": [
+        "extract",
+        "pr"
+      ]
+    },
+    "api/extract-extended.sh": {
+      "services": [
+        "pinchtab",
+        "pinchtab-secure",
+        "fixtures"
+      ],
+      "ready": [
+        "E2E_SERVER",
+        "E2E_SECURE_SERVER"
+      ],
+      "tags": [
+        "extract",
+        "idpi",
+        "security"
+      ]
+    },
+    "api/extract-corpus-extended.sh": {
+      "tags": [
+        "extract",
+        "corpus"
+      ]
+    },
+    "api/memory-basic.sh": {
+      "tags": [
+        "memory",
+        "compare",
+        "pr"
+      ]
+    },
+    "api/memory-extended.sh": {
+      "services": [
+        "pinchtab",
+        "pinchtab-secure",
+        "pinchtab-medium",
+        "fixtures"
+      ],
+      "ready": [
+        "E2E_SERVER",
+        "E2E_SECURE_SERVER",
+        "E2E_MEDIUM_SERVER"
+      ],
+      "tags": [
+        "memory",
+        "compare",
+        "secure",
+        "medium"
+      ]
+    },
+    "cli/memory-basic.sh": {
+      "tags": [
+        "memory",
+        "compare",
+        "pr"
+      ]
+    },
+    "cli/instance-navigate-extended.sh": {
+      "tags": [
+        "instance",
+        "tabs",
+        "multiinstance",
+        "navigate"
       ]
     }
   }

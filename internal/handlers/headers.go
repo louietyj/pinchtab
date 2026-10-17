@@ -48,7 +48,7 @@ func (h *Handlers) setHeaders(w http.ResponseWriter, r *http.Request, req header
 		return
 	}
 
-	ctx, resolvedTabID, ok := h.guardedTabContext(w, r, req.TabID, guardDomainPolicy|guardHandoffPause)
+	ctx, resolvedTabID, ok := h.guardedTabContext(w, r, req.TabID, guardDialogBlocked|guardDomainPolicy|guardHandoffPause)
 	if !ok {
 		return
 	}

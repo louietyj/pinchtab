@@ -8,21 +8,22 @@ import (
 	"github.com/pinchtab/pinchtab/internal/httpx"
 )
 
-// withPathTabID maps the {id} path value into the tabId query param and calls
-// root with a cloned request; writes 400 when the path id is empty.
 func (h *Handlers) withPathTabID(w http.ResponseWriter, r *http.Request, root http.HandlerFunc) {
-	tabID := r.PathValue("id")
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
+	tabID, ok := requirePathTabID(w, r)
+	if !ok {
 		return
 	}
+	root(w, cloneWithTabIDQuery(r, tabID))
+}
+
+func cloneWithTabIDQuery(r *http.Request, tabID string) *http.Request {
 	q := r.URL.Query()
 	q.Set("tabId", tabID)
 	req := r.Clone(r.Context())
 	u := *r.URL
 	u.RawQuery = q.Encode()
 	req.URL = &u
-	root(w, req)
+	return req
 }
 
 // callOnResolvedElement resolves sel to a DOM node on tabID and runs jsFn on it,
@@ -55,7 +56,7 @@ func inspectSelectorParam(r *http.Request) string {
 // serveElementInspection runs the shared read-only single-element inspection
 // preamble: record the read, require a unified selector, then resolve + inspect
 // via inspectElement. build returns the JSON response for the resolved element;
-// its error is mapped by inspectElement (statusForElementErr).
+// its error is mapped by inspectElement (selectorFailureStatus).
 //
 // attr and count do not use this: attr validates an extra required `name` param
 // before tab resolution, and count targets multiple elements via a different
@@ -78,8 +79,8 @@ func (h *Handlers) serveElementInspection(w http.ResponseWriter, r *http.Request
 
 // inspectElement runs the shared read-only inspect lifecycle (browser init, tab
 // resolution, domain-policy enforcement, auto-close arming, and timeout/cancel
-// wiring) and writes the JSON value fn returns, mapping fn's error via
-// statusForElementErr. Handlers keep their own param parsing + recordReadRequest
+// wiring) and writes the JSON value fn returns, mapping fn's error through
+// respondSelectorFailure. Handlers keep their own param parsing + recordReadRequest
 // and pass the per-endpoint getter/response as fn.
 func (h *Handlers) inspectElement(w http.ResponseWriter, r *http.Request, tabID string,
 	fn func(ctx context.Context, resolvedTabID string) (any, error)) {
@@ -91,19 +92,21 @@ func (h *Handlers) inspectElement(w http.ResponseWriter, r *http.Request, tabID 
 		return
 	}
 
-	ctx, resolvedTabID, ok := h.guardedTabContextWithHeader(w, r, tabID, guardDomainPolicy)
+	ctx, resolvedTabID, ok := h.guardedTabContextWithHeader(w, r, tabID, guardDialogBlocked|guardDomainPolicy)
 	if !ok {
 		return
 	}
-	defer h.armAutoCloseIfEnabled(resolvedTabID)
+	defer h.armIdleLifecycle(resolvedTabID)
 
 	tCtx, tCancel := context.WithTimeout(ctx, h.Config.ActionTimeout)
 	defer tCancel()
 	go httpx.CancelOnClientDone(r.Context(), tCancel)
 
+	vocabBefore := h.tabVocab(resolvedTabID)
 	result, err := fn(tCtx, resolvedTabID)
+	h.publishVocabIfReepoched(w, resolvedTabID, vocabBefore)
 	if err != nil {
-		httpx.Error(w, statusForElementErr(err), err)
+		respondSelectorFailure(w, err)
 		return
 	}
 	httpx.JSON(w, 200, result)

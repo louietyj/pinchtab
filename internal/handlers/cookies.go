@@ -146,9 +146,8 @@ func (h *Handlers) HandleClearCookies(w http.ResponseWriter, r *http.Request) {
 //
 // @Endpoint DELETE /tabs/{id}/cookies
 func (h *Handlers) HandleTabClearCookies(w http.ResponseWriter, r *http.Request) {
-	tabID := r.PathValue("id")
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
+	tabID, ok := requirePathTabID(w, r)
+	if !ok {
 		return
 	}
 

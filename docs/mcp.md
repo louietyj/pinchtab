@@ -114,17 +114,19 @@ PINCHTAB_TOKEN=<that-host-token> pinchtab --server http://remote:9867 mcp
 
 ## Available Tools
 
-PinchTab currently exposes 36 tools:
+PinchTab currently exposes 47 tools:
 
 - Navigation: 9
 - Interaction: 8
 - Keyboard: 1
-- Content: 3
+- Content: 4
 - Recording: 1
 - Site: 1
-- Tab management: 5
+- Tab management: 6
+- Human handoff: 3
 - Wait utilities: 1
-- Network: 5
+- Network: 6
+- Diagnostics: 6
 - Dialog: 1
 
 ### Navigation
@@ -137,7 +139,7 @@ PinchTab currently exposes 36 tools:
 - `pinchtab_frame`
 - `pinchtab_screenshot`
 - `pinchtab_capture` — paired screenshot + snapshot from one DOM epoch
-- `pinchtab_get_text`
+- `pinchtab_get_text` — extract page text; `mode` selects `readability` (default), `raw`, or `markdown` (preserves links and tables, best for article-shaped pages). `mode` supersedes the legacy boolean `raw`. Example: `pinchtab_get_text {"mode":"markdown"}`
 
 ### Interaction
 
@@ -159,6 +161,7 @@ PinchTab currently exposes 36 tools:
 - `pinchtab_eval`
 - `pinchtab_pdf`
 - `pinchtab_find`
+- `pinchtab_extract` — typed values against a JSON `schema` (`tabId`, `scope`, `maxItems` optional); every field carries a ref for the action tools and a confidence. Prefer it over snapshot-then-parse for structured values, and pin a `low` field with `x-pinchtab-hint`. See [Extract](reference/extract.md)
 
 ### Recording
 
@@ -166,7 +169,7 @@ PinchTab currently exposes 36 tools:
 
 ### Site
 
-- `pinchtab_scrape` — crawl a site to markdown (HTTP-first, browser-enrich thin/JS pages). Use `preview=true` for a cheap outline, then expand chosen URLs with `only`.
+- `pinchtab_scrape` — crawl a site to markdown (HTTP-first, browser-enrich thin/JS pages). Use `preview=true` for a cheap outline, then expand chosen URLs with `only`. Its `timeoutSeconds` is a crawl budget and the one seconds-unit argument; every wait elsewhere is `timeoutMs`.
 
 ### Tab Management
 
@@ -177,9 +180,15 @@ PinchTab currently exposes 36 tools:
 - `pinchtab_cookies_set` (requires `security.allowCookies`)
 - `pinchtab_connect_profile`
 
+### Human Handoff
+
+- `pinchtab_handoff` — pause a tab (`tabId` required; `reason`, `timeoutMs` optional) so a human can finish a CAPTCHA, login or consent step; every action tool on that tab is refused with `tab_paused_handoff` until it resumes
+- `pinchtab_resume` — resume the tab (`tabId` required; `status` optional). Call it only after the user confirms they finished
+- `pinchtab_handoff_status` — report `paused_handoff` (with `reason`, `pausedAt`, `expiresAt`) or `active`, so an agent can watch a `timeoutMs` auto-resume without resuming itself
+
 ### Wait Utilities
 
-- `pinchtab_wait` — `for` is `ms`, `selector`, `text`, `url`, `load` or `function`, and `value` carries the condition
+- `pinchtab_wait` — `for` is `ms`, `selector`, `text`, `url`, `load` or `function`, and `value` carries the condition; `timeoutMs` bounds a browser-backed wait (`timeout` is its deprecated alias)
 
 ### Network
 
@@ -188,6 +197,16 @@ PinchTab currently exposes 36 tools:
 - `pinchtab_network_clear`
 - `pinchtab_network_route`
 - `pinchtab_network_unroute`
+- `pinchtab_network_rules`
+
+### Diagnostics
+
+- `pinchtab_console` — read (or `clear`) the tab's browser console logs
+- `pinchtab_errors` — read (or `clear`) the tab's uncaught JavaScript exceptions; check this when a snapshot looks healthy but actions do nothing
+- `pinchtab_a11y_audit` — accessibility audit; `engine=axe` runs vendored axe-core in the isolated world and returns ref-mapped violations with WCAG tags and help URLs
+- `pinchtab_memory` — JavaScript heap usage and DOM counters for the tab; `gc=true` collects garbage first so two reads compare retained memory
+- `pinchtab_memory_snapshot` — take a V8 heap snapshot to a server-side file and return only its path and a summary (top constructors, duplicate strings); needs `security.allowMemory`. See [Memory](reference/memory.md)
+- `pinchtab_memory_compare` — compare two snapshot ids: per-constructor count and self-size deltas, largest first, plus new duplicate strings; `retained=true` adds retained sizes from the head snapshot's dominator tree; needs `security.allowMemory`
 
 ### Dialog
 
@@ -195,7 +214,11 @@ PinchTab currently exposes 36 tools:
 
 ## Selector Model
 
-For selector-based interaction tools, prefer `selector`. `ref` is still accepted as a deprecated fallback on the element-action tools.
+For selector-based interaction tools, prefer `selector`. `ref`, `element` and `target` are still accepted as deprecated aliases on the element-action tools.
+
+## Argument Names
+
+Every tool refuses an argument its schema does not declare. The call returns an error naming the unknown key, the nearest declared name when one is close (`filter: "interactive"` on `pinchtab_snapshot` points at `interactive: true`), and the tool's declared arguments; nothing runs. Deprecated spellings stay declared, with a description naming the canonical one: `ref`/`element`/`target` for `selector`, `timeout` for `timeoutMs` on `pinchtab_wait`, `onDialog`/`promptText` for `dialogAction`/`dialogText` on `pinchtab_click`, `value` for `text` on `pinchtab_type`, `option` for `value` on `pinchtab_select`, and `text` for `value` on `pinchtab_fill`.
 
 Common selector forms:
 
@@ -212,7 +235,7 @@ The normal MCP browser loop is:
 1. Call `pinchtab_navigate` with a `url`
 2. Call `pinchtab_snapshot` to inspect page structure and collect refs
 3. Call `pinchtab_click`, `pinchtab_type`, or other action tools with structured arguments
-4. Call `pinchtab_wait_*` or `pinchtab_network` when needed
+4. Call `pinchtab_wait` or `pinchtab_network` when needed
 5. Call `pinchtab_back` to leave a dead end, or `pinchtab_reload` to retry the page
 
 `pinchtab_back`, `pinchtab_forward` and `pinchtab_reload` take an optional `tabId`

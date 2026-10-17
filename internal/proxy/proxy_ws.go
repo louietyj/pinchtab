@@ -58,6 +58,17 @@ func ProxyWebSocket(w http.ResponseWriter, r *http.Request, targetURL string) {
 	}
 	defer func() { _ = client.Close() }()
 
+	tunnelDone := make(chan struct{})
+	defer close(tunnelDone)
+	go func() {
+		select {
+		case <-r.Context().Done():
+			_ = client.Close()
+			_ = backend.Close()
+		case <-tunnelDone:
+		}
+	}()
+
 	writer := bufio.NewWriter(backend)
 
 	_, _ = fmt.Fprintf(writer, "%s %s HTTP/1.1\r\n", r.Method, path)

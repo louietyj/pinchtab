@@ -25,8 +25,26 @@ func selectorParam() mcp.ToolOption {
 	return mcp.WithString("selector", mcp.Description("Unified selector: ref (e.g. 'e5'), CSS, XPath, text, or semantic. Non-ref selectors resolve in the current frame scope."))
 }
 
-func refParam() mcp.ToolOption {
-	return mcp.WithString("ref", mcp.Description("(deprecated) Element ref from snapshot — use 'selector' instead"))
+var selectorArgKeys = []string{"selector", "ref", "element", "target"}
+
+func selectorAliasParams() mcp.ToolOption {
+	return func(tool *mcp.Tool) {
+		for _, alias := range selectorArgKeys[1:] {
+			stringAliasParam(alias, selectorArgKeys[0])(tool)
+		}
+	}
+}
+
+func stringAliasParam(alias, canonical string) mcp.ToolOption {
+	return mcp.WithString(alias, aliasDescription(canonical))
+}
+
+func numberAliasParam(alias, canonical string) mcp.ToolOption {
+	return mcp.WithNumber(alias, aliasDescription(canonical))
+}
+
+func aliasDescription(canonical string) mcp.PropertyOption {
+	return mcp.Description("(deprecated) alias of '" + canonical + "'; send '" + canonical + "' instead")
 }
 
 func nodeIDParam() mcp.ToolOption {
@@ -37,8 +55,8 @@ func queryParam() mcp.ToolOption {
 	return mcp.WithString("query", mcp.Description("Alias for semantic targeting when selector is omitted"))
 }
 
-func timeoutParam() mcp.ToolOption {
-	return mcp.WithNumber("timeout", mcp.Description("Timeout in milliseconds (default: 10000, max: 30000)"))
+func timeoutMsParam() mcp.ToolOption {
+	return mcp.WithNumber("timeoutMs", mcp.Description("Timeout in milliseconds (default: 10000, max: 30000)"))
 }
 
 func snapParam() mcp.ToolOption {

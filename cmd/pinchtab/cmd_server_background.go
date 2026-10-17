@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pinchtab/pinchtab/internal/api/types"
 	"github.com/pinchtab/pinchtab/internal/cli"
 	"github.com/pinchtab/pinchtab/internal/config"
 	"github.com/pinchtab/pinchtab/internal/daemon"
@@ -413,7 +414,7 @@ func isPinchTabHealthReady(url, marker string) bool {
 	if err := json.Unmarshal(body, &health); err != nil {
 		return false
 	}
-	if health.Status != "ok" || health.Mode != "dashboard" || strings.TrimSpace(health.Version) == "" {
+	if !types.HealthStatusServing(health.Status) || health.Mode != types.ModeDashboard || strings.TrimSpace(health.Version) == "" {
 		return false
 	}
 	return marker == "" || health.Marker == marker

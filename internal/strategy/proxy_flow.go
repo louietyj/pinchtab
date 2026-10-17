@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/pinchtab/pinchtab/internal/activity"
+	"github.com/pinchtab/pinchtab/internal/handlers"
 	"github.com/pinchtab/pinchtab/internal/httpx"
 	"github.com/pinchtab/pinchtab/internal/orchestrator"
 )
@@ -44,5 +45,16 @@ func ProxyTabsToFirst(o *orchestrator.Orchestrator, w http.ResponseWriter, r *ht
 		httpx.JSON(w, 200, map[string]any{"tabs": []any{}})
 		return
 	}
-	o.ProxyToTarget(w, r, target+"/tabs")
+	o.ProxyToTarget(w, withoutIncludeTransientTabs(r), target+"/tabs")
+}
+
+func withoutIncludeTransientTabs(r *http.Request) *http.Request {
+	query := r.URL.Query()
+	if !query.Has(handlers.IncludeTransientTabsQuery) {
+		return r
+	}
+	query.Del(handlers.IncludeTransientTabsQuery)
+	stripped := r.Clone(r.Context())
+	stripped.URL.RawQuery = query.Encode()
+	return stripped
 }

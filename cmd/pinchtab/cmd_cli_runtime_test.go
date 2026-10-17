@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -280,4 +283,73 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return fn(req)
+}
+
+func TestAnInvalidServerBaseExitsTwoNamingItsSource(t *testing.T) {
+	if args := os.Getenv("PINCHTAB_BAD_BASE_ARGS"); args != "" {
+		rootCmd.SetArgs(strings.Split(args, "\x1f"))
+		if err := rootCmd.Execute(); err != nil {
+			os.Exit(commandExitCode(err))
+		}
+		return
+	}
+
+	for _, tc := range []struct {
+		name, env, source, value string
+		args                     []string
+	}{
+		{"env without a scheme", "127.0.0.1:9867", "PINCHTAB_SERVER", "127.0.0.1:9867", []string{"tab"}},
+		{"env host read as a scheme", "localhost:9867", "PINCHTAB_SERVER", "localhost:9867", []string{"tab"}},
+		{"flag with a space in the host", "", "--server", "http://bad host:9867", []string{"--server", "http://bad host:9867", "tab"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			child := exec.Command(os.Args[0], "-test.run=^TestAnInvalidServerBaseExitsTwoNamingItsSource$", "-test.timeout=30s") // #nosec G204 -- re-executes this test binary with fixed arguments.
+			child.Env = append(os.Environ(),
+				"PINCHTAB_BAD_BASE_ARGS="+strings.Join(tc.args, "\x1f"),
+				"PINCHTAB_SERVER="+tc.env,
+				"PINCHTAB_TOKEN=x",
+				"HOME="+t.TempDir(),
+				"XDG_STATE_HOME="+t.TempDir(),
+			)
+			var stderr bytes.Buffer
+			child.Stderr = &stderr
+			err := child.Run()
+
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) || exitErr.ExitCode() != 2 {
+				t.Fatalf("exit = %v, want 2; stderr:\n%s", err, stderr.String())
+			}
+			out := stderr.String()
+			if strings.Contains(out, "panic:") {
+				t.Fatalf("the CLI panicked:\n%s", out)
+			}
+			if !strings.Contains(out, tc.source) || !strings.Contains(out, `"`+tc.value+`"`) {
+				t.Fatalf("stderr does not name %s and %q:\n%s", tc.source, tc.value, out)
+			}
+		})
+	}
+}
+
+func TestValidServerBasesStillResolve(t *testing.T) {
+	oldServerURL := serverURL
+	t.Cleanup(func() { serverURL = oldServerURL })
+	for value, want := range map[string]string{
+		"http://127.0.0.1:9867":  "http://127.0.0.1:9867",
+		"https://host":           "https://host",
+		"http://127.0.0.1:9867/": "http://127.0.0.1:9867",
+	} {
+		for _, viaFlag := range []bool{true, false} {
+			serverURL = ""
+			t.Setenv("PINCHTAB_SERVER", "")
+			if viaFlag {
+				serverURL = value
+			} else {
+				t.Setenv("PINCHTAB_SERVER", value)
+			}
+			got, err := resolveBaseURL("http://127.0.0.1:9999")
+			if err != nil || got != want {
+				t.Errorf("%q (flag=%v) resolved to %q, %v; want %q", value, viaFlag, got, err, want)
+			}
+		}
+	}
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/pinchtab/pinchtab/internal/safelog"
 	"github.com/pinchtab/pinchtab/internal/server"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 var serverCmd = &cobra.Command{
@@ -21,21 +22,17 @@ var serverCmd = &cobra.Command{
 		maybeRunWizard()
 
 		cfg, loadDiags := loadConfigDeferringDiagnostics()
-		verbose, _ := cmd.Flags().GetBool("verbose")
-		cfg.VerboseBanner = verbose
-		logLevel, _ := cmd.Flags().GetString("log-level")
-		resolveLogLevel(cfg, logLevel, verbose)
+		opts := serverBackgroundOptionsFromFlags(cmd.Flags())
+		cfg.VerboseBanner = opts.Verbose
+		resolveLogLevel(cfg, opts.LogLevel, opts.Verbose)
 		config.EmitLoadDiagnostics(loadDiags)
 
 		backgroundMarker, _ := cmd.Flags().GetString(backgroundChildFlagName)
 		cfg.BackgroundMarker = backgroundMarker
 
-		bind, _ := cmd.Flags().GetString("bind")
-		port, _ := cmd.Flags().GetString("port")
-		addressChanged := applyServerAddressFlags(cfg, bind, port)
+		addressChanged := applyServerAddressFlags(cfg, opts.Bind, opts.Port)
 
-		yolo, _ := cmd.Flags().GetBool("yolo")
-		if yolo {
+		if opts.Yolo {
 			fc, _, err := config.LoadFileConfig()
 			if err != nil {
 				fmt.Fprintln(os.Stderr, cli.StyleStderr(cli.ErrorStyle, fmt.Sprintf("--yolo: load config: %v", err)))
@@ -49,19 +46,14 @@ var serverCmd = &cobra.Command{
 			fmt.Fprintln(os.Stderr, cli.StyleStderr(cli.WarningStyle, "YOLO mode: guards down for this run only (config file unchanged)"))
 		}
 
-		headed, _ := cmd.Flags().GetBool("headed")
-		if headed {
+		if opts.Headed {
 			cfg.Headless = false
 			cfg.HeadlessSet = true
 		}
-		exts, _ := cmd.Flags().GetStringArray("extension")
-		if len(exts) > 0 {
-			cfg.ExtensionPaths = append(cfg.ExtensionPaths, exts...)
-		}
+		cfg.ExtensionPaths = append(cfg.ExtensionPaths, opts.Extensions...)
 
-		browserName, _ := cmd.Flags().GetString("browser")
-		if browserName != "" {
-			browser, err := config.ParseBrowser(browserName, cfg.BrowsersAvailable)
+		if opts.Browser != "" {
+			browser, err := config.ParseBrowser(opts.Browser, cfg.BrowsersAvailable)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, cli.StyleStderr(cli.ErrorStyle, err.Error()))
 				os.Exit(1)
@@ -70,16 +62,7 @@ var serverCmd = &cobra.Command{
 		}
 
 		if background, _ := cmd.Flags().GetBool("background"); background {
-			if err := runServerBackground(cfg, serverBackgroundOptions{
-				Yolo:       yolo,
-				Headed:     headed,
-				Verbose:    verbose,
-				LogLevel:   logLevel,
-				Extensions: append([]string(nil), exts...),
-				Browser:    browserName,
-				Bind:       bind,
-				Port:       port,
-			}, addressChanged); err != nil {
+			if err := runServerBackground(cfg, opts, addressChanged); err != nil {
 				fmt.Fprintln(os.Stderr, cli.StyleStderr(cli.ErrorStyle, err.Error()))
 				os.Exit(1)
 			}
@@ -87,6 +70,27 @@ var serverCmd = &cobra.Command{
 		}
 		server.RunDashboard(cfg, version)
 	},
+}
+
+func serverBackgroundOptionsFromFlags(flags *pflag.FlagSet) serverBackgroundOptions {
+	yolo, _ := flags.GetBool("yolo")
+	headed, _ := flags.GetBool("headed")
+	verbose, _ := flags.GetBool("verbose")
+	logLevel, _ := flags.GetString("log-level")
+	exts, _ := flags.GetStringArray("extension")
+	browser, _ := flags.GetString("browser")
+	bind, _ := flags.GetString("bind")
+	port, _ := flags.GetString("port")
+	return serverBackgroundOptions{
+		Yolo:       yolo,
+		Headed:     headed,
+		Verbose:    verbose,
+		LogLevel:   logLevel,
+		Extensions: append([]string(nil), exts...),
+		Browser:    browser,
+		Bind:       bind,
+		Port:       port,
+	}
 }
 
 func applyServerAddressFlags(cfg *config.RuntimeConfig, bind, port string) bool {

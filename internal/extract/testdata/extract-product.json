@@ -1,0 +1,143 @@
+{
+  "url": "http://fixtures/extract-product.html",
+  "title": "Product \u2014 Sony WH-1000XM5",
+  "nodes": [
+    {
+      "ref": "e0",
+      "role": "RootWebArea",
+      "name": "Product \u2014 Sony WH-1000XM5",
+      "depth": 0,
+      "nodeId": 5,
+      "frameId": "CD18D93E3F268485C84D4DD9C09DF95E",
+      "frameUrl": "http://fixtures/extract-product.html"
+    },
+    {
+      "ref": "e1",
+      "role": "main",
+      "name": "Product",
+      "depth": 3,
+      "label": "Product",
+      "text": "Sony WH-1000XM5 Wireless Headphones $1,299.00 4.7 out of 5 In stock Industry-leading noise cancellation with up to 30 hours of battery life.",
+      "tag": "main",
+      "nodeId": 12,
+      "frameId": "CD18D93E3F268485C84D4DD9C09DF95E",
+      "frameUrl": "http://fixtures/extract-product.html"
+    },
+    {
+      "ref": "e2",
+      "role": "heading",
+      "name": "Sony WH-1000XM5 Wireless Headphones",
+      "depth": 4,
+      "text": "Sony WH-1000XM5 Wireless Headphones",
+      "tag": "h1",
+      "nodeId": 13,
+      "frameId": "CD18D93E3F268485C84D4DD9C09DF95E",
+      "frameUrl": "http://fixtures/extract-product.html"
+    },
+    {
+      "ref": "e3",
+      "role": "StaticText",
+      "name": "Sony WH-1000XM5 Wireless Headphones",
+      "depth": 5,
+      "nodeId": 19,
+      "frameId": "CD18D93E3F268485C84D4DD9C09DF95E",
+      "frameUrl": "http://fixtures/extract-product.html"
+    },
+    {
+      "ref": "e4",
+      "role": "paragraph",
+      "name": "Price",
+      "depth": 4,
+      "label": "Price",
+      "text": "$1,299.00",
+      "tag": "p",
+      "nodeId": 14,
+      "frameId": "CD18D93E3F268485C84D4DD9C09DF95E",
+      "frameUrl": "http://fixtures/extract-product.html"
+    },
+    {
+      "ref": "e5",
+      "role": "StaticText",
+      "name": "$1,299.00",
+      "depth": 5,
+      "nodeId": 20,
+      "frameId": "CD18D93E3F268485C84D4DD9C09DF95E",
+      "frameUrl": "http://fixtures/extract-product.html"
+    },
+    {
+      "ref": "e6",
+      "role": "paragraph",
+      "name": "Rating",
+      "depth": 4,
+      "label": "Rating",
+      "text": "4.7 out of 5",
+      "tag": "p",
+      "nodeId": 15,
+      "frameId": "CD18D93E3F268485C84D4DD9C09DF95E",
+      "frameUrl": "http://fixtures/extract-product.html"
+    },
+    {
+      "ref": "e7",
+      "role": "StaticText",
+      "name": "4.7 out of 5",
+      "depth": 5,
+      "nodeId": 21,
+      "frameId": "CD18D93E3F268485C84D4DD9C09DF95E",
+      "frameUrl": "http://fixtures/extract-product.html"
+    },
+    {
+      "ref": "e8",
+      "role": "paragraph",
+      "name": "",
+      "depth": 4,
+      "text": "In stock",
+      "tag": "p",
+      "nodeId": 16,
+      "frameId": "CD18D93E3F268485C84D4DD9C09DF95E",
+      "frameUrl": "http://fixtures/extract-product.html"
+    },
+    {
+      "ref": "e9",
+      "role": "checkbox",
+      "name": "In stock",
+      "depth": 5,
+      "label": "In stock",
+      "tag": "input",
+      "disabled": true,
+      "checked": "true",
+      "nodeId": 17,
+      "frameId": "CD18D93E3F268485C84D4DD9C09DF95E",
+      "frameUrl": "http://fixtures/extract-product.html"
+    },
+    {
+      "ref": "e10",
+      "role": "StaticText",
+      "name": " In stock",
+      "depth": 5,
+      "nodeId": 22,
+      "frameId": "CD18D93E3F268485C84D4DD9C09DF95E",
+      "frameUrl": "http://fixtures/extract-product.html"
+    },
+    {
+      "ref": "e11",
+      "role": "paragraph",
+      "name": "Description",
+      "depth": 4,
+      "label": "Description",
+      "text": "Industry-leading noise cancellation with up to 30 hours of battery life.",
+      "tag": "p",
+      "nodeId": 18,
+      "frameId": "CD18D93E3F268485C84D4DD9C09DF95E",
+      "frameUrl": "http://fixtures/extract-product.html"
+    },
+    {
+      "ref": "e12",
+      "role": "StaticText",
+      "name": "Industry-leading noise cancellation with up to 30 hours of battery life.",
+      "depth": 5,
+      "nodeId": 23,
+      "frameId": "CD18D93E3F268485C84D4DD9C09DF95E",
+      "frameUrl": "http://fixtures/extract-product.html"
+    }
+  ]
+}

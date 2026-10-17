@@ -5,12 +5,12 @@ import (
 	"os"
 	"strings"
 
+	"github.com/pinchtab/pinchtab/internal/api/types"
 	"github.com/pinchtab/pinchtab/internal/cli"
 	"github.com/pinchtab/pinchtab/internal/cli/output"
 	"github.com/pinchtab/pinchtab/internal/config"
 	"github.com/pinchtab/pinchtab/internal/config/workflow"
 	configschema "github.com/pinchtab/pinchtab/internal/schema"
-	"github.com/pinchtab/pinchtab/internal/server"
 )
 
 func handleConfigTokenCopy(toStdout bool) {
@@ -225,9 +225,40 @@ func handleConfigSchema(printSchema bool) {
 	fmt.Println(schemaURL)
 }
 
+func emitDefaultConfigHint() {
+	if text := config.DefaultConfigHint(); text != "" {
+		output.Advisory(text)
+	}
+}
+
 func hintRestartIfRunning() {
 	cfg := loadLocalConfig()
-	if server.CheckPinchTabRunning(cfg.Port, cfg.Token) {
-		output.Hint("Server is running — restart it to apply changes: pinchtab server restart")
+	snap, state := probeHealthSnapshot(cfg.Port, cfg.Token)
+	// A token mismatch (healthSnapshotProtected) hides the mode, so the instance is
+	// running but we cannot confirm it is the server front door: still remind the
+	// caller to restart, in the mode-neutral form. Without this a protected instance
+	// gets no hint — the regression the earlier CheckPinchTabRunning did not have.
+	// One emission point so the hint census records a single occurrence.
+	var hint string
+	switch state {
+	case healthSnapshotRunning:
+		hint = restartHintForMode(snap.Mode)
+	case healthSnapshotProtected:
+		hint = restartHintForMode("")
 	}
+	if hint != "" {
+		output.Hint(hint)
+	}
+}
+
+// restartHintForMode names the restart appropriate to the running instance. Only
+// the server/daemon front door (/health mode ModeDashboard) is safe to restart
+// with `pinchtab server restart`; a bridge is Ctrl-C + re-run `pinchtab bridge`,
+// and naming the server command would tell a bridge user to kill their bridge. Any
+// other, empty, or unknown mode gets the mode-neutral instruction.
+func restartHintForMode(mode string) string {
+	if mode == types.ModeDashboard {
+		return "Server is running — restart it to apply changes: pinchtab server restart"
+	}
+	return "A PinchTab instance is running — restart it to apply this change."
 }

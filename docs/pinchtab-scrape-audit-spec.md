@@ -1,5 +1,10 @@
 # PinchTab Scraping & Audit Spec
 
+> **Status at HEAD:** this is the original design spec. Most of it shipped as `pinchtab audit`,
+> `pinchtab compare` and `pinchtab scrape` — see [audit.md](audit.md) and [scrape.md](scrape.md)
+> for the shipped contract. Items marked *(not shipped)* below describe behaviour the code
+> does not implement.
+
 ## Overview
 
 PinchTab serves as the **deep browser enhancement layer** on top of SeaPortal's discovery and HTTP extraction. It adds visual, interactive, performance, and security capabilities that pure HTTP scraping cannot provide.
@@ -20,13 +25,16 @@ pinchtab compare <live-url> <staging-url> [flags]
 
 ## Input
 
-- SeaPortal `SiteReport` JSON (or direct URL + sitemap data)
-- Optional: authentication details (cookies, login flow)
+- SeaPortal `SiteReport` JSON (or direct URL + sitemap data) — *shipped as a JSON array of
+  SeaPortal `Result` objects (`--seaportal-report`), a URL, or a sitemap (`--sitemap`)*
+- Optional: authentication details (cookies, login flow) — *cookies and `--profile` shipped;
+  login flow not shipped*
 - Comparison baseline (for diff mode)
 
 ## Output
 
-Enhanced `SiteReport` with browser-enriched fields per page.
+Enhanced `SiteReport` with browser-enriched fields per page. *Shipped as a versioned
+`AuditReport` (`internal/audit/types.go`), not an extended `SiteReport`.*
 
 ## Page Enhancement Fields (PinchTab)
 
@@ -44,10 +52,13 @@ type BrowserPageData struct {
 }
 ```
 
+*Shipped with an extra `JSErrors []JSError` field. `FullPageScreenshot` exists but is never
+set: audit screenshots cover the viewport.*
+
 ## Key Features
 
 ### 1. Visual Analysis
-- Full-page screenshots
+- Full-page screenshots *(not shipped: audit screenshots are viewport-only)*
 - Image diffing (for compare mode)
 - Highlighted diff images with annotations
 
@@ -63,15 +74,15 @@ type BrowserPageData struct {
 ### 4. Performance (Browser-level)
 - Core Web Vitals (via CDP)
 - Navigation timing
-- Resource loading breakdown
+- Resource loading breakdown *(not shipped as a breakdown; per-request `duration` is in `networkRequests`)*
 
 ### 5. Usability & Accessibility
 - Basic a11y checks
 - Missing form labels, alt texts
-- Navigation flow validation
+- Navigation flow validation *(not shipped)*
 
 ### 6. Security Surface (optional)
-- Integration point for Nuclei or similar
+- Integration point for Nuclei or similar *(not shipped; built-in rules only)*
 - Exposed endpoints detection
 - Mixed content warnings
 
@@ -80,7 +91,8 @@ type BrowserPageData struct {
 - Respect SeaPortal's page groups and samples
 - Allow overriding sample size
 - Parallel processing with configurable concurrency
-- Smart prioritization (homepage, key flows first)
+- Smart prioritization (homepage, key flows first) — *shipped as: entry URL first, ungrouped
+  pages before template-group samples; no key-flow detection*
 
 ### Preview → Expand (large sites)
 
@@ -125,7 +137,8 @@ the same SSRF/redirect vetting as browser navigation.
 
 ## Integration Points
 
-- Library mode: `pinchtab.EnrichWithBrowser(seaPortalReport)`
+- Library mode: `pinchtab.EnrichWithBrowser(seaPortalReport)` — *shipped as
+  `pinchtabaudit.New(baseURL, token).EnrichWithBrowser(ctx, AuditInput, opts)` in `pkg/pinchtabaudit`*
 - CLI for standalone use
 - Docker-friendly for CI/CD
 - Output formats: JSON (for LLM), Markdown/HTML report, PDF
@@ -133,8 +146,8 @@ the same SSRF/redirect vetting as browser navigation.
 ## Authentication Support
 
 - Cookie injection
-- Login flow recording/replay
-- Headless + stealth options
+- Login flow recording/replay *(not shipped)*
+- Headless + stealth options *(no audit-specific flags for these)*
 
 ## Flags (examples)
 
@@ -142,12 +155,12 @@ the same SSRF/redirect vetting as browser navigation.
 - `--screenshot`
 - `--network-monitor`
 - `--visual-diff`
-- `--llm-refine`
+- `--llm-refine` *(not shipped)*
 - `--output-dir`
 - `--concurrency int`
 
 ---
 
-**Status**: Ready for implementation planning.
+**Status**: Ready for implementation planning. *(Superseded: see the status note at the top.)*
 
 This complements the SeaPortal spec perfectly.

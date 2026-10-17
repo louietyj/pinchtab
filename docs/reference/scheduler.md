@@ -48,6 +48,9 @@ The scheduler is off by default. Dashboard mode registers the task routes only w
 | `workerCount` | `4` | number of worker goroutines |
 | `maxBatchSize` | `50` | max tasks one `POST /tasks/batch` may submit; a larger batch is refused with `batch_too_large` |
 
+A numeric knob set to `0` or below means its default, never unlimited. The scheduler reads these
+values once at startup; changing them takes a server restart.
+
 ## Task Object
 
 Tasks are scheduler-owned records with these main fields:
@@ -58,7 +61,8 @@ Tasks are scheduler-owned records with these main fields:
 | `agentId` | submitting agent identifier |
 | `action` | action kind to run |
 | `tabId` | target tab ID |
-| `ref` | optional element ref |
+| `selector` | optional element selector (ref, CSS, XPath or text) |
+| `ref` | optional element ref (deprecated; use `selector`) |
 | `params` | optional action-specific request fields |
 | `priority` | lower number means higher priority |
 | `state` | current task state |
@@ -105,15 +109,16 @@ Request fields:
 | `agentId` | yes | validated at request time |
 | `action` | yes | becomes the executor `kind` |
 | `tabId` | practically yes | required by the execution path |
-| `ref` | no | top-level element ref for element-targeted actions |
-| `params` | no | action-specific fields merged into the executor request body |
+| `selector` | no | top-level element selector for element-targeted actions |
+| `ref` | no | deprecated top-level element ref; use `selector` |
+| `params` | no | action-specific fields merged into the executor request body (`kind`, `ref`, `selector` and `tabId` inside `params` are ignored) |
 | `priority` | no | lower number means higher priority |
 | `deadline` | no | RFC3339 timestamp; defaults to `now + 60s` |
 | `callbackUrl` | no | webhook URL; receives POST with task snapshot on terminal state |
 
 Important:
 
-- request validation enforces only `agentId` and `action`
+- request validation enforces only `agentId` and `action` (plus a valid `callbackUrl` when one is given); other failures answer `400`
 - missing `tabId` is rejected later during execution with `tabId is required for task execution`
 - past deadlines are rejected at submission time
 - `agentId` is also forwarded to the executor as `X-Agent-Id`, so the resulting browser action is attributed to the same agent in `/api/activity` and the dashboard Agents view
@@ -254,6 +259,7 @@ It builds the action body like this:
 {
   "kind": "<action>",
   "ref": "<ref>",
+  "selector": "<selector>",
   "...params": "..."
 }
 ```
@@ -261,8 +267,8 @@ It builds the action body like this:
 That means:
 
 - `action` becomes `kind`
-- top-level `ref` is forwarded when present
-- every key in `params` is merged into the top-level action body
+- top-level `ref` and `selector` are forwarded when present
+- every other key in `params` is merged into the top-level action body; `params` cannot override `kind`, `ref`, `selector` or `tabId`
 - `agentId` is propagated as `X-Agent-Id`
 
 Example:
@@ -306,9 +312,9 @@ curl http://localhost:9867/scheduler/stats
   "queue": {
     "totalQueued": 5,
     "totalInflight": 2,
-    "agentCounts": {
-      "agent-crawl-01": 3,
-      "agent-scrape-02": 2
+    "agents": {
+      "agent-crawl-01": { "queued": 3, "inflight": 1 },
+      "agent-scrape-02": { "queued": 2, "inflight": 1 }
     }
   },
   "metrics": {
@@ -374,7 +380,8 @@ curl -X POST http://localhost:9867/tasks \
 Webhook behavior:
 
 - delivery is best-effort: failures are logged but do not affect task state
-- only `http` and `https` schemes are allowed (SSRF protection)
+- only `http` and `https` schemes are allowed, with no credentials in the URL, and the host must resolve to a
+  public address (loopback and private/internal hosts are refused at submission with `400`)
 - a dedicated HTTP client with a 10-second timeout is used
 - custom headers are sent: `X-PinchTab-Event: task.completed` and `X-PinchTab-Task-ID: <taskId>`
 
@@ -395,9 +402,9 @@ curl -X POST http://localhost:9867/tasks/batch \
     "agentId": "agent-crawl-01",
     "callbackUrl": "https://pinchtab.com/hooks/batch",
     "tasks": [
-      { "action": "click", "tabId": "TAB_ID", "params": { "selector": "#btn" } },
+      { "action": "click", "tabId": "TAB_ID", "ref": "e5" },
       { "action": "scroll", "tabId": "TAB_ID", "params": { "scrollY": 400 } },
-      { "action": "hover", "tabId": "TAB_ID", "params": { "selector": "h1" }, "priority": 1 }
+      { "action": "hover", "tabId": "TAB_ID", "ref": "e9", "priority": 1 }
     ]
   }'
 # Response (202 Accepted)
@@ -417,9 +424,11 @@ curl -X POST http://localhost:9867/tasks/batch \
 | --- | --- | --- |
 | `agentId` | yes | shared across all tasks in the batch |
 | `callbackUrl` | no | webhook URL applied to every task |
-| `tasks` | yes | array of task definitions (1–50) |
+| `tasks` | yes | array of task definitions (1 to `scheduler.maxBatchSize`) |
 
-Each task definition supports the same fields as a single task submit (`action`, `tabId`, `ref`, `params`, `priority`, `deadline`) except `agentId` and `callbackUrl` which are inherited from the batch.
+Each task definition supports `action`, `tabId`, `ref`, `params`, `priority` and `deadline`; `agentId` and
+`callbackUrl` are inherited from the batch. A batch task has no `selector` field, and a `selector` inside
+`params` is dropped, so target elements in a batch by `ref`.
 
 #### Batch Validation
 
@@ -430,9 +439,14 @@ Each task definition supports the same fields as a single task submit (`action`,
 | more tasks than `scheduler.maxBatchSize` (default 50) | `400 Bad Request` with `batch_too_large` code |
 | invalid JSON body | `400 Bad Request` |
 
-Partial failure: if some tasks are rejected by admission (queue full), the accepted tasks are still submitted. The response includes each task's status individually.
+Partial failure: if some tasks are rejected by admission (queue full) or validation, the accepted tasks are still
+submitted. Each rejected item comes back with `state: "rejected"` and an `error`; `submitted` is the number of items
+in the response, rejected ones included.
 
-### Config Hot-Reload
+### Config Hot-Reload (Go API only)
+
+These are Go APIs in `internal/scheduler` for embedders. `pinchtab server` does not start a
+`ConfigWatcher` or call `ReloadConfig`, so editing `scheduler.*` in the config file still needs a restart.
 
 `ReloadConfig(cfg)` updates queue limits, inflight limits, and result TTL at runtime without restarting the scheduler.
 

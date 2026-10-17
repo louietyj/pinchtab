@@ -15,6 +15,7 @@ import (
 
 	"github.com/pinchtab/pinchtab/internal/bridge"
 	"github.com/pinchtab/pinchtab/internal/config"
+	"github.com/pinchtab/pinchtab/internal/selector"
 )
 
 type uploadLockBridge struct {
@@ -31,10 +32,25 @@ type recordingUploadBridge struct {
 	selector      string
 	nodeID        int64
 	attachedPaths []string
+	refCache      *bridge.RefCache
+	gotRefCache   *bridge.RefCache
+	gotFrameID    string
 }
 
-func (m *recordingUploadBridge) ResolveSelectorToNodeID(_ context.Context, selector string) (int64, error) {
-	m.selector = selector
+func (m *recordingUploadBridge) GetRefCache(string) *bridge.RefCache { return m.refCache }
+
+func (m *recordingUploadBridge) ResolveSelectorToNodeID(_ context.Context, sel string, refCache *bridge.RefCache, frameID string) (int64, error) {
+	m.selector = sel
+	m.gotRefCache = refCache
+	m.gotFrameID = frameID
+	if parsed := selector.Parse(sel); parsed.Kind == selector.KindRef {
+		if refCache != nil {
+			if target, ok := refCache.Lookup(parsed.Value); ok {
+				return target.BackendNodeID, nil
+			}
+		}
+		return 0, fmt.Errorf("ref %s not in snapshot cache", parsed.Value)
+	}
 	return 42, nil
 }
 
@@ -53,7 +69,7 @@ type failingSelectorUploadBridge struct {
 	mockBridge
 }
 
-func (failingSelectorUploadBridge) ResolveSelectorToNodeID(context.Context, string) (int64, error) {
+func (failingSelectorUploadBridge) ResolveSelectorToNodeID(context.Context, string, *bridge.RefCache, string) (int64, error) {
 	return 0, fmt.Errorf("no element matches selector")
 }
 
@@ -68,6 +84,42 @@ func TestHandleUpload_SelectorNotFoundIs404(t *testing.T) {
 	h.HandleUpload(w, req)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for unresolved selector, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleUpload_ResolvesRefSelector(t *testing.T) {
+	rec := &recordingUploadBridge{refCache: &bridge.RefCache{Refs: map[string]int64{"e0": 4242}}}
+	h := New(rec, &config.RuntimeConfig{AllowUpload: true, StateDir: t.TempDir(), ActionTimeout: time.Second}, nil, nil, nil)
+	req := httptest.NewRequest("POST", "/upload?tabId=t1", bytes.NewReader([]byte(`{"selector":"e0","files":["aGVsbG8="]}`)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.HandleUpload(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("ref selector e0 did not upload: %d %s", w.Code, w.Body.String())
+	}
+	if rec.gotRefCache != rec.refCache {
+		t.Fatalf("handler did not forward the tab's RefCache (got %v), so a ref cannot resolve", rec.gotRefCache)
+	}
+	if rec.nodeID != 4242 {
+		t.Fatalf("ref e0 resolved to node %d, want 4242 from the cache", rec.nodeID)
+	}
+}
+
+func TestHandleUpload_ResolvesFrameScopedSelector(t *testing.T) {
+	rec := &recordingUploadBridge{}
+	rec.SetFrameScope("tab1", bridge.FrameScope{FrameID: "FRAME-7"})
+	h := New(rec, &config.RuntimeConfig{AllowUpload: true, StateDir: t.TempDir(), ActionTimeout: time.Second}, nil, nil, nil)
+	req := httptest.NewRequest("POST", "/upload?tabId=t1", bytes.NewReader([]byte(`{"selector":"#f","files":["aGVsbG8="]}`)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.HandleUpload(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("frame-scoped selector did not upload: %d %s", w.Code, w.Body.String())
+	}
+	if rec.gotFrameID != "FRAME-7" {
+		t.Fatalf("handler resolved the selector in frame %q, want FRAME-7 — an in-frame input is unreachable otherwise", rec.gotFrameID)
 	}
 }
 

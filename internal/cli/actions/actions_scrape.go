@@ -75,7 +75,7 @@ func Scrape(client *http.Client, base, token string, cmd *cobra.Command, target 
 	}
 
 	longClient := &http.Client{Transport: client.Transport, Timeout: scrapeTimeout}
-	raw, err := apiclient.DoPostRawE(longClient, base, token, "/scrape", body)
+	raw, err := apiclient.DoRawE(longClient, base, token, http.MethodPost, "/scrape", apiclient.WithBody(body))
 	if err != nil {
 		return err
 	}
@@ -156,6 +156,13 @@ func printScrapeSummary(report scrape.Report) {
 		status := "source: " + p.Source
 		if p.BrowserError != "" {
 			status += " · browser failed: " + p.BrowserError
+		}
+		// A non-2xx page carries no transport error, so without this it printed as an
+		// ordinary "source: http" line and the failure was invisible next to the count.
+		// scrape.PageFailed is the same predicate the summary partitions on, so the line
+		// and the failedPages count agree — a browser-recovered non-2xx page is not marked.
+		if p.StatusCode >= 400 && scrape.PageFailed(p) {
+			status = fmt.Sprintf("failed: HTTP %d", p.StatusCode)
 		}
 		if p.Error != "" {
 			status = "error: " + p.Error

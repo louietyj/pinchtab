@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -198,6 +199,161 @@ func TestParseArgsValidatesSlowest(t *testing.T) {
 				t.Errorf("Slowest = %d, want %d", args.Slowest, tc.want)
 			}
 		})
+	}
+}
+
+func TestParseDockerStatsLine(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		line     string
+		wantOK   bool
+		wantID   string
+		wantName string
+		wantMiB  float64
+		wantPids int
+	}{
+		{"chrome pinchtab", "a1b2c3,e2e-pinchtab-1,484MiB / 7.667GiB,12", true, "a1b2c3", "e2e-pinchtab-1", 484, 12},
+		{"gib used", "d4e5f6,e2e-pinchtab-secure-1,1.5GiB / 7.667GiB,30", true, "d4e5f6", "e2e-pinchtab-secure-1", 1536, 30},
+		{"non-numeric pids keeps the memory sample", "a1b2c3,e2e-pinchtab-1,200MiB / 8GiB,--", true, "a1b2c3", "e2e-pinchtab-1", 200, 0},
+		{"too few fields", "e2e-pinchtab-1,200MiB / 8GiB,3", false, "", "", 0, 0},
+		{"unparseable memory", "a1b2c3,e2e-pinchtab-1,notmem,3", false, "", "", 0, 0},
+		{"blank", "", false, "", "", 0, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := parseDockerStatsLine(tc.line)
+			if ok != tc.wantOK {
+				t.Fatalf("parseDockerStatsLine(%q) ok = %v, want %v", tc.line, ok, tc.wantOK)
+			}
+			if !ok {
+				return
+			}
+			if got.ID != tc.wantID || got.Name != tc.wantName || got.MiB != tc.wantMiB || got.Pids != tc.wantPids {
+				t.Errorf("parseDockerStatsLine(%q) = %+v, want id %q name %q mib %v pids %d", tc.line, got, tc.wantID, tc.wantName, tc.wantMiB, tc.wantPids)
+			}
+		})
+	}
+}
+
+func TestSelectStackSamplesRecordsOnlyThisStacksContainers(t *testing.T) {
+	stackIDs := map[string]bool{"a1b2c3d4e5f6": true}
+	statsOutput := strings.Join([]string{
+		"a1b2c3d4e5f6,e2e-pinchtab-1,484MiB / 8GiB,12",
+		"9988776655ff,pinchtab-stealth-chrome,900MiB / 8GiB,40",
+		"1122334455aa,e2e-fixtures-1,10MiB / 8GiB,3",
+	}, "\n")
+
+	got := selectStackSamples(statsOutput, stackIDs)
+	if len(got) != 1 || got[0].Name != "e2e-pinchtab-1" {
+		t.Fatalf("selectStackSamples = %+v; a foreign pinchtab container or the stack's fixtures must not be recorded", got)
+	}
+}
+
+func TestContainerIDMatchesToleratesShortAndFullIDs(t *testing.T) {
+	stackIDs := map[string]bool{"a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2": true}
+	if !containerIDMatches("a1b2c3d4e5f6", stackIDs) {
+		t.Error("a short docker stats id must match the full compose ps id it prefixes")
+	}
+	if containerIDMatches("ffffffffffff", stackIDs) {
+		t.Error("an unrelated id must not match")
+	}
+}
+
+func TestParseMemUsageMiB(t *testing.T) {
+	for _, tc := range []struct {
+		field  string
+		want   float64
+		wantOK bool
+	}{
+		{"484MiB / 7.667GiB", 484, true},
+		{"1GiB / 8GiB", 1024, true},
+		{"512KiB / 8GiB", 0.5, true},
+		{"0B / 8GiB", 0, true},
+		{"1TiB", 1024 * 1024, true},
+		{"nonsense", 0, false},
+	} {
+		t.Run(tc.field, func(t *testing.T) {
+			got, ok := parseMemUsageMiB(tc.field)
+			if ok != tc.wantOK || (ok && got != tc.want) {
+				t.Errorf("parseMemUsageMiB(%q) = (%v, %v), want (%v, %v)", tc.field, got, ok, tc.want, tc.wantOK)
+			}
+		})
+	}
+}
+
+func TestMemoryAccumulatorTracksPeakFinalAndPeakPids(t *testing.T) {
+	acc := newMemoryAccumulator()
+	for _, s := range []memorySample{
+		{Name: "pinchtab-pinchtab-1", MiB: 300, Pids: 4},
+		{Name: "pinchtab-pinchtab-secure-1", MiB: 120, Pids: 2},
+		{Name: "pinchtab-pinchtab-1", MiB: 670, Pids: 12},
+		{Name: "pinchtab-pinchtab-1", MiB: 450, Pids: 9},
+	} {
+		acc.add(s)
+	}
+
+	got := acc.reduce()
+	want := []containerMemory{
+		{Container: "pinchtab-pinchtab-1", PeakMiB: 670, FinalMiB: 450, PeakPids: 12},
+		{Container: "pinchtab-pinchtab-secure-1", PeakMiB: 120, FinalMiB: 120, PeakPids: 2},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("reduce() = %+v, want %+v", got, want)
+	}
+}
+
+func TestRenderSlowestPrintsContainerMemoryAfterTheScenarioTotals(t *testing.T) {
+	timings := buildSuiteTimings("api", "singleCompose", "chrome", "2026-01-01T00:00:00Z", sampleResults())
+	timings.Memory = &suiteMemory{
+		Provider: "chrome",
+		Containers: []containerMemory{
+			{Container: "pinchtab-pinchtab-1", PeakMiB: 670, FinalMiB: 450, PeakPids: 12},
+		},
+	}
+	out := renderSlowest(timings, 2)
+
+	totalsIdx := strings.Index(out, "per-scenario totals")
+	memIdx := strings.Index(out, "container memory (browser: chrome)")
+	if memIdx < 0 {
+		t.Fatalf("memory section missing:\n%s", out)
+	}
+	if memIdx < totalsIdx {
+		t.Errorf("memory section must come after the per-scenario totals:\n%s", out)
+	}
+	if !strings.Contains(out, "pinchtab-pinchtab-1") || !strings.Contains(out, "peak pids  12") {
+		t.Errorf("memory line missing peak/pid figures:\n%s", out)
+	}
+
+	timings.Memory = nil
+	if strings.Contains(renderSlowest(timings, 2), "container memory") {
+		t.Error("a run with no sampled memory must not print an empty memory section")
+	}
+}
+
+func TestSuiteTimingsOmitsMemoryWhenNoneSampled(t *testing.T) {
+	timings := buildSuiteTimings("api", "singleCompose", "chrome", "", sampleResults())
+	encoded, err := json.Marshal(timings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "\"memory\"") {
+		t.Errorf("timings JSON carries a memory key with nothing sampled:\n%s", encoded)
+	}
+}
+
+func TestIsPinchtabBrowserContainerExcludesFixturesAndRunners(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		want bool
+	}{
+		{"pinchtab-pinchtab-1", true},
+		{"pinchtab-pinchtab-secure-1", true},
+		{"pinchtab-fixtures-1", false},
+		{"pinchtab-runner-api-run-abc", false},
+		{"some-other-service-1", false},
+	} {
+		if got := isPinchtabBrowserContainer(tc.name); got != tc.want {
+			t.Errorf("isPinchtabBrowserContainer(%q) = %v, want %v", tc.name, got, tc.want)
+		}
 	}
 }
 

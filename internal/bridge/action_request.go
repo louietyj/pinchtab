@@ -153,6 +153,13 @@ type ActionRequest struct {
 	Browser string `json:"browser,omitempty"`
 
 	Vocab string `json:"vocab,omitempty"`
+
+	// VocabTab names the tab the echoed Vocab token belongs to. The server enforces
+	// the epoch check only when it is empty (legacy clients) or equals the resolved
+	// tab, so a token left over from a tab the caller has since moved off is ignored
+	// rather than refused. It rides in the body (and the GET query) because the
+	// X-PinchTab-* request headers are stripped from public clients.
+	VocabTab string `json:"vocabTab,omitempty"`
 }
 
 type actionRequestAlias ActionRequest
@@ -321,20 +328,16 @@ func (b *Bridge) ExecuteAction(ctx context.Context, kind string, req ActionReque
 	}
 	fn, ok := b.Actions[kind]
 	if !ok {
-		return nil, fmt.Errorf("unknown action: %s", kind)
+		return nil, fmt.Errorf("%w: %s", ErrUnknownAction, kind)
 	}
-	guardEnabled := b.Config == nil || b.Config.EnableActionGuards
-	checkNav := guardEnabled && shouldCheckUnexpectedNavigation(req)
 	urlReader := b.URLReader
 	if urlReader == nil {
 		urlReader = defaultActionURLReader
 		slog.Debug("URLReader is nil, using default fallback (guard checks may be no-ops without chromedp context)")
 	}
 	var beforeURL string
-	if checkNav {
-		if u, err := urlReader(ctx); err == nil {
-			beforeURL = u
-		}
+	if u, err := urlReader(ctx); err == nil {
+		beforeURL = u
 	}
 
 	res, err := fn(ctx, req)
@@ -342,16 +345,38 @@ func (b *Bridge) ExecuteAction(ctx context.Context, kind string, req ActionReque
 		return nil, classifyActionError(err)
 	}
 
-	if checkNav && beforeURL != "" {
-		afterURL, uErr := urlReader(ctx)
-		if uErr == nil {
-			if navErr := checkUnexpectedNavigation(beforeURL, afterURL); navErr != nil {
-				return nil, navErr
-			}
+	if beforeURL != "" {
+		if afterURL, uErr := urlReader(ctx); uErr == nil && navigationChanged(beforeURL, afterURL) {
+			res = withNavigationOutcome(res, beforeURL, afterURL)
 		}
 	}
 
 	return res, nil
+}
+
+// Navigated, LandedURL, PreviousURL and RefsStale are the keys a result grows
+// when the action moved the page. They ride on the SUCCESSFUL result — the
+// action ran, so the caller gets what it earned plus what it now needs to know:
+// where it landed, and that every ref from its last snapshot is dead, because
+// refs are minted per snapshot.
+const (
+	ResultNavigated   = "navigated"
+	ResultLandedURL   = "url"
+	ResultPreviousURL = "previousUrl"
+	ResultRefsStale   = "refsStale"
+)
+
+// withNavigationOutcome never drops the action's own result: it is the value the
+// API used to discard, and delivering it is the whole point.
+func withNavigationOutcome(res map[string]any, before, after string) map[string]any {
+	if res == nil {
+		res = map[string]any{}
+	}
+	res[ResultNavigated] = true
+	res[ResultLandedURL] = after
+	res[ResultPreviousURL] = before
+	res[ResultRefsStale] = true
+	return res
 }
 
 func (b *Bridge) AvailableActions() []string {

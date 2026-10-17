@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pinchtab/pinchtab/internal/api/types"
 	"github.com/pinchtab/pinchtab/internal/server"
 )
 
@@ -56,10 +57,15 @@ func fetchHealthSnapshot(port string) (*healthSnapshot, healthSnapshotState) {
 	return fetchHealthSnapshotWithToken(port, "")
 }
 
-// fetchHealthSnapshotWithToken is fetchHealthSnapshot with optional auth, so it
-// can read fields like restartRequired from a server that requires auth on
-// /health (the unauthenticated probe would just see a protected listener).
-func fetchHealthSnapshotWithToken(port, token string) (*healthSnapshot, healthSnapshotState) {
+// probeHealthSnapshot probes the localhost listener (with the token, so a
+// protected /health is distinguished from a dead one) and decodes the body for
+// ANY PinchTab mode. It classifies only reachability and auth; it does not judge
+// the mode or serving status. fetchHealthSnapshotWithToken layers the
+// dashboard-serving check on top for the landing banner and `pinchtab health`,
+// while callers that only need the reported mode (the config-set restart hint)
+// read snap.Mode from what this returns — a bridge, which reports no mode, comes
+// back running with an empty Mode rather than being classed invalid.
+func probeHealthSnapshot(port, token string) (*healthSnapshot, healthSnapshotState) {
 	var headers map[string]string
 	if auth := server.AuthorizationHeaderValue(token); auth != "" {
 		headers = map[string]string{"Authorization": auth}
@@ -79,8 +85,20 @@ func fetchHealthSnapshotWithToken(port, token string) (*healthSnapshot, healthSn
 	if err := json.Unmarshal(body, &snap); err != nil {
 		return nil, healthSnapshotInvalid
 	}
-	if snap.Status != "ok" || snap.Mode != "dashboard" || strings.TrimSpace(snap.Version) == "" {
+	return &snap, healthSnapshotRunning
+}
+
+// fetchHealthSnapshotWithToken is fetchHealthSnapshot with optional auth, so it
+// can read fields like restartRequired from a server that requires auth on
+// /health (the unauthenticated probe would just see a protected listener). It
+// answers "running" only for a serving dashboard front door.
+func fetchHealthSnapshotWithToken(port, token string) (*healthSnapshot, healthSnapshotState) {
+	snap, state := probeHealthSnapshot(port, token)
+	if state != healthSnapshotRunning {
+		return nil, state
+	}
+	if !types.HealthStatusServing(snap.Status) || snap.Mode != types.ModeDashboard || strings.TrimSpace(snap.Version) == "" {
 		return nil, healthSnapshotInvalid
 	}
-	return &snap, healthSnapshotRunning
+	return snap, healthSnapshotRunning
 }

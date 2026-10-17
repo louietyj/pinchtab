@@ -8,6 +8,25 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
+// SelectOption is one <option> of a <select>, as its value attribute and its
+// trimmed visible text.
+type SelectOption struct {
+	Value string `json:"value"`
+	Text  string `json:"text"`
+}
+
+// NoOptionMatchError reports a <select> whose requested value matched no option.
+// It carries every option so the caller can pick one without re-inspecting, and
+// so a handler can classify the miss as a client error rather than a server fault.
+type NoOptionMatchError struct {
+	Value     string
+	Available []SelectOption
+}
+
+func (e *NoOptionMatchError) Error() string {
+	return fmt.Sprintf("no option matched %q by value or visible text", e.Value)
+}
+
 func FillByNodeID(ctx context.Context, nodeID int64, value string) error {
 	return chromedp.Run(ctx,
 		chromedp.ActionFunc(func(ctx context.Context) error {
@@ -179,7 +198,11 @@ func SelectByNodeID(ctx context.Context, nodeID int64, value string) error {
 				return fmt.Errorf("parse select result: %w", err)
 			}
 			if !outcome.OK {
-				return fmt.Errorf("%s", outcome.Error)
+				available := make([]SelectOption, len(outcome.Available))
+				for i, o := range outcome.Available {
+					available[i] = SelectOption{Value: o.Value, Text: o.Text}
+				}
+				return &NoOptionMatchError{Value: value, Available: available}
 			}
 			return nil
 		}),

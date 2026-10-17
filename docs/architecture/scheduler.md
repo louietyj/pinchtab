@@ -16,7 +16,7 @@ It does not replace the direct action endpoints.
 
 ## Runtime Placement
 
-In dashboard mode, the scheduler is created only when `scheduler.enabled` is true. It is registered directly on the main mux and exposes:
+In server mode, the scheduler is created only when `scheduler.enabled` is true. It is registered directly on the main mux and exposes:
 
 - `POST /tasks`
 - `GET /tasks`
@@ -74,11 +74,20 @@ Across agents:
 
 The result store keeps snapshots of tasks and evicts terminal tasks after the configured TTL.
 
-### ManagerResolver
+### Resolver
 
-The resolver maps a `tabId` to the owning instance port through `instance.Manager.FindInstanceByTabID`.
+The scheduler takes the orchestrator directly as its `InstanceResolver`: `ResolveTabInstance(tabId)` maps a `tabId` to the owning instance port, which is how the scheduler knows where to forward execution.
 
-This is how the scheduler knows where to forward execution.
+The orchestrator also implements `RequestAuthorizer`. Before dispatch the executor calls `AuthorizeTabRequest(tabId, req)`, which routes through the orchestrator's single hop-auth owner `applyInstanceAuth`: the request carries the instance's bearer token and, on a trusted child hop, the internal token. That is what lets the instance honor the `X-PinchTab-*` identity headers instead of stripping them at ingress, so the instance attributes the action to `scheduler` rather than `client`. Managed child instances run with activity recording off, so that attribution is persisted only by an instance that records activity. A resolver that does not implement `RequestAuthorizer` sends no credential, and an instance that requires one refuses the task with `401`.
+
+### Activity Recording
+
+The scheduler runs in the same process as the server's activity recorder, so it records each dispatched task there directly through an `ActivitySink` (`internal/server` passes the dashboard-feed recorder into `New`). One event per task carries source `scheduler`, the task's `agentId` and `tabId`, the action kind, and the outcome status and duration once the executor returns. The event always reaches the live dashboard stream (`/api/events`); it is written to the activity log, and so returned by `/api/activity` after a reload, only when `observability.activity.events.scheduler` is enabled, which is off by default like the other non-client sources. A failure response from the instance is recorded with the instance's own status (a `404` for a selector that matched nothing) and the executor's error text; a transport failure that never produced a response records as `502`.
+
+This sink is the single source of a scheduled action in the dashboard feed, recorded once and independent of any instance-level recording:
+
+- Managed child instances run with activity recording off, so the child never records the forwarded action and there is no duplicate.
+- An attached external bridge records the forwarded action into its own recorder and feed, not the server's, so it does not double-count in the dashboard stream either.
 
 ## Dispatch Lifecycle
 
@@ -126,7 +135,7 @@ The scheduler stores the corresponding cancel function so that:
 
 Two deadline paths exist:
 
-- queued task expiry: a background reaper scans queued tasks every second and marks expired ones as failed
+- queued task expiry: a background reaper scans queued tasks every 5 seconds and marks expired ones as failed
 - running task deadline: the per-task context deadline is enforced by the HTTP request to the executor
 
 Queued expiry currently records:
@@ -236,7 +245,7 @@ Custom headers are sent: `X-PinchTab-Event: task.completed` and `X-PinchTab-Task
 
 ### Batch Submission
 
-`POST /tasks/batch` accepts an array of task definitions (up to 50) sharing a single `agentId` and optional `callbackUrl`. Each task is submitted individually through `Submit()`, so queue admission limits apply per-task.
+`POST /tasks/batch` accepts an array of task definitions (up to `scheduler.maxBatchSize`, default 50) sharing a single `agentId` and optional `callbackUrl`. Each task is submitted individually through `Submit()`, so queue admission limits apply per-task.
 
 The batch endpoint supports partial failure: if some tasks are rejected (queue full), the accepted tasks are still submitted and the response includes per-task status.
 

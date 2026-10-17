@@ -9,9 +9,7 @@ PinchTab is a browser control server for AI agents — Small Go binary with HTTP
 
 ## Project Location
 
-```bash
-cd ~/dev/pinchtab
-```
+Run everything from the repository root (a clone of `github.com/pinchtab/pinchtab`).
 
 ## Dev Commands
 
@@ -31,9 +29,9 @@ All development commands run via `./dev`:
 | `./dev e2e basic` | Basic suite (api + cli + infra) |
 | `./dev e2e extended` | Extended suite (all extended) |
 | `./dev e2e smoke` | Smoke suite |
-| `./dev e2e smoke-docker` | Host Docker smoke checks only |
+| `./dev smoke` | Host Docker smoke checks (`--browser=chrome\|cloak\|all`) |
 | `./dev e2e test "<name>"` | Run a single E2E test by `start_test` name |
-| `./dev all` | check + test + e2e (pre-push gate) |
+| `./dev all` | check + test + e2e extended (pre-push gate) |
 | `./dev binaries` | Build the full release binary matrix into dist/ |
 | `./dev doctor` | Setup dev environment |
 
@@ -47,9 +45,10 @@ internal/
   server/         HTTP server
   dashboard/      Embedded React dashboard
   config/         Configuration
+  routes/         API route catalogue
   assets/         Embedded assets (stealth.js)
 dashboard/        React dashboard source (Vite + TypeScript)
-tests/e2e/        E2E test suites
+tests/e2e/        E2E runner, fixtures, scenarios/{api,cli,infra,plugin}/
 ```
 
 ## Workflow: New Feature or Bug Fix
@@ -71,7 +70,7 @@ tests/e2e/        E2E test suites
    ./dev e2e basic    # E2E tests (Docker required)
    ```
 
-4. **Commit** with conventional commits:
+4. **Commit** with conventional commits, usually scoped — `fix(extract): … (PIN-394)`:
    - `feat:` new feature
    - `fix:` bug fix
    - `refactor:` code change without behavior change
@@ -110,8 +109,9 @@ tests/e2e/        E2E test suites
 | `internal/bridge/bridge.go` | Chrome CDP bridge |
 | `internal/handlers/*.go` | HTTP API endpoints |
 | `dashboard/src/` | React dashboard source |
-| `tests/e2e/scenarios-api/` | API E2E tests |
-| `tests/e2e/scenarios-cli/` | CLI E2E tests |
+| `internal/routes/routes.go` | API route catalogue |
+| `tests/e2e/scenarios/api/` | API E2E tests |
+| `tests/e2e/scenarios/cli/` | CLI E2E tests |
 
 ## Testing
 
@@ -131,34 +131,34 @@ go test ./internal/handlers  # Specific package
 ./dev e2e cli-extended          # CLI extended tests
 ./dev e2e infra-extended        # Infra extended tests (multi-instance)
 ./dev e2e extended              # Full extended suite (all extended tests)
-./dev e2e smoke-docker          # Host Docker smoke checks only
+./dev smoke                     # Host Docker smoke checks (not an e2e suite)
 
 # Run specific test file(s) with filter (second argument)
 ./dev e2e api clipboard                # Run only clipboard-basic.sh
-./dev e2e api-extended "clipboard|console"  # Run clipboard and console tests
+./dev e2e api-extended tabs            # Run tabs-extended.sh
 ./dev e2e cli browser                  # Run browser-basic.sh in CLI suite
 
 # Run a single test by its start_test name (fastest debug loop)
-./dev e2e test "humanClick: click input by ref"
+./dev e2e test "click with humanize: click input by ref"
 ./dev e2e test "scroll (down)"
 ./dev e2e test "low-level mouse"
 ```
 
-The scenario filter is a substring matched against scenario filenames. Requires Docker daemon running.
+The scenario filter is one plain substring (no regex, no `|`) matched against scenario file names, groups, tiers, helpers and tags. Requires Docker daemon running.
 
 #### Single-test mode (`dev e2e test "<name>"`)
 
 Use this when iterating on one specific E2E failure. The runner:
 
 1. Greps `tests/e2e/scenarios/**/*.sh` for `start_test "...<name substring>..."`.
-2. Auto-picks the suite (`api`/`cli`/`infra`/`plugin`) and `-extended` variant from the matching scenario file's path.
-3. Builds fresh images (`compose ... up --build`) and runs **only the matching `start_test`...`end_test` block** — the scenario preamble (helper sourcing, `FIXTURES_URL`, etc.) is preserved, every other test in the file is skipped.
+2. Auto-picks the suite (`api`/`cli`/`infra`/`plugin`) and `-extended` variant (or `smoke` for `*-smoke.sh`) from the matching scenario file's path.
+3. Builds the images (`compose build`, then `up`) and runs, inside that scenario file, **only the `start_test`...`end_test` blocks whose name contains the substring** — the scenario preamble (helper sourcing, `FIXTURES_URL`, etc.) is preserved, every other test in the file is skipped.
 
 Notes:
 - The substring is literal (fgrep), so colons/parens/quotes in test names work without escaping.
-- If multiple tests match, the runner uses the first and prints the others — pass a longer/more-specific substring to disambiguate.
+- If several tests match, the scenario file of the first match is used and the others are printed — pass a longer/more-specific substring to disambiguate. It is not a way to run a group of tests; for a whole scenario use `go run ./tests/tools/runner e2e --suite <suite> --filter <stem>`.
 - Logs stream to the terminal by default (unlike full suites which hide logs); helpful for debugging.
-- Implemented by `scripts/dev-e2e.sh` + `E2E_TEST_FILTER` plumbing through `scripts/e2e.sh` and `tests/e2e/run.sh`.
+- Implemented by `scripts/dev-e2e.sh` → `go run ./tests/tools/runner e2e --suite … --filter <stem> --test "<name>"`, which passes `E2E_TEST_FILTER` to `tests/e2e/run.sh`.
 
 ### Dashboard Tests
 ```bash
@@ -193,16 +193,16 @@ This runs:
 
 3. **Verify with pinchtab** — use the pinchtab skill to inspect the dashboard:
    ```bash
+   # ./dev dashboard runs the backend with token "dev"
    # Navigate to the page under development
-   curl -X POST http://localhost:9867/navigate \
+   curl -X POST http://localhost:9867/navigate -H "Authorization: Bearer dev" \
      -d '{"url":"http://localhost:5173/dashboard/settings"}'
    
-   # Take a screenshot to verify the change
-   curl -X POST http://localhost:9867/screenshot \
-     -d '{"path":"/tmp/dashboard-check.png"}'
+   # Take a screenshot (written under the state dir; response carries "path")
+   curl -H "Authorization: Bearer dev" "http://localhost:9867/screenshot?output=file"
    
    # Or get a snapshot to inspect elements
-   curl -s http://localhost:9867/snapshot | jq .
+   curl -s -H "Authorization: Bearer dev" http://localhost:9867/snapshot | jq .
    ```
 
 4. **Provide evidence** — when reporting changes, include:
@@ -214,26 +214,27 @@ This runs:
 
 ```bash
 # Navigate to settings
-curl -X POST http://localhost:9867/navigate \
+curl -X POST http://localhost:9867/navigate -H "Authorization: Bearer dev" \
   -d '{"url":"http://localhost:5173/dashboard/settings"}'
 
-# Screenshot the result
-curl -X POST http://localhost:9867/screenshot \
-  -d '{"path":"./dashboard-settings.png","fullPage":true}'
+# Screenshot the result (beyondViewport=true captures the full page)
+curl -H "Authorization: Bearer dev" \
+  "http://localhost:9867/screenshot?output=file&beyondViewport=true"
 
-# Find specific element
-curl -X POST http://localhost:9867/find \
-  -d '{"selector":"[data-testid=stealth-level]"}'
+# Find an element by description (semantic match, not a CSS selector)
+curl -X POST http://localhost:9867/find -H "Authorization: Bearer dev" \
+  -d '{"query":"stealth level setting"}'
 ```
 
 ### Key Dashboard Pages
 
 | Page | URL | Purpose |
 |------|-----|---------|
-| Home | `/dashboard/` | Instance overview |
-| Settings | `/dashboard/settings` | Configuration |
+| Monitoring | `/dashboard/monitoring` | Instance overview (`/dashboard/` redirects here) |
+| Activity | `/dashboard/activity` | Activity log |
 | Profiles | `/dashboard/profiles` | Browser profiles |
-| Tabs | `/dashboard/tabs` | Active tabs |
+| Agents | `/dashboard/agents` | Agents |
+| Settings | `/dashboard/settings` | Configuration |
 
 ### Dashboard Tech Stack
 
@@ -250,8 +251,8 @@ The stealth module (`internal/assets/stealth.js`) has three levels:
 | Level | Features | Trade-offs |
 |-------|----------|------------|
 | `light` | webdriver, CDP markers, plugins, hardware | None — safe |
-| `medium` | + userAgentData, chrome.runtime.connect, csi/loadTimes | May affect error monitoring |
-| `full` | + WebGL/canvas noise, WebRTC relay | May break WebRTC, canvas apps |
+| `medium` | + userAgentData, chrome.runtime.connect, puppeteer/playwright marker cleanup | May affect error monitoring, extension messaging |
+| `full` | + screen/window realism, headless-only WebGL vendor/renderer spoofing (canvas/audio/WebRTC stay native) | May break graphics-dependent sites in headless mode |
 
 Configure in `~/.pinchtab/config.json`:
 ```json
@@ -266,14 +267,14 @@ Configure in `~/.pinchtab/config.json`:
 
 ### Add new API endpoint
 1. Create handler in `internal/handlers/`
-2. Register route in `internal/server/routes.go`
+2. Add the endpoint to `internal/routes/routes.go` and bind it in the `routeBinding` table in `internal/handlers/handlers.go`
 3. Add tests in same package
-4. Add E2E test in `tests/e2e/scenarios-api/`
+4. Add E2E test in `tests/e2e/scenarios/api/`
 
 ### Modify stealth behavior
 1. Edit `internal/assets/stealth.js`
 2. Run `./dev build` (embeds via go:embed)
-3. Test with `./dev e2e api-fast` (includes stealth tests)
+3. Test with `./dev e2e infra stealth` (infra scenarios matching `stealth`; `infra-extended stealth` for the extended ones)
 
 ### Update dashboard
 1. Run `./dev dashboard` for hot-reload

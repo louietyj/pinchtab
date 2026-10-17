@@ -71,7 +71,9 @@ The dashboard and instance APIs show:
 If you need an API-based view instead of the UI:
 
 ```bash
-curl http://localhost:9867/instances
+curl -H "Authorization: Bearer $(pinchtab config token --stdout)" http://localhost:9867/instances
+# CLI Alternative
+pinchtab instance list
 ```
 
 ## Practical Combination

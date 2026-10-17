@@ -1,6 +1,11 @@
 package config
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+
+	"github.com/pinchtab/pinchtab/internal/session"
+)
 
 const defaultPort = "9867"
 
@@ -25,17 +30,18 @@ type RuntimeConfig struct {
 	AllowDownload         bool
 	AllowCookies          bool
 	AllowNetworkIntercept bool
+	AllowMemory           bool
 	AllowFileScheme       bool
 	// AllowedDomains is the unified per-instance allowlist sourced from
 	// security.allowedDomains in the file config.
 	AllowedDomains         []string
 	DownloadAllowedDomains []string
 	DownloadMaxBytes       int
+	MemorySnapshotMaxBytes int
 	AllowUpload            bool
 	AllowClipboard         bool
 	AllowStateExport       bool
 	StateEncryptionKey     string // Key for encrypting state files (AES-256-GCM)
-	EnableActionGuards     bool   // Enable bridge-level stale/navigation guard checks around actions
 	UploadMaxRequestBytes  int
 	UploadMaxFiles         int
 	UploadMaxFileBytes     int
@@ -98,8 +104,8 @@ type RuntimeConfig struct {
 	Humanize               bool // when true, mouse moves and clicks use a humanized bezier path with per-step jitter and pre-press delays; default false (raw, fast input)
 	StealthLevel           string
 	TabEvictionPolicy      string        // "close_lru" (default), "reject", "close_oldest" — fires on MaxTabs pressure
-	TabLifecyclePolicy     string        // "keep" (default), "close_idle" — fires on idle after read/action
-	TabCloseDelay          time.Duration // applies when TabLifecyclePolicy == "close_idle" (default 5m when enabled)
+	TabLifecyclePolicy     string        // "keep" (default), "close_idle", "freeze_idle" — fires on idle after read/action
+	TabCloseDelay          time.Duration // applies when TabLifecyclePolicy is close_idle or freeze_idle (default 5m when enabled)
 	TabRestore             bool          // restore previously open tabs from sessions.json on startup (default false)
 
 	ActionTimeout   time.Duration
@@ -163,8 +169,6 @@ type DashboardSessionRuntimeConfig struct {
 	RequireElevation              bool          `json:"requireElevation,omitempty"`
 }
 
-// IDPIConfig holds the configuration for the Indirect Prompt Injection (IDPI)
-// defense layer.
 type IDPIConfig struct {
 	Enabled        bool     `json:"enabled,omitempty"`
 	StrictMode     bool     `json:"strictMode,omitempty"`
@@ -304,6 +308,26 @@ type SessionsFileConfig struct {
 	Agent     AgentSessionFileConfig     `json:"agent,omitempty"`
 }
 
+// DefaultAgentSessionsEnabled is the effective value of sessions.agent.enabled
+// when the file leaves the key out.
+const DefaultAgentSessionsEnabled = true
+
+// AgentEnabled is the file-config twin of session.Store.Enabled: whether this
+// config leaves agent sessions serving. It resolves an absent enabled key against
+// the default, so a comparison of two file configs never reads absence as
+// disabled, and it honours mode — mode "off" disables the family exactly as
+// enabled false does, so a restart-reason comparison built on this cannot miss
+// the transition through the other field.
+func (s SessionsFileConfig) AgentEnabled() bool {
+	if !session.ModeServes(s.Agent.Mode) {
+		return false
+	}
+	if s.Agent.Enabled == nil {
+		return DefaultAgentSessionsEnabled
+	}
+	return *s.Agent.Enabled
+}
+
 type AgentSessionFileConfig struct {
 	Enabled        *bool  `json:"enabled,omitempty"`
 	Mode           string `json:"mode,omitempty"`
@@ -417,8 +441,8 @@ type InstanceDefaultsConfig struct {
 // in instance-defaults configs. Either sub-field may be omitted.
 type TabPolicyDefaults struct {
 	Eviction      string `json:"eviction,omitempty"`      // "close_lru" | "reject" | "close_oldest"
-	Lifecycle     string `json:"lifecycle,omitempty"`     // "keep" | "close_idle"
-	CloseDelaySec *int   `json:"closeDelaySec,omitempty"` // applies to close_idle; default 300 when enabled
+	Lifecycle     string `json:"lifecycle,omitempty"`     // "keep" | "close_idle" | "freeze_idle"
+	CloseDelaySec *int   `json:"closeDelaySec,omitempty"` // applies to close_idle and freeze_idle; default 300 when enabled
 	Restore       *bool  `json:"restore,omitempty"`       // restore tabs from sessions.json on startup; default false
 }
 
@@ -446,15 +470,16 @@ type SecurityConfig struct {
 	AllowDownload          *bool        `json:"allowDownload,omitempty"`
 	AllowCookies           *bool        `json:"allowCookies,omitempty"`
 	AllowNetworkIntercept  *bool        `json:"allowNetworkIntercept,omitempty"`
+	AllowMemory            *bool        `json:"allowMemory,omitempty"`
 	AllowFileScheme        *bool        `json:"allowFileScheme,omitempty"`
 	AllowedDomains         []string     `json:"allowedDomains,omitempty"`
 	DownloadAllowedDomains []string     `json:"downloadAllowedDomains,omitempty"`
 	DownloadMaxBytes       *int         `json:"downloadMaxBytes,omitempty"`
+	MemorySnapshotMaxBytes *int         `json:"memorySnapshotMaxBytes,omitempty"`
 	AllowUpload            *bool        `json:"allowUpload,omitempty"`
 	AllowClipboard         *bool        `json:"allowClipboard,omitempty"`
 	AllowStateExport       *bool        `json:"allowStateExport,omitempty"`
 	StateEncryptionKey     *string      `json:"stateEncryptionKey,omitempty"`
-	EnableActionGuards     *bool        `json:"enableActionGuards,omitempty"`
 	UploadMaxRequestBytes  *int         `json:"uploadMaxRequestBytes,omitempty"`
 	UploadMaxFiles         *int         `json:"uploadMaxFiles,omitempty"`
 	UploadMaxFileBytes     *int         `json:"uploadMaxFileBytes,omitempty"`
@@ -464,7 +489,29 @@ type SecurityConfig struct {
 	TrustedResolveCIDRs    []string     `json:"trustedResolveCIDRs,omitempty"`
 	TrustLoopbackProxy     *bool        `json:"trustLoopbackProxy,omitempty"`
 	Attach                 AttachConfig `json:"attach,omitempty"`
-	IDPI                   IDPIConfig   `json:"idpi,omitempty"`
+	IDPI                   *IDPIConfig  `json:"idpi,omitempty"`
+}
+
+func (s *SecurityConfig) ensureIDPI() *IDPIConfig {
+	if s.IDPI == nil {
+		s.IDPI = &IDPIConfig{}
+	}
+	return s.IDPI
+}
+
+func (s SecurityConfig) EffectiveIDPI() IDPIConfig {
+	if s.IDPI == nil {
+		return IDPIConfig{}
+	}
+	return *s.IDPI
+}
+
+func (s SecurityConfig) MarshalJSON() ([]byte, error) {
+	type tagged SecurityConfig
+	return json.Marshal(struct {
+		tagged
+		IDPI IDPIConfig `json:"idpi"`
+	}{tagged(s), s.EffectiveIDPI()})
 }
 
 type MultiInstanceConfig struct {

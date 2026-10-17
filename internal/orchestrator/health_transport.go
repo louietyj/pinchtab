@@ -1,16 +1,21 @@
 package orchestrator
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/pinchtab/pinchtab/internal/activity"
+	"github.com/pinchtab/pinchtab/internal/bridge"
+	"github.com/pinchtab/pinchtab/internal/handlers"
 	"github.com/pinchtab/pinchtab/internal/sanitize"
 )
 
-const orchestratorActivitySource = "orchestrator"
+const orchestratorActivitySource = activity.SourceOrchestrator
 
 type remoteTab struct {
 	ID    string `json:"id"`
@@ -22,28 +27,52 @@ type remoteMetrics struct {
 	Memory *memoryMetrics `json:"memory,omitempty"`
 }
 
-type memoryMetrics struct {
-	JSHeapUsedMB  float64 `json:"jsHeapUsedMB"`
-	JSHeapTotalMB float64 `json:"jsHeapTotalMB"`
-	Documents     int64   `json:"documents"`
-	Frames        int64   `json:"frames"`
-	Nodes         int64   `json:"nodes"`
-	Listeners     int64   `json:"listeners"`
+type remoteHealth struct {
+	Crashes *bridge.CrashSummary `json:"crashes,omitempty"`
 }
 
-func (o *Orchestrator) fetchTabs(inst *InstanceInternal) ([]remoteTab, error) {
-	target, err := o.instancePathURL(inst, "/tabs", "")
+type memoryMetrics struct {
+	MemoryMB          float64             `json:"memoryMB"`
+	Renderers         int                 `json:"renderers"`
+	Page              *bridge.PageMetrics `json:"page,omitempty"`
+	UnreadableTargets int                 `json:"unreadableTargets"`
+}
+
+func (o *Orchestrator) instanceGet(ctx context.Context, inst *InstanceInternal, path string) (*http.Response, error) {
+	return o.instanceQueryRequest(ctx, http.MethodGet, inst, path, "", nil)
+}
+
+func (o *Orchestrator) instanceRequest(ctx context.Context, method string, inst *InstanceInternal, path string, header http.Header) (*http.Response, error) {
+	return o.instanceQueryRequest(ctx, method, inst, path, "", header)
+}
+
+func (o *Orchestrator) instanceQueryRequest(ctx context.Context, method string, inst *InstanceInternal, path, rawQuery string, header http.Header) (*http.Response, error) {
+	target, err := o.instancePathURL(inst, path, rawQuery)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(http.MethodGet, target.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, method, target.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+	for key, values := range header {
+		req.Header[key] = values
 	}
 	tagOrchestratorMonitoringRequest(req)
 	o.applyInstanceAuth(req, inst)
+	return o.client.Do(req)
+}
 
-	resp, err := o.client.Do(req)
+func (o *Orchestrator) fetchTabs(inst *InstanceInternal) ([]remoteTab, error) {
+	return o.fetchTabList(inst, "")
+}
+
+func (o *Orchestrator) fetchOwnedTabs(inst *InstanceInternal) ([]remoteTab, error) {
+	return o.fetchTabList(inst, handlers.IncludeTransientTabsQuery+"=1")
+}
+
+func (o *Orchestrator) fetchTabList(inst *InstanceInternal, rawQuery string) ([]remoteTab, error) {
+	resp, err := o.instanceQueryRequest(context.Background(), http.MethodGet, inst, "/tabs", rawQuery, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -63,18 +92,7 @@ func (o *Orchestrator) fetchTabs(inst *InstanceInternal) ([]remoteTab, error) {
 }
 
 func (o *Orchestrator) fetchMetrics(inst *InstanceInternal) (*memoryMetrics, error) {
-	target, err := o.instancePathURL(inst, "/metrics", "")
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequest(http.MethodGet, target.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	tagOrchestratorMonitoringRequest(req)
-	o.applyInstanceAuth(req, inst)
-
-	resp, err := o.client.Do(req)
+	resp, err := o.instanceGet(context.Background(), inst, "/metrics")
 	if err != nil {
 		return nil, err
 	}
@@ -89,6 +107,47 @@ func (o *Orchestrator) fetchMetrics(inst *InstanceInternal) (*memoryMetrics, err
 		return nil, err
 	}
 	return result.Memory, nil
+}
+
+func (o *Orchestrator) fetchCrashes(ctx context.Context, inst *InstanceInternal) (*bridge.CrashSummary, error) {
+	resp, err := o.instanceGet(ctx, inst, "/health")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, nil
+	}
+	var result remoteHealth
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return result.Crashes, nil
+}
+
+var responsivenessProbeBudget = 3 * time.Second
+
+func (o *Orchestrator) probeTabs(ctx context.Context, inst *InstanceInternal) error {
+	resp, err := o.instanceGet(ctx, inst, "/tabs")
+	if err != nil {
+		return err
+	}
+	_ = resp.Body.Close()
+	return nil
+}
+
+func classifyResponsiveness(healthErr, tabsErr error) string {
+	switch {
+	case healthErr != nil:
+		return bridge.ResponsivenessUnknown
+	case tabsErr == nil:
+		return bridge.ResponsivenessResponsive
+	case errors.Is(tabsErr, context.DeadlineExceeded):
+		return bridge.ResponsivenessUnresponsive
+	default:
+		return bridge.ResponsivenessUnknown
+	}
 }
 
 func tagOrchestratorMonitoringRequest(req *http.Request) {

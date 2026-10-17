@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -31,6 +32,55 @@ func TestEnvOr(t *testing.T) {
 	}
 }
 
+func TestDefaultConfigHint(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	defaultPath := DefaultConfigPath()
+	if err := os.MkdirAll(filepath.Dir(defaultPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("unset returns empty", func(t *testing.T) {
+		t.Setenv("HOME", home)
+		_ = os.Unsetenv("PINCHTAB_CONFIG")
+		if got := DefaultConfigHint(); got != "" {
+			t.Errorf("DefaultConfigHint() = %q, want \"\"", got)
+		}
+	})
+
+	t.Run("equals default returns empty", func(t *testing.T) {
+		t.Setenv("HOME", home)
+		t.Setenv("PINCHTAB_CONFIG", defaultPath)
+		if got := DefaultConfigHint(); got != "" {
+			t.Errorf("DefaultConfigHint() = %q, want \"\"", got)
+		}
+	})
+
+	t.Run("elsewhere but no default file returns empty", func(t *testing.T) {
+		t.Setenv("HOME", home)
+		t.Setenv("PINCHTAB_CONFIG", filepath.Join(t.TempDir(), "custom.json"))
+		if got := DefaultConfigHint(); got != "" {
+			t.Errorf("DefaultConfigHint() = %q, want \"\" (no default file on disk)", got)
+		}
+	})
+
+	t.Run("elsewhere with default file returns hint", func(t *testing.T) {
+		t.Setenv("HOME", home)
+		t.Setenv("PINCHTAB_CONFIG", filepath.Join(t.TempDir(), "custom.json"))
+		if err := os.WriteFile(defaultPath, []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = os.Remove(defaultPath) }()
+		got := DefaultConfigHint()
+		if got == "" {
+			t.Fatal("DefaultConfigHint() = \"\", want non-empty")
+		}
+		if !strings.Contains(got, defaultPath) {
+			t.Errorf("DefaultConfigHint() = %q, want it to name %q", got, defaultPath)
+		}
+	})
+}
+
 func TestLoadConfigDefaults(t *testing.T) {
 	clearConfigEnvVars(t)
 	setCloakBrowserDiscovery(t, "")
@@ -49,9 +99,6 @@ func TestLoadConfigDefaults(t *testing.T) {
 	}
 	if cfg.AllowCookies {
 		t.Errorf("default AllowCookies = %v, want false", cfg.AllowCookies)
-	}
-	if !cfg.EnableActionGuards {
-		t.Errorf("default EnableActionGuards = %v, want true", cfg.EnableActionGuards)
 	}
 	if cfg.TrustProxyHeaders {
 		t.Errorf("default TrustProxyHeaders = %v, want false", cfg.TrustProxyHeaders)
@@ -106,20 +153,11 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if strings.Join(cfg.AttachAllowSchemes, ",") != strings.Join(wantAttachSchemes, ",") {
 		t.Errorf("default AttachAllowSchemes = %v, want %v", cfg.AttachAllowSchemes, wantAttachSchemes)
 	}
-	if !cfg.IDPI.Enabled {
-		t.Errorf("default IDPI.Enabled = %v, want true", cfg.IDPI.Enabled)
+	if !reflect.DeepEqual(cfg.IDPI, IDPIConfig{}) {
+		t.Errorf("default IDPI = %+v, want the zero value: a file that says nothing about IDPI boots with it off, and the starter file states it explicitly", cfg.IDPI)
 	}
-	if len(cfg.AllowedDomains) != 3 || cfg.AllowedDomains[0] != "127.0.0.1" {
-		t.Errorf("default AllowedDomains = %v, want local-only allowlist", cfg.AllowedDomains)
-	}
-	if !cfg.IDPI.StrictMode {
-		t.Errorf("default IDPI.StrictMode = %v, want true", cfg.IDPI.StrictMode)
-	}
-	if !cfg.IDPI.ScanContent {
-		t.Errorf("default IDPI.ScanContent = %v, want true", cfg.IDPI.ScanContent)
-	}
-	if !cfg.IDPI.WrapContent {
-		t.Errorf("default IDPI.WrapContent = %v, want true", cfg.IDPI.WrapContent)
+	if len(cfg.AllowedDomains) != 0 {
+		t.Errorf("default AllowedDomains = %v, want none: a localhost-only default refuses every external navigation, so it is not a live policy", cfg.AllowedDomains)
 	}
 	if !cfg.Observability.Activity.Enabled {
 		t.Errorf("default Observability.Activity.Enabled = %v, want true", cfg.Observability.Activity.Enabled)
@@ -460,9 +498,6 @@ func TestApplyFileConfigToRuntimeResetsSecurityFlagsToSafeDefaults(t *testing.T)
 	if cfg.AllowUpload {
 		t.Errorf("ApplyFileConfigToRuntime AllowUpload = %v, want false", cfg.AllowUpload)
 	}
-	if !cfg.EnableActionGuards {
-		t.Errorf("ApplyFileConfigToRuntime EnableActionGuards = %v, want true", cfg.EnableActionGuards)
-	}
 	if len(cfg.DownloadAllowedDomains) != 0 {
 		t.Errorf("ApplyFileConfigToRuntime DownloadAllowedDomains = %v, want empty list", cfg.DownloadAllowedDomains)
 	}
@@ -490,8 +525,8 @@ func TestApplyFileConfigToRuntimeResetsSecurityFlagsToSafeDefaults(t *testing.T)
 	if !cfg.IDPI.Enabled {
 		t.Errorf("ApplyFileConfigToRuntime IDPI.Enabled = %v, want true", cfg.IDPI.Enabled)
 	}
-	if len(cfg.AllowedDomains) != 3 || cfg.AllowedDomains[0] != "127.0.0.1" {
-		t.Errorf("ApplyFileConfigToRuntime AllowedDomains = %v, want local-only allowlist", cfg.AllowedDomains)
+	if len(cfg.AllowedDomains) != 0 {
+		t.Errorf("ApplyFileConfigToRuntime AllowedDomains = %v, want none; a file that names no allowlist must not receive one", cfg.AllowedDomains)
 	}
 	if !cfg.IDPI.StrictMode || !cfg.IDPI.ScanContent || !cfg.IDPI.WrapContent {
 		t.Errorf("ApplyFileConfigToRuntime IDPI = %+v, want strict+scan+wrap enabled", cfg.IDPI)
@@ -794,16 +829,21 @@ func TestApplyFileConfigToRuntime_CloakBrowserSettings(t *testing.T) {
 	if cfg.BrowserBinary != "/opt/cloakbrowser/chrome" {
 		t.Fatalf("BrowserBinary = %q, want configured binary", cfg.BrowserBinary)
 	}
+	// The loader stores fontsDir cleaned, and filepath.Clean is separator-aware:
+	// "/opt/fonts" comes back as `\opt\fonts` on Windows. Comparing against the
+	// literal asserted the separator of whoever ran the test rather than the
+	// behaviour, so it failed there while the loader was doing exactly its job.
+	wantFontsDir := filepath.Clean("/opt/fonts")
 	if cfg.Cloak.FingerprintSeed != "42069" ||
 		cfg.Cloak.Platform != "windows" ||
 		cfg.Cloak.Locale != "en-GB" ||
 		cfg.Cloak.Timezone != "Europe/London" ||
 		cfg.Cloak.WebRTCIP != "auto" ||
-		cfg.Cloak.FontsDir != "/opt/fonts" ||
+		cfg.Cloak.FontsDir != wantFontsDir ||
 		cfg.Cloak.WindowSize != "1440x900" ||
 		cfg.Cloak.StorageQuotaMB != quota ||
 		cfg.Cloak.DisableDefaultStealthArgs {
-		t.Fatalf("Cloak settings not applied: %+v", cfg.Cloak)
+		t.Fatalf("Cloak settings not applied: %+v (wanted fontsDir %q)", cfg.Cloak, wantFontsDir)
 	}
 
 	defaultCfg := &RuntimeConfig{}

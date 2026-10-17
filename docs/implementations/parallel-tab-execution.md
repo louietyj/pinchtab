@@ -1,5 +1,7 @@
 # Parallel Tab Execution
 
+> **Status:** design write-up from the original TabExecutor PR (March 2026), including its test logs. `TabExecutor` exists at HEAD (`internal/bridge/tabs/tab_executor.go`) and is constructed per `TabManager` with `instanceDefaults.maxParallelTabs`, but no HTTP handler calls `Bridge.Execute`, so the request flow below is not how `/action`, `/navigate`, `/find` or `/snapshot` are served today. The "Observed results" log lines (`tab_executor: executing task`, `semaphore acquired`, `tab_XXXXXX` IDs) are not emitted by the code.
+
 PinchTab supports safe parallel execution across browser tabs. Multiple tabs can
 execute actions concurrently while each tab remains sequential internally, preventing
 resource exhaustion and race conditions.
@@ -108,7 +110,7 @@ return te.safeRun(ctx, tabID, task) // Execute with panic recovery
 | `TabManager.Execute()` | `internal/bridge/tab_manager.go` | Integration point for handlers |
 | `Bridge.Execute()` | `internal/bridge/bridge.go` | BridgeAPI interface method |
 | `LockManager` | `internal/bridge/tabs/lock.go` (re-exported via `internal/bridge/tabs_facade.go`) | Per-tab ownership locks with TTL |
-| `TabEntry` | `internal/bridge/bridge.go` | Per-tab chromedp context + metadata |
+| `TabEntry` | `internal/bridge/bridge_types.go` | Per-tab chromedp context + metadata |
 
 ### How It Works
 

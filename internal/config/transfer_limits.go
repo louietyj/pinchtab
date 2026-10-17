@@ -1,17 +1,19 @@
 package config
 
 const (
-	DefaultDownloadMaxBytes      = 20 << 20
-	MaxDownloadMaxBytes          = 100 << 20
-	MaxRetainNetworkBodyMaxBytes = 10 << 20
-	DefaultUploadMaxRequestBytes = 10 << 20
-	MaxUploadMaxRequestBytes     = 100 << 20
-	DefaultUploadMaxFiles        = 8
-	MaxUploadMaxFiles            = 32
-	DefaultUploadMaxFileBytes    = 5 << 20
-	MaxUploadMaxFileBytes        = 25 << 20
-	DefaultUploadMaxTotalBytes   = 10 << 20
-	MaxUploadMaxTotalBytes       = 100 << 20
+	DefaultDownloadMaxBytes       = 20 << 20
+	MaxDownloadMaxBytes           = 100 << 20
+	MaxRetainNetworkBodyMaxBytes  = 10 << 20
+	DefaultUploadMaxRequestBytes  = 10 << 20
+	MaxUploadMaxRequestBytes      = 100 << 20
+	DefaultUploadMaxFiles         = 8
+	MaxUploadMaxFiles             = 32
+	DefaultUploadMaxFileBytes     = 5 << 20
+	MaxUploadMaxFileBytes         = 25 << 20
+	DefaultUploadMaxTotalBytes    = 10 << 20
+	MaxUploadMaxTotalBytes        = 100 << 20
+	DefaultMemorySnapshotMaxBytes = 512 << 20
+	MaxMemorySnapshotMaxBytes     = 4 << 30
 )
 
 func clampPositiveLimit(value, fallback, max int) int {
@@ -57,4 +59,11 @@ func (cfg *RuntimeConfig) EffectiveUploadMaxTotalBytes() int {
 		return DefaultUploadMaxTotalBytes
 	}
 	return clampPositiveLimit(cfg.UploadMaxTotalBytes, DefaultUploadMaxTotalBytes, MaxUploadMaxTotalBytes)
+}
+
+func (cfg *RuntimeConfig) EffectiveMemorySnapshotMaxBytes() int {
+	if cfg == nil {
+		return DefaultMemorySnapshotMaxBytes
+	}
+	return clampPositiveLimit(cfg.MemorySnapshotMaxBytes, DefaultMemorySnapshotMaxBytes, MaxMemorySnapshotMaxBytes)
 }

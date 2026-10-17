@@ -4,7 +4,7 @@ This page is a practical checklist for testing the current Docker setup locally.
 
 It covers two paths:
 
-- the default managed-config flow, where the container owns `/data/.config/pinchtab/config.json`
+- the default managed-config flow, where the container owns `/data/.pinchtab/config.json` (`HOME=/data`; on Linux the default config lives under `~/.pinchtab`)
 - the explicit-config flow, where you mount your own `config.json` and set `PINCHTAB_CONFIG`
 
 ## Managed Config Flow
@@ -20,13 +20,13 @@ Inspect the effective config path and persisted config:
 
 ```bash
 docker exec pinchtab pinchtab config path
-docker exec pinchtab sh -lc 'cat /data/.config/pinchtab/config.json'
+docker exec pinchtab sh -lc 'cat /data/.pinchtab/config.json'
 ```
 
 Expected results:
 
-- the config path is `/data/.config/pinchtab/config.json`
-- `server.bind` in the persisted config remains `127.0.0.1`
+- the config path is `/data/.pinchtab/config.json`
+- `server.bind` in the persisted config is `0.0.0.0` (the entrypoint sets it so port publishing works)
 - a token is present if one was generated on first boot or passed in
 
 Verify the config bind address:
@@ -42,7 +42,7 @@ Verify persistence across restart:
 ```bash
 docker compose down
 docker compose up -d
-docker exec pinchtab sh -lc 'cat /data/.config/pinchtab/config.json'
+docker exec pinchtab sh -lc 'cat /data/.pinchtab/config.json'
 ```
 
 ## Explicit `PINCHTAB_CONFIG` Flow
@@ -59,7 +59,7 @@ Create a local config file, for example `./tmp/config.json`:
 }
 ```
 
-Run the container with that config mounted read-only:
+Run the container with that config mounted read-only (to test a local build instead of the published image, first run `docker build -t pinchtab/pinchtab .`):
 
 ```bash
 docker run --rm -d \
@@ -105,9 +105,22 @@ docker exec pinchtab-test pinchtab config path
 Persisted config content:
 
 ```bash
-docker exec pinchtab sh -lc 'cat /data/.config/pinchtab/config.json'
+docker exec pinchtab sh -lc 'cat /data/.pinchtab/config.json'
 ```
 
-## Current Caveat
+## Automated Docker E2E
 
-The Docker runtime path owns `--no-sandbox` compatibility now. Do not put it in `browser.extraFlags`.
+The E2E stack (`tests/e2e/docker-compose.yml`, `tests/e2e/docker-compose-multi.yml`) builds this same `Dockerfile` and runs `docker-entrypoint.sh`, but always with `PINCHTAB_CONFIG` set — so it exercises the explicit-config flow only. The managed-config flow above is covered only by this manual checklist.
+
+```bash
+./dev e2e                     # extended suite (go run ./tests/tools/runner e2e --suite extended)
+./dev e2e smoke               # smoke tier
+./dev e2e api <text>          # one suite, filtered by scenario file name (--suite api --filter <text>)
+./dev e2e test "<name>"       # runs only the first start_test whose name contains <name>
+```
+
+## Current Caveats
+
+The Docker runtime path owns `--no-sandbox` compatibility now (added at launch when a container is detected). Do not put it in `browser.extraFlags`; config validation rejects it.
+
+`docker-entrypoint.sh` checks for an existing config at `$XDG_CONFIG_HOME/pinchtab/config.json` (`/data/.config/...`), but the binary reads and writes `/data/.pinchtab/config.json`, so the "first boot" block runs on every start: `server.bind` is re-set to `0.0.0.0` and, when `PINCHTAB_TOKEN` is set, `server.token` is overwritten with it.

@@ -72,11 +72,13 @@ Example:
 }
 ```
 
-Run with it:
+Save it as `/home/pi/.pinchtab/config.json` (the default path, so no `PINCHTAB_CONFIG` is needed) and run:
 
 ```bash
-PINCHTAB_CONFIG=/home/pi/.pinchtab/config.json ./pinchtab
+./pinchtab server
 ```
+
+The first start generates `server.token` into that file. If you instead point `PINCHTAB_CONFIG` at a file elsewhere, add `server.token` yourself: PinchTab refuses to start rather than write a token into an operator-supplied file.
 
 ## Headless Vs Headed
 
@@ -133,7 +135,7 @@ After=network.target
 Type=simple
 User=pi
 WorkingDirectory=/home/pi
-ExecStart=/home/pi/pinchtab
+ExecStart=/home/pi/pinchtab server
 Environment=PINCHTAB_CONFIG=/home/pi/.pinchtab/config.json
 Restart=always
 RestartSec=10

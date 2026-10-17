@@ -12,7 +12,7 @@ This guide walks through setting up PinchTab as an MCP tool server for AI coding
 
 ## What is MCP?
 
-The [Model Context Protocol](https://modelcontextprotocol.io/) is an open standard for connecting AI models to external tools. PinchTab implements an MCP server that exposes 38 browser-control tools — navigation, interaction, screenshot, PDF export, waits, network inspection, and more — over a simple stdio interface that every major AI client supports.
+The [Model Context Protocol](https://modelcontextprotocol.io/) is an open standard for connecting AI models to external tools. PinchTab implements an MCP server that exposes 47 browser-control tools — navigation, interaction, screenshot, PDF export, waits, network inspection, and more — over a simple stdio interface that every major AI client supports.
 
 ## Prerequisites
 
@@ -24,16 +24,16 @@ The [Model Context Protocol](https://modelcontextprotocol.io/) is an open standa
 
 The MCP server is a thin adapter — it needs a running PinchTab instance to delegate to.
 
-**Headless mode (recommended for agents):**
+**Single-instance bridge (headless by default, recommended for agents):**
 
 ```bash
-pinchtab bridge --headless
+pinchtab bridge
 ```
 
 **Normal server mode (if you want the dashboard too):**
 
 ```bash
-pinchtab
+pinchtab server
 ```
 
 PinchTab listens on `http://127.0.0.1:9867` by default.
@@ -231,8 +231,10 @@ The `pinchtab mcp` process runs locally (on the agent machine) and makes HTTP ca
 PinchTab is not running, or is on a different port. Check:
 
 ```bash
-curl http://127.0.0.1:9867/health
+pinchtab health
 ```
+
+(A raw `curl http://127.0.0.1:9867/health` also proves the port answers, but it returns `401` without `-H "Authorization: Bearer <token>"`.)
 
 **"HTTP 401" from tools**
 

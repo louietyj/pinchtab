@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "properties": {
+    "books": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "book title"
+          },
+          "price": {
+            "type": "number",
+            "description": "price"
+          },
+          "availability": {
+            "type": "string",
+            "description": "stock availability"
+          }
+        }
+      }
+    }
+  }
+}

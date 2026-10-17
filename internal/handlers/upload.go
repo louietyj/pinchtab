@@ -194,7 +194,7 @@ func (h *Handlers) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorCode(w, http.StatusLocked, "tab_locked", err.Error(), false, nil)
 		return
 	}
-	if _, ok := h.applyTabGuards(w, r, ctx, resolvedTabID, guardDomainPolicy|guardHandoffPause); !ok {
+	if _, ok := h.applyTabGuards(w, r, ctx, resolvedTabID, guardDialogBlocked|guardDomainPolicy|guardHandoffPause); !ok {
 		return
 	}
 
@@ -202,12 +202,9 @@ func (h *Handlers) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	defer tCancel()
 	go httpx.CancelOnClientDone(r.Context(), tCancel)
 
-	nodeID, err := h.Bridge.ResolveSelectorToNodeID(tCtx, req.Selector)
+	nodeID, err := h.Bridge.ResolveSelectorToNodeID(tCtx, req.Selector, h.Bridge.GetRefCache(resolvedTabID), h.selectorFrameID(resolvedTabID))
 	if err != nil {
-		// A selector that doesn't resolve is a client error, not a server fault —
-		// match the element-targeting handlers' 4xx convention.
-		err = fmt.Errorf("%w: upload selector %q: %v", ErrElementNotFound, req.Selector, err)
-		httpx.Error(w, statusForElementErr(err), err)
+		respondSelectorFailure(w, fmt.Errorf("%w: upload selector %q: %v", ErrElementNotFound, req.Selector, err))
 		return
 	}
 

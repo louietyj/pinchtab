@@ -124,7 +124,7 @@ func uploadTargetNodeID(t *testing.T, ctx context.Context) int64 {
 	t.Helper()
 
 	b := &Bridge{}
-	nodeID, err := b.ResolveSelectorToNodeID(ctx, "#target")
+	nodeID, err := b.ResolveSelectorToNodeID(ctx, "#target", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}

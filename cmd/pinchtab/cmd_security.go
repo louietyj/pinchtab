@@ -66,7 +66,7 @@ func printEnforcedDriftWarning(cfg *config.RuntimeConfig) {
 	if len(snap.RestartReasons) > 0 {
 		fmt.Printf("    Pending (needs restart): %s\n", strings.Join(snap.RestartReasons, ", "))
 	}
-	fmt.Println(cli.StyleStdout(cli.MutedStyle, "    Apply with: pinchtab server restart"))
+	fmt.Println(cli.StyleStdout(cli.MutedStyle, "    "+restartHintForMode(snap.Mode)))
 	fmt.Println()
 }
 

@@ -9,13 +9,18 @@ import (
 )
 
 func copyStringSlice(items []string) []string {
-	if items == nil {
-		return []string{}
-	}
 	if len(items) == 0 {
 		return []string{}
 	}
 	return append([]string(nil), items...)
+}
+
+func ptr[T any](v T) *T {
+	return &v
+}
+
+func secondsPtr(d time.Duration) *int {
+	return ptr(int(d / time.Second))
 }
 
 func intPtrIfPositive(v int) *int {
@@ -132,7 +137,7 @@ func tabPolicyDefaultsFromRuntime(cfg *RuntimeConfig) *TabPolicyDefaults {
 	out := &TabPolicyDefaults{}
 	if hasLifecycle {
 		out.Lifecycle = cfg.TabLifecyclePolicy
-		if cfg.TabLifecyclePolicy == "close_idle" && cfg.TabCloseDelay > 0 && cfg.TabCloseDelay != 5*time.Minute {
+		if IdleTabLifecycle(cfg.TabLifecyclePolicy) && cfg.TabCloseDelay > 0 && cfg.TabCloseDelay != 5*time.Minute {
 			sec := int(cfg.TabCloseDelay / time.Second)
 			out.CloseDelaySec = &sec
 		}
@@ -212,46 +217,7 @@ func (fc FileConfig) MarshalJSON() ([]byte, error) {
 			TabPolicy:              fc.InstanceDefaults.TabPolicy,
 			DialogAutoAccept:       fc.InstanceDefaults.DialogAutoAccept,
 		},
-		Security: securityConfigJSON{
-			AllowEvaluate:          fc.Security.AllowEvaluate,
-			AllowMacro:             fc.Security.AllowMacro,
-			AllowScreencast:        fc.Security.AllowScreencast,
-			AllowDownload:          fc.Security.AllowDownload,
-			AllowCookies:           fc.Security.AllowCookies,
-			AllowNetworkIntercept:  fc.Security.AllowNetworkIntercept,
-			AllowFileScheme:        fc.Security.AllowFileScheme,
-			AllowedDomains:         effectiveSecurityAllowedDomains(fc.Security),
-			DownloadAllowedDomains: copyStringSlice(fc.Security.DownloadAllowedDomains),
-			DownloadMaxBytes:       fc.Security.DownloadMaxBytes,
-			AllowUpload:            fc.Security.AllowUpload,
-			AllowClipboard:         fc.Security.AllowClipboard,
-			AllowStateExport:       fc.Security.AllowStateExport,
-			StateEncryptionKey:     fc.Security.StateEncryptionKey,
-			EnableActionGuards:     fc.Security.EnableActionGuards,
-			UploadMaxRequestBytes:  fc.Security.UploadMaxRequestBytes,
-			UploadMaxFiles:         fc.Security.UploadMaxFiles,
-			UploadMaxFileBytes:     fc.Security.UploadMaxFileBytes,
-			UploadMaxTotalBytes:    fc.Security.UploadMaxTotalBytes,
-			MaxRedirects:           fc.Security.MaxRedirects,
-			TrustedProxyCIDRs:      copyStringSlice(fc.Security.TrustedProxyCIDRs),
-			TrustedResolveCIDRs:    copyStringSlice(fc.Security.TrustedResolveCIDRs),
-			TrustLoopbackProxy:     fc.Security.TrustLoopbackProxy,
-			Attach: attachJSON{
-				Enabled:          fc.Security.Attach.Enabled,
-				AllowHosts:       copyStringSlice(fc.Security.Attach.AllowHosts),
-				AllowSchemes:     copyStringSlice(fc.Security.Attach.AllowSchemes),
-				ForwardProxyAuth: fc.Security.Attach.ForwardProxyAuth,
-			},
-			IDPI: idpiConfigJSON{
-				Enabled:         fc.Security.IDPI.Enabled,
-				StrictMode:      fc.Security.IDPI.StrictMode,
-				ScanContent:     fc.Security.IDPI.ScanContent,
-				WrapContent:     fc.Security.IDPI.WrapContent,
-				CustomPatterns:  copyStringSlice(fc.Security.IDPI.CustomPatterns),
-				ScanTimeoutSec:  fc.Security.IDPI.ScanTimeoutSec,
-				ShieldThreshold: fc.Security.IDPI.ShieldThreshold,
-			},
-		},
+		Security: fc.Security.wire(),
 		Profiles: profilesConfigJSON{
 			BaseDir:        fc.Profiles.BaseDir,
 			DefaultProfile: fc.Profiles.DefaultProfile,
@@ -357,6 +323,57 @@ func (fc FileConfig) MarshalJSON() ([]byte, error) {
 	})
 }
 
+func (s SecurityConfig) wire() securityConfigJSON {
+	return securityConfigJSON{
+		AllowEvaluate:          s.AllowEvaluate,
+		AllowMacro:             s.AllowMacro,
+		AllowScreencast:        s.AllowScreencast,
+		AllowDownload:          s.AllowDownload,
+		AllowCookies:           s.AllowCookies,
+		AllowNetworkIntercept:  s.AllowNetworkIntercept,
+		AllowMemory:            s.AllowMemory,
+		AllowFileScheme:        s.AllowFileScheme,
+		AllowedDomains:         effectiveSecurityAllowedDomains(s),
+		DownloadAllowedDomains: copyStringSlice(s.DownloadAllowedDomains),
+		DownloadMaxBytes:       s.DownloadMaxBytes,
+		MemorySnapshotMaxBytes: s.MemorySnapshotMaxBytes,
+		AllowUpload:            s.AllowUpload,
+		AllowClipboard:         s.AllowClipboard,
+		AllowStateExport:       s.AllowStateExport,
+		StateEncryptionKey:     s.StateEncryptionKey,
+		UploadMaxRequestBytes:  s.UploadMaxRequestBytes,
+		UploadMaxFiles:         s.UploadMaxFiles,
+		UploadMaxFileBytes:     s.UploadMaxFileBytes,
+		UploadMaxTotalBytes:    s.UploadMaxTotalBytes,
+		MaxRedirects:           s.MaxRedirects,
+		TrustedProxyCIDRs:      copyStringSlice(s.TrustedProxyCIDRs),
+		TrustedResolveCIDRs:    copyStringSlice(s.TrustedResolveCIDRs),
+		TrustLoopbackProxy:     s.TrustLoopbackProxy,
+		Attach: attachJSON{
+			Enabled:          s.Attach.Enabled,
+			AllowHosts:       copyStringSlice(s.Attach.AllowHosts),
+			AllowSchemes:     copyStringSlice(s.Attach.AllowSchemes),
+			ForwardProxyAuth: s.Attach.ForwardProxyAuth,
+		},
+		IDPI: s.IDPI.wire(),
+	}
+}
+
+func (i *IDPIConfig) wire() idpiConfigJSON {
+	if i == nil {
+		i = &IDPIConfig{}
+	}
+	return idpiConfigJSON{
+		Enabled:         i.Enabled,
+		StrictMode:      i.StrictMode,
+		ScanContent:     i.ScanContent,
+		WrapContent:     i.WrapContent,
+		CustomPatterns:  copyStringSlice(i.CustomPatterns),
+		ScanTimeoutSec:  i.ScanTimeoutSec,
+		ShieldThreshold: i.ShieldThreshold,
+	}
+}
+
 func (fc *FileConfig) UnmarshalJSON(data []byte) error {
 	type rawFileConfig FileConfig
 	tmp := rawFileConfig(*fc)
@@ -372,275 +389,230 @@ func FileConfigFromRuntime(cfg *RuntimeConfig) FileConfig {
 	if cfg == nil {
 		return DefaultFileConfig()
 	}
-
-	noRestore := cfg.NoRestore
-	blockImages := cfg.BlockImages
-	blockMedia := cfg.BlockMedia
-	blockAds := cfg.BlockAds
-	maxTabs := cfg.MaxTabs
-	maxParallelTabs := cfg.MaxParallelTabs
-	noAnimations := cfg.NoAnimations
-	captureAllowActivation := cfg.CaptureAllowActivation
-	humanize := cfg.Humanize
-	allowEvaluate := cfg.AllowEvaluate
-	allowMacro := cfg.AllowMacro
-	allowScreencast := cfg.AllowScreencast
-	allowDownload := cfg.AllowDownload
-	allowCookies := cfg.AllowCookies
-	allowNetworkIntercept := cfg.AllowNetworkIntercept
-	allowFileScheme := cfg.AllowFileScheme
-	downloadAllowedDomains := copyStringSlice(cfg.DownloadAllowedDomains)
-	downloadMaxBytes := cfg.EffectiveDownloadMaxBytes()
-	allowUpload := cfg.AllowUpload
-	allowClipboard := cfg.AllowClipboard
-	allowStateExport := cfg.AllowStateExport
-	enableActionGuards := cfg.EnableActionGuards
-	uploadMaxRequestBytes := cfg.EffectiveUploadMaxRequestBytes()
-	uploadMaxFiles := cfg.EffectiveUploadMaxFiles()
-	uploadMaxFileBytes := cfg.EffectiveUploadMaxFileBytes()
-	uploadMaxTotalBytes := cfg.EffectiveUploadMaxTotalBytes()
-	maxRedirects := cfg.MaxRedirects
-	trustLoopbackProxy := cfg.TrustLoopbackProxy
-	attachEnabled := cfg.AttachEnabled
-	attachForwardProxyAuth := cfg.AttachForwardProxyAuth
-	start := cfg.InstancePortStart
-	end := cfg.InstancePortEnd
-	restartMaxRestarts := cfg.RestartMaxRestarts
-	restartInitBackoffSec := int(cfg.RestartInitBackoff / time.Second)
-	restartMaxBackoffSec := int(cfg.RestartMaxBackoff / time.Second)
-	restartStableAfterSec := int(cfg.RestartStableAfter / time.Second)
-	activityEnabled := cfg.Observability.Activity.Enabled
-	activitySessionIdleSec := cfg.Observability.Activity.SessionIdleSec
-	activityRetentionDays := cfg.Observability.Activity.RetentionDays
-	activityDashboardEvents := cfg.Observability.Activity.Events.Dashboard
-	activityServerEvents := cfg.Observability.Activity.Events.Server
-	activityBridgeEvents := cfg.Observability.Activity.Events.Bridge
-	activityOrchestratorEvents := cfg.Observability.Activity.Events.Orchestrator
-	activitySchedulerEvents := cfg.Observability.Activity.Events.Scheduler
-	activityMCPEvents := cfg.Observability.Activity.Events.MCP
-	activityOtherEvents := cfg.Observability.Activity.Events.Other
-	dashboardSessionPersist := cfg.Sessions.Dashboard.Persist
-	dashboardSessionIdleSec := int(cfg.Sessions.Dashboard.IdleTimeout / time.Second)
-	dashboardSessionMaxLifetimeSec := int(cfg.Sessions.Dashboard.MaxLifetime / time.Second)
-	dashboardSessionElevationWindowSec := int(cfg.Sessions.Dashboard.ElevationWindow / time.Second)
-	dashboardSessionPersistElevationAcrossRestart := cfg.Sessions.Dashboard.PersistElevationAcrossRestart
-	dashboardSessionRequireElevation := cfg.Sessions.Dashboard.RequireElevation
-	agentSessionEnabled := cfg.Sessions.Agent.Enabled
-	agentSessionIdleSec := int(cfg.Sessions.Agent.IdleTimeout / time.Second)
-	agentSessionMaxLifetimeSec := int(cfg.Sessions.Agent.MaxLifetime / time.Second)
-	autoSolverEnabled := cfg.AutoSolver.Enabled
-	autoSolverAutoTrigger := cfg.AutoSolver.AutoTrigger
-	autoSolverTriggerOnNavigate := cfg.AutoSolver.TriggerOnNavigate
-	autoSolverTriggerOnAction := cfg.AutoSolver.TriggerOnAction
-	autoSolverMaxAttempts := cfg.AutoSolver.MaxAttempts
-	autoSolverSolverTimeoutSec := cfg.AutoSolver.SolverTimeoutSec
-	autoSolverRetryBaseDelayMs := cfg.AutoSolver.RetryBaseDelayMs
-	autoSolverRetryMaxDelayMs := cfg.AutoSolver.RetryMaxDelayMs
-	autoSolverLLMFallback := cfg.AutoSolver.LLMFallback
-	autoSolverHandoffOnFailure := cfg.AutoSolver.HandoffOnFailure
-	autoSolverAwaitOnNavigate := cfg.AutoSolver.AwaitOnNavigate
-
-	quarantineKeep := cfg.ProfileQuarantineKeep
-	dialogAutoAccept := cfg.DialogAutoAccept
-
-	mode := "headless"
-	if !cfg.Headless {
-		mode = "headed"
-	}
-
-	var netBufSize *int
-	if cfg.NetworkBufferSize > 0 {
-		v := cfg.NetworkBufferSize
-		netBufSize = &v
-	}
-	retainBodies := cfg.RetainNetworkBodies
-	retainBodyMaxBytes := cfg.RetainNetworkBodyMaxBytes
-
-	// Always emit browsers.default; stop writing the deprecated browser.provider
-	// field. Write the value verbatim (unknown values are kept raw by config load
-	// so the load-time warning + chrome fallback still fire — don't normalize and
-	// silently rewrite them); only an empty value falls back to chrome.
 	browsersDefault := cfg.DefaultBrowser
 	if browsersDefault == "" {
 		browsersDefault = BrowserChrome
 	}
-	browsersBlock := BrowsersConfig{
-		Default:   browsersDefault,
-		Available: append([]string(nil), cfg.BrowsersAvailable...),
-	}
-
 	fc := FileConfig{
-		Schema: CurrentConfigSchemaURL(),
-		Server: ServerConfig{
-			Port:                      cfg.Port,
-			Bind:                      cfg.Bind,
-			Token:                     cfg.Token,
-			StateDir:                  cfg.StateDir,
-			LogLevel:                  cfg.LogLevel,
-			NetworkBufferSize:         netBufSize,
-			RetainNetworkBodies:       &retainBodies,
-			RetainNetworkBodyMaxBytes: &retainBodyMaxBytes,
-			TrustProxyHeaders:         &cfg.TrustProxyHeaders,
-			CookieSecure:              cfg.CookieSecure,
-		},
-		Browser: BrowserConfig{
-			// Provider intentionally omitted — deprecated in favor of browsers.default.
-			BrowserVersion:    cfg.BrowserVersion,
-			BrowserBinary:     cfg.BrowserBinary,
-			BrowserDebugPort:  intPtrIfPositive(cfg.BrowserDebugPort),
-			BrowserExtraFlags: cfg.BrowserExtraFlags,
-			Cloak:             cloakBrowserConfigFromRuntime(cfg),
-			ExtensionPaths:    append([]string(nil), cfg.ExtensionPaths...),
-			Proxy:             cloneBrowserProxyConfig(cfg.Proxy),
-			DefaultTarget:     cfg.DefaultTarget,
-			FallbackOrder:     append([]string(nil), cfg.FallbackOrder...),
-			Targets:           cloneBrowserTargetsConfig(cfg.Targets),
-		},
-		InstanceDefaults: InstanceDefaultsConfig{
-			Mode:                   mode,
-			NoRestore:              &noRestore,
-			Timezone:               cfg.Timezone,
-			BlockImages:            &blockImages,
-			BlockMedia:             &blockMedia,
-			BlockAds:               &blockAds,
-			MaxTabs:                &maxTabs,
-			MaxParallelTabs:        &maxParallelTabs,
-			UserAgent:              cfg.UserAgent,
-			NoAnimations:           &noAnimations,
-			CaptureAllowActivation: &captureAllowActivation,
-			Humanize:               &humanize,
-			StealthLevel:           cfg.StealthLevel,
-			TabEvictionPolicy:      cfg.TabEvictionPolicy,
-			TabPolicy:              tabPolicyDefaultsFromRuntime(cfg),
-			DialogAutoAccept:       &dialogAutoAccept,
-		},
-		Security: SecurityConfig{
-			AllowEvaluate:          &allowEvaluate,
-			AllowMacro:             &allowMacro,
-			AllowScreencast:        &allowScreencast,
-			AllowDownload:          &allowDownload,
-			AllowCookies:           &allowCookies,
-			AllowNetworkIntercept:  &allowNetworkIntercept,
-			AllowFileScheme:        &allowFileScheme,
-			AllowedDomains:         append([]string(nil), cfg.AllowedDomains...),
-			DownloadAllowedDomains: downloadAllowedDomains,
-			DownloadMaxBytes:       &downloadMaxBytes,
-			AllowUpload:            &allowUpload,
-			AllowClipboard:         &allowClipboard,
-			AllowStateExport:       &allowStateExport,
-			EnableActionGuards:     &enableActionGuards,
-			UploadMaxRequestBytes:  &uploadMaxRequestBytes,
-			UploadMaxFiles:         &uploadMaxFiles,
-			UploadMaxFileBytes:     &uploadMaxFileBytes,
-			UploadMaxTotalBytes:    &uploadMaxTotalBytes,
-			MaxRedirects:           &maxRedirects,
-			TrustedProxyCIDRs:      append([]string(nil), cfg.TrustedProxyCIDRs...),
-			TrustedResolveCIDRs:    append([]string(nil), cfg.TrustedResolveCIDRs...),
-			TrustLoopbackProxy:     &trustLoopbackProxy,
-			Attach: AttachConfig{
-				Enabled:          &attachEnabled,
-				AllowHosts:       append([]string(nil), cfg.AttachAllowHosts...),
-				AllowSchemes:     append([]string(nil), cfg.AttachAllowSchemes...),
-				ForwardProxyAuth: &attachForwardProxyAuth,
-			},
-			IDPI: cfg.IDPI,
-		},
-		Profiles: ProfilesConfig{
-			BaseDir:        cfg.ProfilesBaseDir,
-			DefaultProfile: cfg.DefaultProfile,
-			QuarantineKeep: &quarantineKeep,
-		},
-		MultiInstance: MultiInstanceConfig{
-			Strategy:          cfg.Strategy,
-			AllocationPolicy:  cfg.AllocationPolicy,
-			InstancePortStart: &start,
-			InstancePortEnd:   &end,
-			Restart: MultiInstanceRestartConfig{
-				MaxRestarts:    &restartMaxRestarts,
-				InitBackoffSec: &restartInitBackoffSec,
-				MaxBackoffSec:  &restartMaxBackoffSec,
-				StableAfterSec: &restartStableAfterSec,
-			},
-		},
-		Timeouts: TimeoutsConfig{
-			ActionSec:   int(cfg.ActionTimeout / time.Second),
-			NavigateSec: int(cfg.NavigateTimeout / time.Second),
-			ShutdownSec: int(cfg.ShutdownTimeout / time.Second),
-			WaitNavMs:   int(cfg.WaitNavDelay / time.Millisecond),
-		},
-		Observability: ObservabilityFileConfig{
-			Activity: ActivityFileConfig{
-				Enabled:        &activityEnabled,
-				SessionIdleSec: &activitySessionIdleSec,
-				RetentionDays:  &activityRetentionDays,
-				Events: ActivityEventsFileConfig{
-					Dashboard:    &activityDashboardEvents,
-					Server:       &activityServerEvents,
-					Bridge:       &activityBridgeEvents,
-					Orchestrator: &activityOrchestratorEvents,
-					Scheduler:    &activitySchedulerEvents,
-					MCP:          &activityMCPEvents,
-					Other:        &activityOtherEvents,
-				},
-			},
-		},
-		Sessions: SessionsFileConfig{
-			Dashboard: DashboardSessionFileConfig{
-				Persist:                       &dashboardSessionPersist,
-				IdleTimeoutSec:                &dashboardSessionIdleSec,
-				MaxLifetimeSec:                &dashboardSessionMaxLifetimeSec,
-				ElevationWindowSec:            &dashboardSessionElevationWindowSec,
-				PersistElevationAcrossRestart: &dashboardSessionPersistElevationAcrossRestart,
-				RequireElevation:              &dashboardSessionRequireElevation,
-			},
-			Agent: AgentSessionFileConfig{
-				Enabled:        &agentSessionEnabled,
-				Mode:           cfg.Sessions.Agent.Mode,
-				IdleTimeoutSec: &agentSessionIdleSec,
-				MaxLifetimeSec: &agentSessionMaxLifetimeSec,
-			},
-		},
-		AutoSolver: AutoSolverFileConfig{
-			Enabled:           &autoSolverEnabled,
-			AutoTrigger:       &autoSolverAutoTrigger,
-			TriggerOnNavigate: &autoSolverTriggerOnNavigate,
-			TriggerOnAction:   &autoSolverTriggerOnAction,
-			MaxAttempts:       &autoSolverMaxAttempts,
-			SolverTimeoutSec:  &autoSolverSolverTimeoutSec,
-			RetryBaseDelayMs:  &autoSolverRetryBaseDelayMs,
-			RetryMaxDelayMs:   &autoSolverRetryMaxDelayMs,
-			Solvers:           copyStringSlice(cfg.AutoSolver.Solvers),
-			LLMProvider:       cfg.AutoSolver.LLMProvider,
-			LLMFallback:       &autoSolverLLMFallback,
-			HandoffOnFailure:  &autoSolverHandoffOnFailure,
-			AwaitOnNavigate:   &autoSolverAwaitOnNavigate,
-			External: AutoSolverExtConf{
-				CapsolverKey:  cfg.AutoSolver.CapsolverKey,
-				TwoCaptchaKey: cfg.AutoSolver.TwoCaptchaKey,
-			},
-			Credentials: AutoSolverCredentialsConf{
-				Login: AutoSolverLoginConf{
-					User:     cfg.AutoSolver.Credentials.Login.User,
-					Password: cfg.AutoSolver.Credentials.Login.Password,
-				},
-				Signup: AutoSolverSignupConf{
-					Name:     cfg.AutoSolver.Credentials.Signup.Name,
-					Email:    cfg.AutoSolver.Credentials.Signup.Email,
-					Password: cfg.AutoSolver.Credentials.Signup.Password,
-				},
-				Form: AutoSolverFormConf{
-					Field1: cfg.AutoSolver.Credentials.Form.Field1,
-					Field2: cfg.AutoSolver.Credentials.Form.Field2,
-					Email:  cfg.AutoSolver.Credentials.Form.Email,
-				},
-			},
-		},
-		Browsers: browsersBlock,
+		Schema:           CurrentConfigSchemaURL(),
+		Server:           serverConfigFromRuntime(cfg),
+		Browser:          browserConfigFromRuntime(cfg),
+		InstanceDefaults: instanceDefaultsFromRuntime(cfg),
+		Security:         securityConfigFromRuntime(cfg),
+		Profiles:         profilesConfigFromRuntime(cfg),
+		MultiInstance:    multiInstanceConfigFromRuntime(cfg),
+		Timeouts:         timeoutsConfigFromRuntime(cfg),
+		Observability:    observabilityConfigFromRuntime(cfg),
+		Sessions:         sessionsConfigFromRuntime(cfg),
+		AutoSolver:       autoSolverConfigFromRuntime(cfg),
+		Browsers:         BrowsersConfig{Default: browsersDefault, Available: cloneStringSlice(cfg.BrowsersAvailable)},
 	}
-
 	reconcileDefaultTargetProvider(&fc.Browser, browsersDefault, cfg)
-
 	return fc
+}
+
+func serverConfigFromRuntime(cfg *RuntimeConfig) ServerConfig {
+	return ServerConfig{
+		Port:                      cfg.Port,
+		Bind:                      cfg.Bind,
+		Token:                     cfg.Token,
+		StateDir:                  cfg.StateDir,
+		LogLevel:                  cfg.LogLevel,
+		NetworkBufferSize:         intPtrIfPositive(cfg.NetworkBufferSize),
+		RetainNetworkBodies:       ptr(cfg.RetainNetworkBodies),
+		RetainNetworkBodyMaxBytes: ptr(cfg.RetainNetworkBodyMaxBytes),
+		TrustProxyHeaders:         ptr(cfg.TrustProxyHeaders),
+		CookieSecure:              cloneBoolPtr(cfg.CookieSecure),
+	}
+}
+
+func browserConfigFromRuntime(cfg *RuntimeConfig) BrowserConfig {
+	return BrowserConfig{
+		BrowserVersion:    cfg.BrowserVersion,
+		BrowserBinary:     cfg.BrowserBinary,
+		BrowserDebugPort:  intPtrIfPositive(cfg.BrowserDebugPort),
+		BrowserExtraFlags: cfg.BrowserExtraFlags,
+		Cloak:             cloakBrowserConfigFromRuntime(cfg),
+		ExtensionPaths:    cloneStringSlice(cfg.ExtensionPaths),
+		Proxy:             cloneBrowserProxyConfig(cfg.Proxy),
+		DefaultTarget:     cfg.DefaultTarget,
+		FallbackOrder:     cloneStringSlice(cfg.FallbackOrder),
+		Targets:           cloneBrowserTargetsConfig(cfg.Targets),
+	}
+}
+
+func instanceDefaultsFromRuntime(cfg *RuntimeConfig) InstanceDefaultsConfig {
+	mode := "headless"
+	if !cfg.Headless {
+		mode = "headed"
+	}
+	return InstanceDefaultsConfig{
+		Mode:                   mode,
+		NoRestore:              ptr(cfg.NoRestore),
+		Timezone:               cfg.Timezone,
+		BlockImages:            ptr(cfg.BlockImages),
+		BlockMedia:             ptr(cfg.BlockMedia),
+		BlockAds:               ptr(cfg.BlockAds),
+		MaxTabs:                ptr(cfg.MaxTabs),
+		MaxParallelTabs:        ptr(cfg.MaxParallelTabs),
+		UserAgent:              cfg.UserAgent,
+		NoAnimations:           ptr(cfg.NoAnimations),
+		CaptureAllowActivation: ptr(cfg.CaptureAllowActivation),
+		Humanize:               ptr(cfg.Humanize),
+		StealthLevel:           cfg.StealthLevel,
+		TabEvictionPolicy:      cfg.TabEvictionPolicy,
+		TabPolicy:              tabPolicyDefaultsFromRuntime(cfg),
+		DialogAutoAccept:       ptr(cfg.DialogAutoAccept),
+	}
+}
+
+func securityConfigFromRuntime(cfg *RuntimeConfig) SecurityConfig {
+	idpi := cfg.IDPI
+	idpi.CustomPatterns = cloneStringSlice(cfg.IDPI.CustomPatterns)
+	return SecurityConfig{
+		AllowEvaluate:          ptr(cfg.AllowEvaluate),
+		AllowMacro:             ptr(cfg.AllowMacro),
+		AllowScreencast:        ptr(cfg.AllowScreencast),
+		AllowDownload:          ptr(cfg.AllowDownload),
+		AllowCookies:           ptr(cfg.AllowCookies),
+		AllowNetworkIntercept:  ptr(cfg.AllowNetworkIntercept),
+		AllowMemory:            ptr(cfg.AllowMemory),
+		AllowFileScheme:        ptr(cfg.AllowFileScheme),
+		AllowedDomains:         cloneStringSlice(cfg.AllowedDomains),
+		DownloadAllowedDomains: cloneStringSlice(cfg.DownloadAllowedDomains),
+		DownloadMaxBytes:       ptr(cfg.EffectiveDownloadMaxBytes()),
+		MemorySnapshotMaxBytes: ptr(cfg.EffectiveMemorySnapshotMaxBytes()),
+		AllowUpload:            ptr(cfg.AllowUpload),
+		AllowClipboard:         ptr(cfg.AllowClipboard),
+		AllowStateExport:       ptr(cfg.AllowStateExport),
+		UploadMaxRequestBytes:  ptr(cfg.EffectiveUploadMaxRequestBytes()),
+		UploadMaxFiles:         ptr(cfg.EffectiveUploadMaxFiles()),
+		UploadMaxFileBytes:     ptr(cfg.EffectiveUploadMaxFileBytes()),
+		UploadMaxTotalBytes:    ptr(cfg.EffectiveUploadMaxTotalBytes()),
+		MaxRedirects:           ptr(cfg.MaxRedirects),
+		TrustedProxyCIDRs:      cloneStringSlice(cfg.TrustedProxyCIDRs),
+		TrustedResolveCIDRs:    cloneStringSlice(cfg.TrustedResolveCIDRs),
+		TrustLoopbackProxy:     ptr(cfg.TrustLoopbackProxy),
+		Attach: AttachConfig{
+			Enabled:          ptr(cfg.AttachEnabled),
+			AllowHosts:       cloneStringSlice(cfg.AttachAllowHosts),
+			AllowSchemes:     cloneStringSlice(cfg.AttachAllowSchemes),
+			ForwardProxyAuth: ptr(cfg.AttachForwardProxyAuth),
+		},
+		IDPI: &idpi,
+	}
+}
+
+func profilesConfigFromRuntime(cfg *RuntimeConfig) ProfilesConfig {
+	return ProfilesConfig{
+		BaseDir:        cfg.ProfilesBaseDir,
+		DefaultProfile: cfg.DefaultProfile,
+		QuarantineKeep: ptr(cfg.ProfileQuarantineKeep),
+	}
+}
+
+func multiInstanceConfigFromRuntime(cfg *RuntimeConfig) MultiInstanceConfig {
+	return MultiInstanceConfig{
+		Strategy:          cfg.Strategy,
+		AllocationPolicy:  cfg.AllocationPolicy,
+		InstancePortStart: ptr(cfg.InstancePortStart),
+		InstancePortEnd:   ptr(cfg.InstancePortEnd),
+		Restart: MultiInstanceRestartConfig{
+			MaxRestarts:    ptr(cfg.RestartMaxRestarts),
+			InitBackoffSec: secondsPtr(cfg.RestartInitBackoff),
+			MaxBackoffSec:  secondsPtr(cfg.RestartMaxBackoff),
+			StableAfterSec: secondsPtr(cfg.RestartStableAfter),
+		},
+	}
+}
+
+func timeoutsConfigFromRuntime(cfg *RuntimeConfig) TimeoutsConfig {
+	return TimeoutsConfig{
+		ActionSec:   int(cfg.ActionTimeout / time.Second),
+		NavigateSec: int(cfg.NavigateTimeout / time.Second),
+		ShutdownSec: int(cfg.ShutdownTimeout / time.Second),
+		WaitNavMs:   int(cfg.WaitNavDelay / time.Millisecond),
+	}
+}
+
+func observabilityConfigFromRuntime(cfg *RuntimeConfig) ObservabilityFileConfig {
+	activity := cfg.Observability.Activity
+	return ObservabilityFileConfig{
+		Activity: ActivityFileConfig{
+			Enabled:        ptr(activity.Enabled),
+			SessionIdleSec: ptr(activity.SessionIdleSec),
+			RetentionDays:  ptr(activity.RetentionDays),
+			Events: ActivityEventsFileConfig{
+				Dashboard:    ptr(activity.Events.Dashboard),
+				Server:       ptr(activity.Events.Server),
+				Bridge:       ptr(activity.Events.Bridge),
+				Orchestrator: ptr(activity.Events.Orchestrator),
+				Scheduler:    ptr(activity.Events.Scheduler),
+				MCP:          ptr(activity.Events.MCP),
+				Other:        ptr(activity.Events.Other),
+			},
+		},
+	}
+}
+
+func sessionsConfigFromRuntime(cfg *RuntimeConfig) SessionsFileConfig {
+	dashboard := cfg.Sessions.Dashboard
+	agent := cfg.Sessions.Agent
+	return SessionsFileConfig{
+		Dashboard: DashboardSessionFileConfig{
+			Persist:                       ptr(dashboard.Persist),
+			IdleTimeoutSec:                secondsPtr(dashboard.IdleTimeout),
+			MaxLifetimeSec:                secondsPtr(dashboard.MaxLifetime),
+			ElevationWindowSec:            secondsPtr(dashboard.ElevationWindow),
+			PersistElevationAcrossRestart: ptr(dashboard.PersistElevationAcrossRestart),
+			RequireElevation:              ptr(dashboard.RequireElevation),
+		},
+		Agent: AgentSessionFileConfig{
+			Enabled:        ptr(agent.Enabled),
+			Mode:           agent.Mode,
+			IdleTimeoutSec: secondsPtr(agent.IdleTimeout),
+			MaxLifetimeSec: secondsPtr(agent.MaxLifetime),
+		},
+	}
+}
+
+func autoSolverConfigFromRuntime(cfg *RuntimeConfig) AutoSolverFileConfig {
+	a := cfg.AutoSolver
+	return AutoSolverFileConfig{
+		Enabled:           ptr(a.Enabled),
+		AutoTrigger:       ptr(a.AutoTrigger),
+		TriggerOnNavigate: ptr(a.TriggerOnNavigate),
+		TriggerOnAction:   ptr(a.TriggerOnAction),
+		MaxAttempts:       ptr(a.MaxAttempts),
+		SolverTimeoutSec:  ptr(a.SolverTimeoutSec),
+		RetryBaseDelayMs:  ptr(a.RetryBaseDelayMs),
+		RetryMaxDelayMs:   ptr(a.RetryMaxDelayMs),
+		Solvers:           cloneStringSlice(a.Solvers),
+		LLMProvider:       a.LLMProvider,
+		LLMFallback:       ptr(a.LLMFallback),
+		HandoffOnFailure:  ptr(a.HandoffOnFailure),
+		AwaitOnNavigate:   ptr(a.AwaitOnNavigate),
+		External: AutoSolverExtConf{
+			CapsolverKey:  a.CapsolverKey,
+			TwoCaptchaKey: a.TwoCaptchaKey,
+		},
+		Credentials: AutoSolverCredentialsConf{
+			Login: AutoSolverLoginConf{
+				User:     a.Credentials.Login.User,
+				Password: a.Credentials.Login.Password,
+			},
+			Signup: AutoSolverSignupConf{
+				Name:     a.Credentials.Signup.Name,
+				Email:    a.Credentials.Signup.Email,
+				Password: a.Credentials.Signup.Password,
+			},
+			Form: AutoSolverFormConf{
+				Field1: a.Credentials.Form.Field1,
+				Field2: a.Credentials.Form.Field2,
+				Email:  a.Credentials.Form.Email,
+			},
+		},
+	}
 }
 
 // reconcileDefaultTargetProvider keeps the serialized default browser target

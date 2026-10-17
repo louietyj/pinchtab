@@ -25,6 +25,30 @@ func TestHandleEval(t *testing.T) {
 	}
 }
 
+// PIN-420: the tool must forward awaitPromise into the /evaluate body so an MCP
+// agent can resolve a Promise, matching HTTP and CLI. Without the arg the key must
+// be absent, so the server keeps the un-awaited behaviour (the {}+hint path).
+func TestHandleEvalForwardsAwaitPromise(t *testing.T) {
+	var lastBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lastBody = nil
+		_ = json.NewDecoder(r.Body).Decode(&lastBody)
+		_, _ = w.Write([]byte(`{"result":42}`))
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL, "")
+
+	callSharedTool(t, c, "pinchtab_eval", map[string]any{"expression": "Promise.resolve(42)", "awaitPromise": true})
+	if lastBody["awaitPromise"] != true {
+		t.Fatalf("awaitPromise=true was not forwarded to /evaluate: body=%v", lastBody)
+	}
+
+	callSharedTool(t, c, "pinchtab_eval", map[string]any{"expression": "document.title"})
+	if _, present := lastBody["awaitPromise"]; present {
+		t.Fatalf("awaitPromise must be absent when not requested, so the un-awaited hint path is unchanged: body=%v", lastBody)
+	}
+}
+
 func TestHandleEvalMissingExpression(t *testing.T) {
 	srv := mockPinchTab()
 	defer srv.Close()

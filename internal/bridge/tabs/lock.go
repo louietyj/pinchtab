@@ -63,6 +63,25 @@ func (m *LockManager) Unlock(tabID, owner string) error {
 	return nil
 }
 
+// Release drops a tab's lease without asking who held it, for a tab that no
+// longer exists.
+//
+// Unlock is the owner's operation and refuses anyone else, which is right while
+// there is still a tab to protect. A closed tab has no work left to serialize,
+// so there is nobody the lease could still be protecting it from, and requiring
+// the owner would mean an agent that closed a tab without unlocking it left an
+// entry no call could ever remove.
+//
+// Nothing did remove them: purgeTrackedTabState clears the four per-tab maps on
+// the TabManager and notifies the dialog, executor, log and route managers, but
+// the lock manager hangs off the Bridge and was not among them. Every tab locked
+// and then closed left an entry behind for the life of the process.
+func (m *LockManager) Release(tabID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.locks, tabID)
+}
+
 func (m *LockManager) Get(tabID string) *LockInfo {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -76,4 +95,14 @@ func (m *LockManager) Get(tabID string) *LockInfo {
 		Owner:     l.owner,
 		ExpiresAt: l.expires,
 	}
+}
+
+// trackedForTest reports how many leases the manager is holding, including any
+// that have expired but not yet been dropped. Tests assert on retention, which
+// is not observable through Get: Get reports an expired lease as absent while
+// its entry is still in the map.
+func (m *LockManager) trackedForTest() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.locks)
 }

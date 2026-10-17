@@ -164,9 +164,11 @@ curl -X POST http://localhost:9867/tabs/<tabId>/action \
 ## Operational Notes
 
 - `/find` uses the tab's accessibility snapshot, not raw DOM selectors.
-- Structured `/find` queries such as `role:button Save`, `text:Submit`, `label:Email`, `placeholder:Search`, `alt:Logo`, `title:Close`, `testid:submit`, `first:role:button`, `last:text:Submit`, and `nth:2:label:Email` are matched by the semantic engine against enriched descriptors. A wrapper index is zero-based here too, exactly as it is over `css:`/`xpath:`/`text:` — `nth:0:label:Email` is the first match in document order — and an index past the last match refuses by saying so rather than reporting that nothing matched.
+- The query is natural language, not a selector: CSS, XPath and refs are not resolved, only scored as text. Prefix a query with `find:` or `semantic:` to force natural-language matching.
+- Structured `/find` queries such as `role:button Save`, `text:Submit`, `label:Email`, `placeholder:Search`, `alt:Logo`, `title:Close`, `testid:submit`, `first:role:button`, `last:text:Submit`, and `nth:2:label:Email` are matched by the semantic engine against enriched descriptors. `/find` hands the query to the matcher unchanged, so its `nth:` index counts from 1 (`nth:1:label:Email` is the first match); `nth:0` or an index past the last match returns `200` with an empty `best_ref`. The zero-based index and the out-of-range refusal apply to `nth:` in action selectors, not to `/find`.
 - In action commands, `role:`, `label:`, `placeholder:`, `alt:`, `title:`, `testid:`, and wrappers around those forms use semantic matching. CSS, XPath, refs, the existing `text:` action selector, and bare CSS/text wrappers such as `first:button` remain browser-side selector resolution.
 - If there is no cached snapshot, PinchTab tries to refresh it automatically before matching.
+- Every successful response carries the tab's ref vocabulary token in the `X-PinchTab-Vocab` header; the CLI and MCP capture it, so a returned ref can be acted on without a snapshot in between.
 - Successful matches are useful inputs to `/action`, `/actions`, and higher-level recovery logic.
 - A `200` response can still return an empty `best_ref` if nothing met the threshold.
 
@@ -177,4 +179,5 @@ curl -X POST http://localhost:9867/tabs/<tabId>/action \
 | `400` | invalid JSON or missing `query` |
 | `403` | blocked by IDPI in strict mode |
 | `404` | tab not found |
-| `500` | Chrome not initialized, snapshot unavailable, or matcher failure |
+| `409` | `dialog_blocked`: a JavaScript dialog is blocking the tab |
+| `500` | Chrome not initialized, no elements in the snapshot, or matcher failure |

@@ -70,10 +70,10 @@ func (h *Handlers) HandleTabState(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if bridgeWithState, ok := h.Bridge.(interface {
+	if bridgeWithState, ok := bridgeAs[interface {
 		GetDocumentReadyState(string) (string, error)
 		IsNetworkIdle(string) (bool, bool)
-	}); ok {
+	}](h.Bridge); ok {
 		if readyState, err := bridgeWithState.GetDocumentReadyState(resolvedTabID); err == nil {
 			resp.Load.ReadyState = readyState
 			switch readyState {

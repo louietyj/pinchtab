@@ -1,11 +1,13 @@
 package orchestrator
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pinchtab/pinchtab/internal/api/types"
@@ -33,12 +35,156 @@ func (o *Orchestrator) List() []bridge.Instance {
 
 	result := make([]bridge.Instance, 0, len(o.instances))
 	for _, inst := range o.instances {
-		copyInst := inst.Instance
-		copyInst.Status = effectiveInstanceStatus(copyInst.Status, instanceIsActive(inst))
-		result = append(result, copyInst)
+		result = append(result, o.instanceViewLocked(inst))
 	}
+	sort.Slice(result, func(i, j int) bool {
+		if !result[i].StartTime.Equal(result[j].StartTime) {
+			return result[i].StartTime.Before(result[j].StartTime)
+		}
+		return result[i].ID < result[j].ID
+	})
 	return result
 }
+
+func (o *Orchestrator) instanceViewLocked(inst *InstanceInternal) bridge.Instance {
+	view := inst.Instance
+	view.Status = effectiveInstanceStatus(view.Status, instanceIsActive(inst))
+	view.Responsiveness = bridge.NormalizeResponsiveness(view.Responsiveness)
+	if crashes, ok := o.crashes[inst.ID]; ok && crashes.Total > 0 {
+		summary := crashes
+		view.Crashes = &summary
+	}
+	return view
+}
+
+func (o *Orchestrator) DefaultInstance() (bridge.Instance, bool) {
+	match, _, err := o.defaultRouteMatch()
+	if err != nil {
+		return bridge.Instance{}, false
+	}
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	inst := o.firstRunningLocked(match)
+	if inst == nil {
+		return bridge.Instance{}, false
+	}
+	return o.instanceViewLocked(inst), true
+}
+
+type instanceProbe struct {
+	crashes        *bridge.CrashSummary
+	responsiveness string
+}
+
+func (o *Orchestrator) probeInstance(inst *InstanceInternal) instanceProbe {
+	ctx, cancel := context.WithTimeout(context.Background(), responsivenessProbeBudget)
+	defer cancel()
+	var tabsErr error
+	done := make(chan struct{})
+	go func() {
+		tabsErr = o.probeTabs(ctx, inst)
+		close(done)
+	}()
+	crashes, healthErr := o.fetchCrashes(ctx, inst)
+	<-done
+	if crashes != nil {
+		for i := range crashes.Recent {
+			crashes.Recent[i].InstanceID = inst.ID
+		}
+	}
+	return instanceProbe{crashes: crashes, responsiveness: classifyResponsiveness(healthErr, tabsErr)}
+}
+
+var refreshJoinWait = 250 * time.Millisecond
+
+// RefreshCrashes asks every live instance for its crash record and probes its
+// tabs route, so List can carry both and CrashSummary can merge the crashes.
+// Browser crashes are recorded by the process that owns the browser, which in
+// server mode is never this one.
+func (o *Orchestrator) RefreshCrashes() {
+	timer := time.NewTimer(refreshJoinWait)
+	defer timer.Stop()
+	select {
+	case <-o.startRefresh():
+	case <-timer.C:
+	}
+}
+
+func (o *Orchestrator) startRefresh() <-chan struct{} {
+	o.refreshMu.Lock()
+	defer o.refreshMu.Unlock()
+	if o.refreshDone != nil {
+		return o.refreshDone
+	}
+	done := make(chan struct{})
+	o.refreshDone = done
+	go func() {
+		o.refreshInstances()
+		o.refreshMu.Lock()
+		o.refreshDone = nil
+		o.refreshMu.Unlock()
+		close(done)
+	}()
+	return done
+}
+
+func (o *Orchestrator) refreshInstances() {
+	o.mu.RLock()
+	instances := make([]*InstanceInternal, 0, len(o.instances))
+	for _, inst := range o.instances {
+		if inst.Status == "running" && instanceIsActive(inst) {
+			instances = append(instances, inst)
+		}
+	}
+	o.mu.RUnlock()
+
+	probes := make([]instanceProbe, len(instances))
+	var wg sync.WaitGroup
+	for i, inst := range instances {
+		wg.Add(1)
+		go func(i int, inst *InstanceInternal) {
+			defer wg.Done()
+			probes[i] = o.probeInstance(inst)
+		}(i, inst)
+	}
+	wg.Wait()
+
+	o.mu.Lock()
+	if o.crashes == nil {
+		o.crashes = map[string]bridge.CrashSummary{}
+	}
+	for _, inst := range o.instances {
+		inst.Responsiveness = bridge.ResponsivenessUnknown
+	}
+	for i, inst := range instances {
+		inst.Responsiveness = probes[i].responsiveness
+		if probes[i].crashes == nil {
+			continue
+		}
+		o.crashes[inst.ID] = *probes[i].crashes
+	}
+	o.mu.Unlock()
+}
+
+// CrashSummary merges the instances' crash records into the shape bridge /health
+// carries, each event naming its instance.
+func (o *Orchestrator) CrashSummary() bridge.CrashSummary {
+	o.RefreshCrashes()
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	var merged bridge.CrashSummary
+	for _, crashes := range o.crashes {
+		merged.Total += crashes.Total
+		merged.Recent = append(merged.Recent, crashes.Recent...)
+	}
+	sort.SliceStable(merged.Recent, func(i, j int) bool { return merged.Recent[i].Time.Before(merged.Recent[j].Time) })
+	if len(merged.Recent) > maxMergedCrashEvents {
+		merged.Recent = merged.Recent[len(merged.Recent)-maxMergedCrashEvents:]
+	}
+	return merged
+}
+
+const maxMergedCrashEvents = 20
 
 func (o *Orchestrator) Logs(id string) (string, error) {
 	o.mu.RLock()
@@ -74,65 +220,80 @@ func (o *Orchestrator) FirstRunningURL() string {
 }
 
 func (o *Orchestrator) FirstRunningURLForBrowser(browser string) string {
+	return o.firstRunningURL(browserMatcher(browser))
+}
+
+// browserMatcher has no legacy empty-Browser fallback: a request for a
+// SPECIFIC browser must not be routed to an instance of unknown provenance.
+// Browserless legacy instances stay reachable via FirstRunningURL.
+func browserMatcher(browser string) func(*InstanceInternal) bool {
 	browser = strings.TrimSpace(browser)
 	if browser == "" {
-		return o.FirstRunningURL()
+		return nil
 	}
 	normalized := config.NormalizeBrowser(browser)
-	// No legacy empty-Browser fallback here: a request for a SPECIFIC
-	// browser must not be routed to an instance of unknown provenance.
-	// Browserless legacy instances stay reachable via FirstRunningURL.
-	return o.firstRunningURL(func(inst *InstanceInternal) bool {
+	return func(inst *InstanceInternal) bool {
 		return inst != nil && inst.Browser == normalized
-	})
+	}
 }
 
 func (o *Orchestrator) firstRunningURL(match func(*InstanceInternal) bool) string {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
-	// Collect running instances and sort by start time for determinism.
-	type candidate struct {
-		start time.Time
-		url   string
+	if inst := o.firstRunningLocked(match); inst != nil {
+		return inst.URL
 	}
-	var candidates []candidate
+	return ""
+}
+
+func (o *Orchestrator) firstRunningLocked(match func(*InstanceInternal) bool) *InstanceInternal {
+	var first *InstanceInternal
 	for _, inst := range o.instances {
-		if inst.Status == "running" && instanceIsActive(inst) {
-			if inst.URL == "" {
-				continue
-			}
-			if match != nil && !match(inst) {
-				continue
-			}
-			candidates = append(candidates, candidate{start: inst.StartTime, url: inst.URL})
+		if inst.Status != "running" || !instanceIsActive(inst) || inst.URL == "" {
+			continue
+		}
+		if match != nil && !match(inst) {
+			continue
+		}
+		if first == nil || startsBefore(inst, first) {
+			first = inst
 		}
 	}
-	if len(candidates) == 0 {
-		return ""
+	return first
+}
+
+func startsBefore(a, b *InstanceInternal) bool {
+	if !a.StartTime.Equal(b.StartTime) {
+		return a.StartTime.Before(b.StartTime)
 	}
-	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].start.Equal(candidates[j].start) {
-			return candidates[i].url < candidates[j].url
+	if a.URL != b.URL {
+		return a.URL < b.URL
+	}
+	return a.ID < b.ID
+}
+
+func (o *Orchestrator) defaultRouteMatch() (func(*InstanceInternal) bool, int, error) {
+	resolved, err := config.ResolveDefaultBrowserTarget(o.cfg())
+	if err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+	if resolved != nil && !resolved.Legacy {
+		if resolved.Provider == "" {
+			return nil, http.StatusBadRequest, fmt.Errorf("no default browser target configured and none requested")
 		}
-		return candidates[i].start.Before(candidates[j].start)
-	})
-	return candidates[0].url
+		return browserMatcher(resolved.Provider), 0, nil
+	}
+	return nil, 0, nil
 }
 
 func (o *Orchestrator) FirstRunningURLForRequest(r *http.Request) (string, int, error) {
 	requested := ExtractRequestedBrowser(r)
 	if requested == "" {
-		resolved, err := config.ResolveDefaultBrowserTarget(o.runtimeCfg)
+		match, status, err := o.defaultRouteMatch()
 		if err != nil {
-			return "", http.StatusBadRequest, err
+			return "", status, err
 		}
-		if resolved != nil && !resolved.Legacy {
-			if resolved.Provider == "" {
-				return "", http.StatusBadRequest, fmt.Errorf("no default browser target configured and none requested")
-			}
-			return o.FirstRunningURLForBrowser(resolved.Provider), 0, nil
-		}
-		return o.FirstRunningURL(), 0, nil
+		return o.firstRunningURL(match), 0, nil
 	}
 
 	if _, err := config.ParseBrowser(requested, nil); err != nil {
@@ -140,8 +301,8 @@ func (o *Orchestrator) FirstRunningURLForRequest(r *http.Request) (string, int, 
 	}
 
 	normalized := config.NormalizeBrowser(requested)
-	if o.runtimeCfg != nil && len(o.runtimeCfg.Targets) > 0 {
-		matches := config.TargetsForBrowser(o.runtimeCfg, requested)
+	if cfg := o.cfg(); cfg != nil && len(cfg.Targets) > 0 {
+		matches := config.TargetsForBrowser(cfg, requested)
 		if len(matches) == 0 {
 			return "", http.StatusBadRequest, fmt.Errorf("no browser target configured for browser %q", requested)
 		}
@@ -267,17 +428,30 @@ func (o *Orchestrator) AllMetrics() []types.InstanceMetrics {
 			continue
 		}
 		all = append(all, types.InstanceMetrics{
-			InstanceID:    inst.ID,
-			ProfileName:   inst.ProfileName,
-			JSHeapUsedMB:  mem.JSHeapUsedMB,
-			JSHeapTotalMB: mem.JSHeapTotalMB,
-			Documents:     mem.Documents,
-			Frames:        mem.Frames,
-			Nodes:         mem.Nodes,
-			Listeners:     mem.Listeners,
+			InstanceID:        inst.ID,
+			ProfileName:       inst.ProfileName,
+			MemoryMB:          mem.MemoryMB,
+			Renderers:         mem.Renderers,
+			Page:              pageMetricsDTO(mem.Page),
+			UnreadableTargets: mem.UnreadableTargets,
 		})
 	}
 	return all
+}
+
+func pageMetricsDTO(page *bridge.PageMetrics) *types.PageMetrics {
+	if page == nil {
+		return nil
+	}
+	return &types.PageMetrics{
+		Targets:          page.Targets,
+		JSHeapUsedMB:     page.JSHeapUsedMB,
+		JSHeapTotalMB:    page.JSHeapTotalMB,
+		Documents:        page.Documents,
+		Frames:           page.Frames,
+		Nodes:            page.Nodes,
+		JSEventListeners: page.JSEventListeners,
+	}
 }
 
 func (o *Orchestrator) ScreencastURL(instanceID, tabID string) string {

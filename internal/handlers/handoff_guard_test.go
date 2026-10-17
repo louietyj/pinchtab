@@ -104,6 +104,12 @@ func assertHandoffRefusal(t *testing.T, w *httptest.ResponseRecorder) {
 	if resp.Details["hint"] != handoffHintMessage {
 		t.Fatalf("details hint = %v, want the shared handoff hint", resp.Details["hint"])
 	}
+	if !strings.Contains(handoffHintMessage, "/tabs/{id}/resume") {
+		t.Fatalf("the HTTP hint no longer names the resume route: %q", handoffHintMessage)
+	}
+	if resp.Details["remedy"] != "pinchtab resume tab1" {
+		t.Fatalf("details remedy = %v, want the CLI resume line", resp.Details["remedy"])
+	}
 	if resp.Details["reason"] != "manual_handoff" {
 		t.Fatalf("details reason = %v, want manual_handoff", resp.Details["reason"])
 	}

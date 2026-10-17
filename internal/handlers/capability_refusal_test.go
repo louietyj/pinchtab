@@ -49,10 +49,17 @@ func capabilityRefusal(t *testing.T, method, path string, call func(*Handlers, h
 }
 
 // remedyFor is the one place the expected remedy is spelled, so every assertion
-// below compares against the same contract rather than its own copy.
+// below compares against the same contract rather than its own copy. The remedy is
+// the mode-neutral config write only: `pinchtab server restart` would destroy a
+// bridge, which answers these same gates, so the restart guidance lives in the hint
+// instead (see restartHint).
 func remedyFor(setting string) string {
-	return "pinchtab config set " + setting + " true && pinchtab server restart"
+	return "pinchtab config set " + setting + " true"
 }
+
+// restartHint is the mode-neutral prose the hint carries so a caller applies the
+// change with the restart correct for their own mode.
+const restartHint = "restart pinchtab"
 
 // /storage is gated by the stateExport capability, so the old wording sent the
 // reader looking for a "stateExport endpoint" that does not exist. /cookies is
@@ -107,10 +114,11 @@ func TestCapabilityRefusalNamesTheCapabilityAndKeepsTheCode(t *testing.T) {
 	}
 }
 
-// The dead end this closes: the remedy stopped at the config write. Writing the
-// setting is a successful no-op for the caller — the security block is read at
-// boot — so the identical 403 came back, and the agent reading it has no other
-// instruction to try.
+// Every capability refusal must carry the mode-neutral config-write remedy AND a
+// hint that names the restart — never `pinchtab server restart` in the executable
+// remedy, which would kill a bridge answering this same gate. Writing the setting
+// is only half the fix (the security block is read at boot), so the restart the
+// caller still needs is stated in the hint as prose they apply for their own mode.
 //
 // The scope is derived from the route catalogue rather than listed here, so a
 // capability added there is covered the day it is added. Recording and clipboard
@@ -176,6 +184,13 @@ func TestEveryCapabilityRefusalCarriesTheRunnableRemedy(t *testing.T) {
 			if remedy != remedyFor(g.setting) {
 				t.Errorf("remedy = %q, want %q; a gate building its own string drifts from every other capability", remedy, remedyFor(g.setting))
 			}
+			if strings.Contains(remedy, "pinchtab server restart") {
+				t.Errorf("%s remedy names `pinchtab server restart`, which destroys a bridge if run verbatim: %q", g.name, remedy)
+			}
+			hint, _ := details["hint"].(string)
+			if !strings.Contains(strings.ToLower(hint), restartHint) {
+				t.Errorf("%s refusal hint does not carry the mode-neutral restart guidance: %q", g.name, hint)
+			}
 		})
 	}
 }
@@ -219,9 +234,11 @@ func TestWaitFnRefusesExactlyAsEvaluateDoesForTheSameCapability(t *testing.T) {
 			t.Errorf("details.%s = %q on /wait, %q on /evaluate", key, got, want)
 		}
 	}
-	// Writing the setting is only half the remedy; the security block is read at boot.
-	if remedy, _ := waitDetails["remedy"].(string); !strings.Contains(remedy, "restart") {
-		t.Errorf("remedy = %q, want it to name the restart", remedy)
+	// Writing the setting is only half the fix; the security block is read at boot,
+	// so the restart the caller still needs is named in the hint (mode-neutral, since
+	// a bridge cannot run `pinchtab server restart`).
+	if hint, _ := waitDetails["hint"].(string); !strings.Contains(strings.ToLower(hint), restartHint) {
+		t.Errorf("hint = %q, want it to name the restart", hint)
 	}
 }
 
@@ -413,8 +430,8 @@ func TestClipboardReadAndWriteRefusalsAreIdentical(t *testing.T) {
 // modelled: SetConfigValue is what `pinchtab config set` performs, and
 // ApplyFileConfigToRuntime is what a restart does with the resulting file — the
 // running config is built from it at boot and never rebuilt on an edit, which is
-// precisely why the remedy has to name the restart. Doing only the first half
-// leaves the gate shut, which is the loop the caller was stuck in.
+// precisely why the hint has to name a restart. Doing only the config write leaves
+// the gate shut, which is the loop the caller was stuck in.
 func TestFollowingTheRemedyClearsTheRefusal(t *testing.T) {
 	cfg := &config.RuntimeConfig{}
 	h := New(&mockBridge{}, cfg, nil, nil, nil)
@@ -427,13 +444,14 @@ func TestFollowingTheRemedyClearsTheRefusal(t *testing.T) {
 	}
 	setting, _ := details["setting"].(string)
 	remedy, _ := details["remedy"].(string)
+	hint, _ := details["hint"].(string)
 
 	fc := config.FileConfig{}
 	if err := config.SetConfigValue(&fc, setting, "true"); err != nil {
 		t.Fatalf("the remedy's config write fails: %v (remedy=%q)", err, remedy)
 	}
-	if !strings.Contains(remedy, "pinchtab server restart") {
-		t.Fatalf("remedy = %q carries no restart, so the retry below would model a step the caller was never told to take", remedy)
+	if !strings.Contains(strings.ToLower(hint), restartHint) {
+		t.Fatalf("hint = %q names no restart, so the retry below would model a step the caller was never told to take", hint)
 	}
 	config.ApplyFileConfigToRuntime(cfg, &fc)
 
@@ -445,7 +463,7 @@ func TestFollowingTheRemedyClearsTheRefusal(t *testing.T) {
 }
 
 // The config write ALONE must not clear the gate. If it did, the restart in the
-// remedy would be noise and this whole card would be wrong — so the negative is
+// hint would be noise and this whole card would be wrong — so the negative is
 // what makes the test above evidence for naming the restart rather than against.
 func TestTheConfigWriteAloneDoesNotClearTheRefusal(t *testing.T) {
 	cfg := &config.RuntimeConfig{}

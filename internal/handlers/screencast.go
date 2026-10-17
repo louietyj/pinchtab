@@ -31,7 +31,7 @@ func (h *Handlers) HandleScreencast(w http.ResponseWriter, r *http.Request) {
 
 	ctx, resolvedTabID, err := h.tabContext(r, tabID)
 	if err != nil {
-		httpx.Problem(w, http.StatusNotFound, "tab_not_found", "tab not found", false, nil)
+		WriteTabContextError(w, err, http.StatusNotFound)
 		return
 	}
 	if _, ok := h.applyTabGuards(w, r, ctx, resolvedTabID, guardDomainPolicy); !ok {
@@ -99,6 +99,8 @@ func (h *Handlers) HandleScreencast(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		case <-done:
+			return
+		case <-r.Context().Done():
 			return
 		case <-time.After(10 * time.Second):
 			if err := wsutil.WriteServerMessage(conn, ws.OpPing, nil); err != nil {

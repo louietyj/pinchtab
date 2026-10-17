@@ -10,8 +10,6 @@ There is a simple distributed PinchTab shape that turns out to be very practical
 
 That gives you one control plane and multiple places where browser execution can live.
 
-![Placeholder diagram for a Tailscale-connected orchestrator and remote bridge](../media/tailscale-bridge-topology-placeholder.svg)
-
 ```mermaid
 flowchart LR
     Agent["Agent / client"] --> AAPI

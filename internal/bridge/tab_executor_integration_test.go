@@ -311,3 +311,102 @@ func TestTabExecutor_StatsUnderLoad(t *testing.T) {
 
 	wg.Wait()
 }
+
+// peakTracker records the highest number of tasks seen inside a tab at once.
+// One task at a time is the whole promise of a per-tab gate, so the peak is the
+// property worth measuring; a count of completions is not.
+type peakTracker struct {
+	inFlight int64
+	peak     int64
+}
+
+func (p *peakTracker) enter() {
+	n := atomic.AddInt64(&p.inFlight, 1)
+	for {
+		old := atomic.LoadInt64(&p.peak)
+		if n <= old || atomic.CompareAndSwapInt64(&p.peak, old, n) {
+			return
+		}
+	}
+}
+
+func (p *peakTracker) leave() { atomic.AddInt64(&p.inFlight, -1) }
+
+func (p *peakTracker) Peak() int64 { return atomic.LoadInt64(&p.peak) }
+
+// RemoveTab must not let a second task onto a tab that is still busy.
+//
+// The entry used to be deleted before the drain, so a caller arriving during it
+// found nothing in the map, made a second mutex for the same tab, and ran
+// alongside the task the first mutex was holding. Measured before the fix: two
+// tasks inside one tab at once.
+//
+// TestTabExecutor_ConcurrentRemoveAndExecute already covers this shape and
+// passed throughout, because it asks whether the executor deadlocks or races
+// the map — liveness — and runs a single Execute per tab, so mutual exclusion
+// is not observable in it. This asks the safety question instead: how many
+// tasks were inside at the same time.
+func TestRemoveTabDoesNotAdmitASecondTaskToABusyTab(t *testing.T) {
+	te := NewTabExecutor(8)
+	var peak peakTracker
+
+	blocking := func(hold <-chan struct{}) func(context.Context) error {
+		return func(context.Context) error {
+			peak.enter()
+			defer peak.leave()
+			<-hold
+			return nil
+		}
+	}
+
+	holdFirst := make(chan struct{})
+	firstDone := make(chan struct{})
+	go func() {
+		_ = te.Execute(context.Background(), "tab1", blocking(holdFirst))
+		close(firstDone)
+	}()
+	waitFor(t, func() bool { return atomic.LoadInt64(&peak.inFlight) == 1 }, "first task to start")
+
+	// RemoveTab blocks draining the first task; the second arrives mid-drain.
+	removed := make(chan struct{})
+	go func() { te.RemoveTab("tab1"); close(removed) }()
+	// The second caller has to arrive AFTER the removal has done its map work
+	// and settled into the drain — that is the window the defect lived in, and
+	// racing the two starts hides it about as often as it shows it.
+	time.Sleep(25 * time.Millisecond)
+
+	holdSecond := make(chan struct{})
+	secondDone := make(chan struct{})
+	go func() {
+		_ = te.Execute(context.Background(), "tab1", blocking(holdSecond))
+		close(secondDone)
+	}()
+
+	// Give the second caller every chance to slip in beside the first.
+	time.Sleep(100 * time.Millisecond)
+	got := peak.Peak()
+
+	close(holdFirst)
+	close(holdSecond)
+	<-firstDone
+	<-secondDone
+	<-removed
+
+	if got > 1 {
+		t.Errorf("%d tasks were inside tab1 at once; RemoveTab admitted a second caller while the tab was still busy", got)
+	}
+}
+
+// waitFor polls a condition instead of sleeping a guessed interval, so the test
+// is not slower than it needs to be nor flaky on a loaded machine.
+func waitFor(t *testing.T, cond func() bool, what string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", what)
+}

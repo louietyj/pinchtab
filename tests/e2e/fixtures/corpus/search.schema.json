@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "properties": {
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "result title"
+          },
+          "words": {
+            "type": "integer",
+            "description": "article word count"
+          }
+        }
+      }
+    }
+  }
+}

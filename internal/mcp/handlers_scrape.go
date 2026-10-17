@@ -52,11 +52,7 @@ func handleScrape(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.Ca
 		}
 		// A multi-page scrape legitimately runs for minutes; the default MCP
 		// client timeout is far too short for it.
-		body, code, err := c.withTimeout(scrapeMCPTimeout).Post(ctx, routedPathWithBody(r, "/scrape", payload), payload)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return resultFromBytes(body, code)
+		return toolResult(c.withTimeout(scrapeMCPTimeout).Post(ctx, routedPathWithBody(r, "/scrape", payload), payload))
 	}
 }
 

@@ -3,16 +3,12 @@ package bridge
 import (
 	"log/slog"
 	"time"
+
+	"github.com/pinchtab/pinchtab/internal/config"
 )
 
-// ScheduleAutoClose (re)arms the per-tab idle close timer when the lifecycle
-// policy is "close_idle". Idempotent: any prior timer for the tab is
-// stopped first. Safe to call from handler goroutines.
-func (tm *TabManager) ScheduleAutoClose(tabID string) {
-	if tm == nil || tm.config == nil {
-		return
-	}
-	if tm.config.TabLifecyclePolicy != "close_idle" {
+func (tm *TabManager) ScheduleIdleLifecycle(tabID string) {
+	if tm == nil || tm.config == nil || !config.IdleTabLifecycle(tm.config.TabLifecyclePolicy) {
 		return
 	}
 	delay := tm.config.TabCloseDelay
@@ -21,51 +17,53 @@ func (tm *TabManager) ScheduleAutoClose(tabID string) {
 	}
 
 	tm.mu.Lock()
+	defer tm.mu.Unlock()
 	entry, ok := tm.tabs[tabID]
 	if !ok {
-		tm.mu.Unlock()
 		return
 	}
-	if entry.autoCloseTimer != nil {
-		entry.autoCloseTimer.Stop()
-	}
-	entry.autoCloseGen++
-	gen := entry.autoCloseGen
-	entry.autoCloseTimer = time.AfterFunc(delay, func() {
-		tm.autoCloseFire(tabID, gen)
+	entry.stopIdleTimer()
+	gen := entry.idleGen
+	entry.idleTimer = time.AfterFunc(delay, func() {
+		tm.idleFire(tabID, gen)
 	})
-	tm.mu.Unlock()
 }
 
-// CancelAutoClose stops the per-tab idle close timer if any. Safe to call when
-// no timer is armed; bumps the generation so an already-fired-but-not-yet-run
-// callback will recognise itself as stale.
-func (tm *TabManager) CancelAutoClose(tabID string) {
+func (tm *TabManager) CancelIdleLifecycle(tabID string) {
 	if tm == nil {
 		return
 	}
 	tm.mu.Lock()
-	entry, ok := tm.tabs[tabID]
-	if !ok {
-		tm.mu.Unlock()
-		return
+	defer tm.mu.Unlock()
+	if entry, ok := tm.tabs[tabID]; ok {
+		entry.stopIdleTimer()
 	}
-	if entry.autoCloseTimer != nil {
-		entry.autoCloseTimer.Stop()
-		entry.autoCloseTimer = nil
-	}
-	entry.autoCloseGen++
-	tm.mu.Unlock()
 }
 
-func (tm *TabManager) autoCloseFire(tabID string, gen uint64) {
+func (e *TabEntry) stopIdleTimer() {
+	if e.idleTimer != nil {
+		e.idleTimer.Stop()
+		e.idleTimer = nil
+	}
+	e.idleGen++
+}
+
+func (tm *TabManager) freezesIdleTabs() bool {
+	return tm.config != nil && tm.config.TabLifecyclePolicy == "freeze_idle"
+}
+
+func (tm *TabManager) idleFire(tabID string, gen uint64) {
+	if tm.freezesIdleTabs() {
+		tm.freezeIdleTab(tabID, gen)
+		return
+	}
 	tm.mu.Lock()
 	entry, ok := tm.tabs[tabID]
-	if !ok || entry.autoCloseGen != gen {
+	if !ok || entry.idleGen != gen {
 		tm.mu.Unlock()
 		return
 	}
-	entry.autoCloseTimer = nil
+	entry.idleTimer = nil
 	tm.mu.Unlock()
 
 	if err := tm.CloseTab(tabID); err != nil {

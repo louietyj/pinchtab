@@ -9,14 +9,33 @@ import (
 	"github.com/chromedp/cdproto/target"
 )
 
-func (tm *TabManager) markAccessed(tabID string) {
+func (tm *TabManager) markAccessed(tabID string) error {
 	tm.mu.Lock()
-	tm.accessed[tabID] = true
-	if entry, ok := tm.tabs[tabID]; ok {
-		entry.LastUsed = time.Now()
-	}
 	tm.currentTab = tabID
 	tm.mu.Unlock()
+	return tm.touchTab(tabID)
+}
+
+func (tm *TabManager) CurrentTabID() string {
+	if tm == nil {
+		return ""
+	}
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+	return tm.selectCurrentTrackedTab()
+}
+
+func (tm *TabManager) TabLastUsed(tabID string) (time.Time, bool) {
+	if tm == nil {
+		return time.Time{}, false
+	}
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+	entry, ok := tm.tabs[tabID]
+	if !ok {
+		return time.Time{}, false
+	}
+	return entry.LastUsed, true
 }
 
 // selectCurrentTrackedTab returns the current tab ID, falling back to the most
@@ -58,10 +77,37 @@ func (tm *TabManager) AccessedTabIDs() map[string]bool {
 	return out
 }
 
+// staleSweepInterval bounds how often resolving a tab pays for a target list.
+// The sweep exists to stop a dead tab being handed out forever, not to make
+// every action re-check the browser.
+const staleSweepInterval = 2 * time.Second
+
+// sweepStaleTabsIfDue drops tabs the browser no longer has, at most once per
+// staleSweepInterval. Tab selection runs on every request, so an unthrottled
+// sweep would add a CDP round trip to each one.
+func (tm *TabManager) sweepStaleTabsIfDue() {
+	if tm == nil {
+		return
+	}
+	tm.mu.Lock()
+	if len(tm.tabs) == 0 || time.Since(tm.lastStaleSweep) < staleSweepInterval {
+		tm.mu.Unlock()
+		return
+	}
+	tm.lastStaleSweep = time.Now()
+	tm.mu.Unlock()
+
+	tm.dropTabsTheBrowserNoLongerHas()
+}
+
 func (tm *TabManager) TabContext(tabID string) (context.Context, string, error) {
 	if tm == nil {
 		return nil, "", fmt.Errorf("tab manager not initialized")
 	}
+	// Selecting a tab that is already gone returns a context whose calls block
+	// until their deadline, which is how an attached instance used to wedge for
+	// good once the user closed the wrong tab (issue #690).
+	tm.sweepStaleTabsIfDue()
 	if tabID == "" {
 		tm.mu.RLock()
 		tabID = tm.selectCurrentTrackedTab()
@@ -105,15 +151,16 @@ func (tm *TabManager) TabContext(tabID string) (context.Context, string, error) 
 	}
 
 	if !ok {
-		return nil, "", fmt.Errorf("tab %s not found", tabID)
+		return nil, "", tabNotFound(tabID)
 	}
 
 	if entry.Ctx == nil {
 		return nil, "", fmt.Errorf("tab %s has no active context", tabID)
 	}
 
-	tm.markAccessed(tabID)
-
+	if err := tm.markAccessed(tabID); err != nil {
+		return nil, "", err
+	}
 	return entry.Ctx, tabID, nil
 }
 

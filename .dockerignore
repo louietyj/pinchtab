@@ -1,5 +1,6 @@
 # Binaries
 pinchtab
+pinchtab-dev
 browser-bridge
 
 # Test coverage
@@ -47,6 +48,8 @@ plugins/grok/node_modules/
 # Build caches
 .gocache/
 .gomodcache/
+.tools/
+dist/
 tmp/
 
 # Markdown (README, RELEASE, etc.)

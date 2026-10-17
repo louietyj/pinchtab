@@ -1,10 +1,14 @@
 package handlers
 
 import (
+	"bufio"
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -15,6 +19,7 @@ import (
 	"github.com/pinchtab/pinchtab/internal/browsersession"
 	"github.com/pinchtab/pinchtab/internal/config"
 	"github.com/pinchtab/pinchtab/internal/httpx"
+	"github.com/pinchtab/pinchtab/internal/remedy"
 	"github.com/pinchtab/pinchtab/internal/session"
 )
 
@@ -33,18 +38,106 @@ const (
 	backgroundHealthHeader  = "PinchTab-Background-Marker"
 )
 
+// streamRevalidateInterval bounds how long a long-lived response outlives the
+// cookie or agent session that authorised it, since auth runs once at connect.
+var streamRevalidateInterval = 15 * time.Second
+
+// streamAuthWriter starts the credential poller the moment the handler commits a
+// long-lived response — a text/event-stream content type or a hijack — rather
+// than trusting a request header the SSE handlers never require. A short request
+// that commits neither never triggers onStream, so it starts no poller.
+type streamAuthWriter struct {
+	http.ResponseWriter
+	onStream func()
+	started  bool
+}
+
+func (w *streamAuthWriter) startOnce() {
+	if !w.started {
+		w.started = true
+		w.onStream()
+	}
+}
+
+func (w *streamAuthWriter) maybeStart() {
+	if !w.started && strings.Contains(w.Header().Get("Content-Type"), "text/event-stream") {
+		w.startOnce()
+	}
+}
+
+func (w *streamAuthWriter) WriteHeader(code int) {
+	w.maybeStart()
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *streamAuthWriter) Write(b []byte) (int, error) {
+	w.maybeStart()
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *streamAuthWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (w *streamAuthWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	w.startOnce()
+	if hj, ok := w.ResponseWriter.(http.Hijacker); ok {
+		return hj.Hijack()
+	}
+	return nil, nil, fmt.Errorf("underlying ResponseWriter is not a Hijacker")
+}
+
+func (w *streamAuthWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
+func pollStreamCredential(ctx context.Context, cancel context.CancelFunc, stillValid func() bool) {
+	t := time.NewTicker(streamRevalidateInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if !stillValid() {
+				cancel()
+				return
+			}
+		}
+	}
+}
+
 // requestLogLevel maps the answered status onto a severity an operator can route on. Every
 // request used to log at Info, so a server returning 500s looked exactly like a healthy one
 // to any level-based alert, dashboard or log shipper — `grep level=ERROR` found nothing.
-func requestLogLevel(status int) slog.Level {
+//
+// A recorded reason raises the level on its own. Some endpoints answer 200 while
+// reporting a failure inside the envelope — a batch or macro run whose steps all
+// failed — and keying only on the status made those runs log as healthy traffic.
+func requestLogLevel(status int, reasonRecorded bool) slog.Level {
 	switch {
 	case status >= 500:
 		return slog.LevelError
-	case status >= 400:
+	case status >= 400, reasonRecorded:
 		return slog.LevelWarn
 	default:
 		return slog.LevelInfo
 	}
+}
+
+// requestFailed is the one definition of "this request failed" for the recording
+// channels: the status, or a reason the handler published beside a success status.
+// The producer that wrote the response is the only thing that knows the second
+// case, which is why it is a recorded fact rather than something re-derived here.
+//
+// "A reason was recorded" means EITHER field, matching what RecordFailureReason
+// accepts: it publishes when a code or a message is present, so keying this on the
+// message alone left a producer that carried only a code recorded on the wire and
+// uncounted here.
+func requestFailed(sw *httpx.StatusWriter) bool {
+	return sw.Code >= 400 || sw.FailureCode != "" || sw.FailureMessage != ""
 }
 
 func LoggingMiddleware(next http.Handler) http.Handler {
@@ -55,11 +148,11 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 		ms := uint64(time.Since(start).Milliseconds())
 		atomic.AddUint64(&metricRequestsTotal, 1)
 		atomic.AddUint64(&metricRequestLatencyN, ms)
-		if sw.Code >= 400 {
+		if requestFailed(sw) {
 			atomic.AddUint64(&metricRequestsFailed, 1)
 			recordFailureEvent(FailureEvent{
 				Time:      time.Now(),
-				RequestID: w.Header().Get("X-Request-Id"),
+				RequestID: w.Header().Get(httpx.RequestIDHeader),
 				Method:    r.Method,
 				Path:      r.URL.Path,
 				Status:    sw.Code,
@@ -69,7 +162,7 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 			})
 		}
 		attrs := []any{
-			"requestId", w.Header().Get("X-Request-Id"),
+			"requestId", w.Header().Get(httpx.RequestIDHeader),
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", sw.Code,
@@ -78,12 +171,20 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 		if sw.FailureMessage != "" {
 			attrs = append(attrs, "code", sw.FailureCode, "error", sw.FailureMessage)
 		}
-		slog.Log(r.Context(), requestLogLevel(sw.Code), "request", attrs...)
+		slog.Log(r.Context(), requestLogLevel(sw.Code, requestFailed(sw)), "request", attrs...)
 	})
 }
 
-func SecurityHeadersMiddleware(cfg *config.RuntimeConfig, next http.Handler) http.Handler {
+// SecurityHeadersMiddleware and every other middleware here take the publication
+// point rather than a config, and resolve it PER REQUEST. A middleware is built
+// once at startup and serves for the life of the process, so one that closed over
+// the boot *RuntimeConfig would enforce boot values forever: a save publishes a
+// new value and never writes the old object. That froze trustProxyHeaders,
+// cookieSecure and sessions.dashboard.requireElevation while the dashboard
+// reported the save applied.
+func SecurityHeadersMiddleware(live *config.Live, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cfg := live.Get()
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Content-Security-Policy", defaultCSP)
@@ -95,18 +196,23 @@ func SecurityHeadersMiddleware(cfg *config.RuntimeConfig, next http.Handler) htt
 	})
 }
 
-func AuthMiddleware(cfg *config.RuntimeConfig, next http.Handler) http.Handler {
-	return AuthMiddlewareWithSessions(cfg, nil, nil, next)
+func AuthMiddleware(live *config.Live, next http.Handler) http.Handler {
+	return AuthMiddlewareWithSessions(live, nil, nil, next)
 }
 
-func AuthMiddlewareWithSessions(cfg *config.RuntimeConfig, sessions *browsersession.Manager, agentSessions *session.Store, next http.Handler) http.Handler {
+func AuthMiddlewareWithSessions(live *config.Live, sessions *browsersession.Manager, agentSessions *session.Store, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cfg := live.Get()
 		if isPublicDashboardPath(r.URL.Path) || isPublicAuthPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
 		if backgroundHealthProbeAllowed(cfg, r) {
 			next.ServeHTTP(w, r)
+			return
+		}
+		if cfg == nil {
+			httpx.ErrorCode(w, http.StatusServiceUnavailable, "token_required", "server token is not configured", false, nil)
 			return
 		}
 		token := strings.TrimSpace(cfg.Token)
@@ -122,6 +228,8 @@ func AuthMiddlewareWithSessions(cfg *config.RuntimeConfig, sessions *browsersess
 			return
 		}
 
+		var revalidate func() bool
+
 		switch creds.Method {
 		case authn.MethodSession:
 			if agentSessions == nil || !agentSessions.Enabled() {
@@ -134,10 +242,10 @@ func AuthMiddlewareWithSessions(cfg *config.RuntimeConfig, sessions *browsersess
 				httpx.ErrorCode(w, 401, "bad_session", "invalid or expired agent session", false, nil)
 				return
 			}
-			if !sessionRequestAllowed(r, sess) {
-				httpx.ErrorCode(w, http.StatusForbidden, "session_scope_forbidden", "agent session is not allowed to access this endpoint", false, map[string]any{
-					"safeControlledEnvironmentOnly": true,
-				})
+			if refusal, refused := sessionRequestRefusal(r, sess); refused {
+				details := remedy.Details(refusal.hint, refusal.remedy)
+				details["safeControlledEnvironmentOnly"] = true
+				httpx.ErrorCode(w, http.StatusForbidden, "session_scope_forbidden", "agent session is not allowed to access this endpoint", false, details)
 				return
 			}
 			if !agentSessions.Touch(sess.ID) {
@@ -152,6 +260,11 @@ func AuthMiddlewareWithSessions(cfg *config.RuntimeConfig, sessions *browsersess
 				SessionID: sess.ID,
 			})
 			r = session.WithSession(r, sess)
+			sessValue := creds.Value
+			revalidate = func() bool {
+				_, ok := agentSessions.AuthenticateWithoutTouch(sessValue)
+				return ok
+			}
 		case authn.MethodHeader:
 			if subtle.ConstantTimeCompare([]byte(creds.Value), []byte(token)) != 1 {
 				authn.ClearSessionCookie(w, r, cfg != nil && cfg.TrustProxyHeaders, cookieSecureSetting(cfg))
@@ -181,11 +294,25 @@ func AuthMiddlewareWithSessions(cfg *config.RuntimeConfig, sessions *browsersess
 				})
 				return
 			}
+			cookieValue := creds.Value
+			revalidate = func() bool {
+				return sessions.Valid(cookieValue, token)
+			}
 		default:
 			authn.ClearSessionCookie(w, r, cfg != nil && cfg.TrustProxyHeaders, cookieSecureSetting(cfg))
 			httpx.Unauthorized(w, httpx.CodeBadToken, creds.Value)
 			return
 		}
+
+		if revalidate != nil {
+			ctx, cancel := context.WithCancel(r.Context())
+			defer cancel()
+			r = r.WithContext(ctx)
+			w = &streamAuthWriter{ResponseWriter: w, onStream: func() {
+				go pollStreamCredential(ctx, cancel, revalidate)
+			}}
+		}
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -219,14 +346,44 @@ func StripInternalHeadersMiddleware(next http.Handler) http.Handler {
 
 func RequestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rid := r.Header.Get("X-Request-Id")
-		if rid == "" {
+		rid := r.Header.Get(httpx.RequestIDHeader)
+		if !usableRequestID(rid) {
 			b := make([]byte, 8)
 			_, _ = rand.Read(b)
 			rid = hex.EncodeToString(b)
 		}
-		w.Header().Set("X-Request-Id", rid)
-		r.Header.Set("X-Request-Id", rid)
+		w.Header().Set(httpx.RequestIDHeader, rid)
+		r.Header.Set(httpx.RequestIDHeader, rid)
 		next.ServeHTTP(w, r)
 	})
+}
+
+// maxRequestIDLen bounds an inbound correlation id. A UUID is 36 characters and
+// a W3C traceparent 55, so this leaves room for every id a real client sends
+// while keeping the header out of the "arbitrary payload" class — the server
+// accepts 256 KiB of headers, and this value is copied into every audit and
+// access log line for the request, into the dashboard activity stream, and onto
+// the proxied hop.
+const maxRequestIDLen = 128
+
+// usableRequestID reports whether an inbound X-Request-Id may be adopted as this
+// request's correlation id. Honouring a client's id is deliberate — it is what
+// makes one request findable in the outer log and the instance log alike — but
+// the id is adopted only when it is shaped like one. Anything else is replaced
+// by a generated id rather than refused, because the correlation id is not
+// something a request should fail on.
+func usableRequestID(rid string) bool {
+	if rid == "" || len(rid) > maxRequestIDLen {
+		return false
+	}
+	for i := 0; i < len(rid); i++ {
+		c := rid[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '-', c == '_', c == '.', c == ':':
+		default:
+			return false
+		}
+	}
+	return true
 }

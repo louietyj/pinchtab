@@ -185,12 +185,12 @@ func (o *Orchestrator) findRunningInstanceByTabID(tabID string) (*InstanceIntern
 	o.mu.RUnlock()
 
 	for _, inst := range instances {
-		tabs, err := o.fetchTabs(inst)
+		tabs, err := o.fetchOwnedTabs(inst)
 		if err != nil {
 			continue
 		}
 		for _, tab := range tabs {
-			if tab.ID == tabID || o.idMgr.TabIDFromCDPTarget(tab.ID) == tabID {
+			if tab.ID == tabID {
 				return inst, nil
 			}
 		}
@@ -228,7 +228,7 @@ func (o *Orchestrator) handleProxyScreencast(w http.ResponseWriter, r *http.Requ
 	iproxy.SetProxyWSBackendAuthorization(req.Header, "")
 	if token := inst.authToken; token != "" {
 		iproxy.SetProxyWSBackendAuthorization(req.Header, "Bearer "+token)
-	} else if token := o.childAuthToken; token != "" {
+	} else if token := o.cfgToken(); token != "" {
 		iproxy.SetProxyWSBackendAuthorization(req.Header, "Bearer "+token)
 	}
 
@@ -324,7 +324,7 @@ func (o *Orchestrator) applyInstanceAuth(req *http.Request, inst *InstanceIntern
 	iproxy.SetProxyWSBackendAuthorization(req.Header, "")
 	token := inst.authToken
 	if token == "" {
-		token = o.childAuthToken
+		token = o.cfgToken()
 	}
 	if token != "" {
 		bearer := "Bearer " + token
@@ -335,9 +335,43 @@ func (o *Orchestrator) applyInstanceAuth(req *http.Request, inst *InstanceIntern
 	// honors X-PinchTab-* identity headers we propagate. Attached external
 	// bridges have their own auth domain and won't recognize the token,
 	// which is the desired behavior.
-	if inst.authToken == "" && o.internalToken != "" {
+	if o.hopIsTrusted(inst) {
 		req.Header.Set(handlers.InternalTokenHeader, o.internalToken)
 	}
+}
+
+func (o *Orchestrator) hopIsTrusted(inst *InstanceInternal) bool {
+	return inst.authToken == "" && o.internalToken != ""
+}
+
+// ResolveTabInstance returns the localhost port of the instance that owns tabID, so the
+// scheduler can use the orchestrator as its InstanceResolver and get port resolution and hop
+// auth from one owner.
+func (o *Orchestrator) ResolveTabInstance(tabID string) (string, error) {
+	inst, err := o.instanceMgr.FindInstanceByTabID(tabID)
+	if err != nil {
+		return "", fmt.Errorf("tab %q not found: %w", tabID, err)
+	}
+	return inst.Port, nil
+}
+
+// AuthorizeTabRequest applies the same per-instance hop auth the proxy uses (bearer token,
+// plus the internal token on trusted child hops) to a request the scheduler sends directly to
+// the instance that owns tabID. It is the one owner of that decision; callers must not
+// re-derive it or read the token from the environment.
+func (o *Orchestrator) AuthorizeTabRequest(tabID string, req *http.Request) error {
+	inst, err := o.instanceMgr.FindInstanceByTabID(tabID)
+	if err != nil {
+		return fmt.Errorf("tab %q not found: %w", tabID, err)
+	}
+	o.mu.RLock()
+	internal := o.instances[inst.ID]
+	o.mu.RUnlock()
+	if internal == nil {
+		return fmt.Errorf("instance %q for tab %q is no longer tracked", inst.ID, tabID)
+	}
+	o.applyInstanceAuth(req, internal)
+	return nil
 }
 
 func classifyLaunchError(err error) int {
@@ -382,14 +416,9 @@ func (o *Orchestrator) handleProxyResponseHeaders(origReq *http.Request, resp *h
 		return
 	}
 
-	if o.instanceMgr != nil {
-		if tabID := tabClosePathID(origReq); tabID != "" {
-			o.instanceMgr.InvalidateTab(tabID)
-		} else if origReq.Method == http.MethodPost && strings.TrimSpace(origReq.URL.Path) == "/close" {
-			if tabID := strings.TrimSpace(resp.Header.Get(activity.HeaderPTTabID)); tabID != "" {
-				o.instanceMgr.InvalidateTab(tabID)
-			}
-		}
+	closedTab := closedTabID(origReq, resp)
+	if o.instanceMgr != nil && closedTab != "" {
+		o.instanceMgr.InvalidateTab(closedTab)
 	}
 
 	// Identity → instance binding writes. Bindings are persisted only after
@@ -407,8 +436,8 @@ func (o *Orchestrator) handleProxyResponseHeaders(origReq *http.Request, resp *h
 		if id := strings.TrimSpace(origReq.Header.Get(activity.HeaderAgentID)); id != "" {
 			o.bindings.BindAgent(id, targetInstanceID)
 		}
-		if tabID := closedTabID(origReq, resp); tabID != "" {
-			o.bindings.ReleaseTab(tabID)
+		if closedTab != "" {
+			o.bindings.ReleaseTab(closedTab)
 		}
 	}
 
@@ -434,52 +463,33 @@ func closedTabID(req *http.Request, resp *http.Response) string {
 	return tabClosePathID(req)
 }
 
-// tabsCacheRequestAffectsTabs reports whether a successful response should
-// invalidate the per-instance tabs cache. Errs on the side of invalidating
-// rather than serving stale data — the cache is a perf optimization, not
-// a correctness guarantee.
 func tabsCacheRequestAffectsTabs(req *http.Request, resp *http.Response) bool {
 	if req == nil {
 		return false
 	}
-	// X-PinchTab-Tab-Id is a strong signal something changed; invalidate
-	// regardless of the route the request hit.
-	if resp != nil {
-		if strings.TrimSpace(resp.Header.Get(activity.HeaderPTTabID)) != "" {
-			return true
-		}
+	if resp != nil && strings.TrimSpace(resp.Header.Get(activity.HeaderPTTabID)) != "" {
+		return true
 	}
 	if req.Method != http.MethodPost {
 		return false
 	}
 	path := strings.TrimSpace(req.URL.Path)
+	if subpath := instanceRouteSubpath(path); subpath != "" {
+		path = subpath
+	}
+	return tabMutatingRoute(path)
+}
+
+func tabMutatingRoute(path string) bool {
 	switch path {
 	case "/tab", "/close", "/navigate", "/reload", "/back", "/forward":
 		return true
 	}
-	if subpath := instanceRouteSubpath(path); subpath != "" {
-		switch subpath {
-		case "/tab", "/close", "/navigate", "/reload", "/back", "/forward":
-			return true
-		}
-		if strings.HasPrefix(subpath, "/tabs/") {
-			switch {
-			case strings.HasSuffix(subpath, "/close"),
-				strings.HasSuffix(subpath, "/navigate"),
-				strings.HasSuffix(subpath, "/reload"),
-				strings.HasSuffix(subpath, "/back"),
-				strings.HasSuffix(subpath, "/forward"):
-				return true
-			}
-		}
+	if !strings.HasPrefix(path, "/tabs/") {
+		return false
 	}
-	if strings.HasPrefix(path, "/tabs/") {
-		switch {
-		case strings.HasSuffix(path, "/close"),
-			strings.HasSuffix(path, "/navigate"),
-			strings.HasSuffix(path, "/reload"),
-			strings.HasSuffix(path, "/back"),
-			strings.HasSuffix(path, "/forward"):
+	for _, verb := range []string{"/close", "/navigate", "/reload", "/back", "/forward"} {
+		if strings.HasSuffix(path, verb) {
 			return true
 		}
 	}

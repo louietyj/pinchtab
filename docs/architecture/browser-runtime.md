@@ -6,7 +6,7 @@ Related: [browser-abstraction.md](browser-abstraction.md), [routing-contract.md]
 ## Overview
 
 Handlers have zero chromedp/cdproto imports. All browser operations go
-through BridgeAPI (~40 methods). CDP usage is contained in the bridge
+through BridgeAPI (~75 methods). CDP usage is contained in the bridge
 layer and the cdptk shared toolkit. Post-launch behavior belongs to the
 Bridge; providers shape it declaratively through `Capabilities()`.
 
@@ -14,7 +14,7 @@ Bridge; providers shape it declaratively through `Capabilities()`.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Handlers (54 files)                                    │
+│  Handlers (internal/handlers)                           │
 │                                                         │
 │  Zero chromedp imports. Zero cdproto imports.            │
 │  All operations via bridge.BridgeAPI.                    │
@@ -34,7 +34,7 @@ Bridge; providers shape it declaratively through `Capabilities()`.
                            │ BridgeAPI (domain types, no CDP types)
                            ▼
 ┌─────────────────────────────────────────────────────────┐
-│  Bridge (BridgeAPI — ~40 methods)                       │
+│  Bridge (BridgeAPI — ~75 methods)                       │
 │                                                         │
 │  Owns: lifecycle, tab routing, locks, auto-close,       │
 │        network monitoring, CDP connection               │
@@ -69,12 +69,13 @@ Bridge; providers shape it declaratively through `Capabilities()`.
 │  Pure functions. No state. No browser ownership.        │
 │  Takes a chromedp context, returns data.                │
 │                                                         │
-│  cdptk.CaptureScreenshot(ctx, format, quality, clip)    │
-│  cdptk.ClipForNode(ctx, backendNodeID) → *ScreenshotClip│
-│  cdptk.ScreencastRepaintLoop(ctx) (start/stop)          │
-│  cdptk.AnnotatedScreenshot(ctx, ...) → []byte           │
+│  cdptk.CaptureWithSurfaceFallback(fromSurface, capture) │
+│  cdptk.ClipForNode(ctx, nodeID, css1x) → *ScreenshotClip│
+│  cdptk.StartRepaintLoop(ctx) → stop func                │
+│  cdptk.InjectInteractiveOverlay / AnnotationRectForNode │
 │                                                         │
-│  Used by the bridge. Never by handlers.                 │
+│  Used by the bridge; handlers call it only for the      │
+│  screenshot/annotate overlay helpers.                   │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -144,7 +145,7 @@ browser's capability set.
 | bridge/ | Page, DOM, Runtime, Network, Fetch, Emulation, Input, Target | All browser operations delegated from handlers |
 | cdptk/ | Page, DOM, Runtime | Shared pure-function CDP wrappers |
 | browsers/chrome/ | Runtime (via `chromedp.Evaluate`) | Launch-probe diagnostics only; no post-launch operations |
-| handlers/ | None | All operations via BridgeAPI |
+| handlers/ | None directly | All operations via BridgeAPI; annotation overlays via cdptk helpers |
 
 ## Non-goals
 

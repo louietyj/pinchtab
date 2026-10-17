@@ -7,8 +7,8 @@ description: "Run the PinchTab stealth-score sweep against 15 bot-detection / fi
 
 Drive PinchTab through a list of public bot-detection sites under each browser
 (`chrome`, `cloak`, or `both`), and collect the metrics that matter
-most for analyst comparison. The Docker plumbing rebuilds the PinchTab image
-from current source so you're benchmarking the working tree.
+most for analyst comparison. `up.sh` reuses cached images, so pass `REBUILD=1`
+when you need to benchmark the current working tree.
 
 The shape is the same as `/pinchtab-opt`: one container per run, one blind
 agent that reads English playbooks and drives PinchTab through `./scripts/pt`,
@@ -75,7 +75,8 @@ For each requested browser, run the same loop:
 "$SCORE_DIR/up.sh" "$PROVIDER"
 ```
 
-`up.sh` builds the appropriate image if absent (chrome-smoke or cloakbrowser),
+`up.sh` builds the appropriate image if absent (`pinchtab-local:test` +
+`pinchtab-chrome-smoke:test`, or `pinchtab-cloakbrowser:test`),
 writes a browser config with open `allowedDomains`, and starts a container
 named `stealth-score-pinchtab` on host port 9867. It exits non-zero if the
 container fails to become healthy.

@@ -131,6 +131,21 @@ assert_json_jq "$PT_OUT" '.wheelDeltaY == 240' "wheel delta Y accumulated" "whee
 end_test
 
 # ─────────────────────────────────────────────────────────────────
+start_test "pinchtab --server <url> --agent-id <id> mouse wheel <negative>"
+
+NEG_AGENT=e2e-negative-positional
+pt_ok --agent-id "$NEG_AGENT" nav "${FIXTURES_URL}/mouse-events.html"
+pt_ok --agent-id "$NEG_AGENT" mouse move --css "#mouse-target"
+pt_ok --agent-id "$NEG_AGENT" mouse wheel -120
+assert_output_contains "OK" "negative wheel delta after persistent value flags is accepted"
+
+pt_ok --agent-id "$NEG_AGENT" eval "JSON.stringify({wheelCount: window.mouseFixtureState.wheelCount, wheelDeltaY: window.mouseFixtureState.wheelDeltaY})"
+assert_json_jq "$PT_OUT" '.wheelCount == 1' "wheel count is 1" "wheel count is not 1"
+assert_json_jq "$PT_OUT" '.wheelDeltaY == -120' "wheel delta Y is negative" "wheel delta Y is not -120"
+
+end_test
+
+# ─────────────────────────────────────────────────────────────────
 start_test "pinchtab drag <from> <to>"
 
 pt_ok nav "${FIXTURES_URL}/mouse-events.html"

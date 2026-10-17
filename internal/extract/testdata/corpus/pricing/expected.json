@@ -1,0 +1,17 @@
+{
+  "plans": [
+    {
+      "name": "Free",
+      "price": 0
+    },
+    {
+      "name": "Team",
+      "price": 4
+    },
+    {
+      "name": "Enterprise",
+      "price": 21
+    }
+  ],
+  "lfsPrice": 5
+}

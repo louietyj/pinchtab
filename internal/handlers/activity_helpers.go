@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -23,11 +24,13 @@ func (h *Handlers) tabContext(r *http.Request, tabID string) (context.Context, s
 	}
 
 	ctx, resolvedID, err := h.Bridge.TabContext(tabID)
-	if err != nil && !explicitTab && !scope.IsGlobal() {
+	var unfreeze *bridge.TabUnfreezeError
+	if err != nil && !explicitTab && !scope.IsGlobal() && !errors.As(err, &unfreeze) {
 		h.CurrentTabs.Clear(scope)
 		return nil, "", noCurrentTabError(scope.Description())
 	}
 	if err == nil {
+		h.holdTabAwakeForRequest(r, resolvedID)
 		h.setCurrentTabForRequest(r, resolvedID)
 		h.recordActivity(r, activity.Update{TabID: resolvedID})
 	}
@@ -80,8 +83,41 @@ func (h *Handlers) recordResolvedTab(r *http.Request, tabID string) {
 	h.recordActivity(r, activity.Update{TabID: tabID})
 }
 
-func markCreatedTab(w http.ResponseWriter, tabID string) {
-	if w == nil || strings.TrimSpace(tabID) == "" {
+type tabAwakeHolder interface {
+	HoldAwakeUntil(ctx context.Context, tabID string)
+}
+
+var _ tabAwakeHolder = (*bridge.Bridge)(nil)
+
+func (h *Handlers) holdTabAwakeForRequest(r *http.Request, tabID string) {
+	if holder, ok := bridgeAs[tabAwakeHolder](h.Bridge); ok {
+		holder.HoldAwakeUntil(r.Context(), tabID)
+	}
+}
+
+type tabScopeTracker interface {
+	RecordTabScope(tabID, scope string, created bool)
+	TabsOnlyUsedByCreator(scope string) []string
+}
+
+var _ tabScopeTracker = (*bridge.Bridge)(nil)
+
+func (h *Handlers) tabScopes() (tabScopeTracker, bool) {
+	if h == nil {
+		return nil, false
+	}
+	tracker, ok := bridgeAs[tabScopeTracker](h.Bridge)
+	return tracker, ok
+}
+
+func (h *Handlers) markCreatedTab(w http.ResponseWriter, r *http.Request, tabID string) {
+	if strings.TrimSpace(tabID) == "" {
+		return
+	}
+	if tracker, ok := h.tabScopes(); ok {
+		tracker.RecordTabScope(tabID, currentTabScopeFromRequest(r).key, true)
+	}
+	if w == nil {
 		return
 	}
 	w.Header().Set(activity.HeaderPTTabID, tabID)
@@ -89,10 +125,17 @@ func markCreatedTab(w http.ResponseWriter, tabID string) {
 }
 
 func (h *Handlers) setCurrentTabForRequest(r *http.Request, tabID string) {
-	if h == nil || h.CurrentTabs == nil {
+	if h == nil {
 		return
 	}
-	h.CurrentTabs.Set(currentTabScopeFromRequest(r), tabID)
+	scope := currentTabScopeFromRequest(r)
+	if tracker, ok := h.tabScopes(); ok {
+		tracker.RecordTabScope(tabID, scope.key, false)
+	}
+	if h.CurrentTabs == nil {
+		return
+	}
+	h.CurrentTabs.Set(scope, tabID)
 }
 
 func (h *Handlers) clearCurrentTabReferences(tabID string) {

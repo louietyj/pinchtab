@@ -15,21 +15,27 @@
     "guides/contributing.md",
     "guides/security.md",
     "guides/mcp-agents.md",
+    "guides/agent-identity.md",
     "guides/cloakbrowser.md",
     "guides/attach-chrome.md",
     "guides/remote-bridge-orchestrator.md",
     "guides/tailscale-bridge-orchestrator.md",
+    "guides/daemon.md",
     "guides/multi-instance.md",
     "guides/identifying-instances.md",
     "guides/memory-monitoring.md",
     "guides/data-storage.md",
     "guides/docker.md",
+    "implementations/docker-local-testing.md",
     "guides/headed-mode.md",
     "guides/annotate-for-llm-fixes.md",
     "guides/raspberry-pi.md"
   ],
   "architecture": [
-    "*"
+    "*",
+    "implementations/chrome-files.md",
+    "implementations/chrome-profile-lock-recovery.md",
+    "implementations/managed-bridge-vs-managed-direct-cdp.md"
   ],
   "reference": [
     "*"

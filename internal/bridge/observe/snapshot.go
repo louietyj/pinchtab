@@ -4,12 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/dom"
+	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/chromedp"
+	"github.com/pinchtab/pinchtab/internal/cdptk"
 )
 
 // MaskedValue stands in for a sensitive field's content in snapshots. Its width
@@ -235,10 +239,41 @@ func FetchFrameContext(ctx context.Context) (FrameContext, error) {
 	}, nil
 }
 
+const hiddenPageRenderWait = time.Second
+
+const awaitRenderedFrameJS = `new Promise(resolve => {
+	const fallback = setTimeout(resolve, 500);
+	requestAnimationFrame(() => requestAnimationFrame(() => { clearTimeout(fallback); resolve(); }));
+})`
+
+func renderHiddenPage(ctx context.Context, topFrameID string) error {
+	var visibility string
+	if err := cdptk.EvaluateInIsolatedWorld(ctx, topFrameID, `document.visibilityState`, &visibility); err != nil {
+		return fmt.Errorf("read visibility state: %w", err)
+	}
+	if visibility != "hidden" {
+		return nil
+	}
+	if err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
+		return emulation.SetFocusEmulationEnabled(true).Do(ctx)
+	})); err != nil {
+		return fmt.Errorf("enable focus emulation: %w", err)
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, hiddenPageRenderWait)
+	defer cancel()
+	if err := cdptk.EvaluateInIsolatedWorld(waitCtx, topFrameID, awaitRenderedFrameJS, nil); err != nil {
+		return fmt.Errorf("await rendered frame: %w", err)
+	}
+	return nil
+}
+
 func FetchAXTree(ctx context.Context) ([]RawAXNode, error) {
 	fc, err := FetchFrameContext(ctx)
 	if err != nil {
 		return fetchAXTreeForFrame(ctx, "")
+	}
+	if err := renderHiddenPage(ctx, fc.Tree.Frame.ID); err != nil {
+		slog.Debug("render hidden page before accessibility read", "err", err)
 	}
 
 	frameMap := fc.Frames

@@ -16,6 +16,7 @@ OK
 
 | Flag | Description |
 |------|-------------|
+| `--submit` | Press Enter after filling the field (`submit:true` in the action JSON) |
 | `--snap` | Output interactive snapshot after fill |
 | `--snap-diff` | Output snapshot diff after fill |
 | `--text` | Output page text after fill |
@@ -39,6 +40,7 @@ pinchtab fill e8 "value" --snap         # Fill and show snapshot
 - Use [`/frame`](./frame.md) before selector-based iframe fills
 - Missing selectors fail immediately; use `pinchtab wait` first for async fields (see [`commands.md`](../commands.md))
 - For API, use `selector` field for CSS/XPath/text selectors
+- The API reads `text`, falling back to `value`. A fill with neither is refused with `400 missing_fill_text`; send `"text":""` to clear the field
 
 ## Related Pages
 

@@ -31,6 +31,8 @@ type mockBridge struct {
 	ensureBrowserCfg  *config.RuntimeConfig
 	dialogManager     *bridge.DialogManager
 	executeActionErr  error
+	closeTabErr       error
+	actionResult      map[string]any
 	autoCloseArmed    []string
 	autoCloseCanceled []string
 	availableActions  []string
@@ -79,6 +81,9 @@ func (m *mockBridge) ExecuteAction(ctx context.Context, kind string, req bridge.
 	if m.executeActionErr != nil {
 		return nil, m.executeActionErr
 	}
+	if m.actionResult != nil {
+		return m.actionResult, nil
+	}
 	return map[string]any{"success": true}, nil
 }
 
@@ -101,6 +106,9 @@ func (m *mockBridge) CreateTabInBrowserContext(url, browserContextID string) (st
 }
 
 func (m *mockBridge) CloseTab(tabID string) error {
+	if m.closeTabErr != nil {
+		return m.closeTabErr
+	}
 	if tabID == "fail" {
 		return fmt.Errorf("close failed")
 	}
@@ -115,10 +123,10 @@ func (m *mockBridge) FocusTab(tabID string) error {
 	return nil
 }
 
-func (m *mockBridge) ScheduleAutoClose(tabID string) {
+func (m *mockBridge) ScheduleIdleLifecycle(tabID string) {
 	m.autoCloseArmed = append(m.autoCloseArmed, tabID)
 }
-func (m *mockBridge) CancelAutoClose(tabID string) {
+func (m *mockBridge) CancelIdleLifecycle(tabID string) {
 	m.autoCloseCanceled = append(m.autoCloseCanceled, tabID)
 }
 
@@ -169,16 +177,8 @@ func (m *mockBridge) Text(_ context.Context, _ string, _ bridge.ContentParams) (
 
 func (m *mockBridge) TabLockInfo(tabID string) *bridge.LockInfo { return nil }
 
-func (m *mockBridge) GetMemoryMetrics(tabID string) (*bridge.MemoryMetrics, error) {
-	return &bridge.MemoryMetrics{JSHeapUsedMB: 10}, nil
-}
-
-func (m *mockBridge) GetBrowserMemoryMetrics() (*bridge.MemoryMetrics, error) {
-	return &bridge.MemoryMetrics{JSHeapUsedMB: 50}, nil
-}
-
 func (m *mockBridge) GetAggregatedMemoryMetrics() (*bridge.MemoryMetrics, error) {
-	return &bridge.MemoryMetrics{JSHeapUsedMB: 50, Nodes: 500}, nil
+	return &bridge.MemoryMetrics{MemoryMB: 50, Renderers: 3}, nil
 }
 
 func (m *mockBridge) GetCrashLogs() []string {
@@ -309,7 +309,7 @@ func (m *mockBridge) SetFileInputFiles(ctx context.Context, nodeID int64, paths 
 	return nil
 }
 
-func (m *mockBridge) ResolveSelectorToNodeID(ctx context.Context, selector string) (int64, error) {
+func (m *mockBridge) ResolveSelectorToNodeID(ctx context.Context, selector string, refCache *bridge.RefCache, frameID string) (int64, error) {
 	return 0, nil
 }
 

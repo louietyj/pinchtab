@@ -58,6 +58,17 @@ func buildActionBody(t *Task) map[string]any {
 	return body
 }
 
+// InstanceError is the action endpoint's own failure response, kept typed so the
+// recorded activity event carries the instance's status rather than a flat 502.
+type InstanceError struct {
+	Status int
+	Body   string
+}
+
+func (e *InstanceError) Error() string {
+	return fmt.Sprintf("executor returned %d: %s", e.Status, e.Body)
+}
+
 func (e *actionEndpointExecutor) Execute(ctx context.Context, t *Task) (any, error) {
 	if t.TabID == "" {
 		return nil, fmt.Errorf("tabId is required for task execution")
@@ -84,10 +95,18 @@ func (e *actionEndpointExecutor) Execute(ctx context.Context, t *Task) (any, err
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set(activity.HeaderPTSource, "scheduler")
+	req.Header.Set(activity.HeaderPTSource, activity.SourceScheduler)
 	req.Header.Set(activity.HeaderPTTabID, t.TabID)
 	if t.AgentID != "" {
 		req.Header.Set(activity.HeaderAgentID, t.AgentID)
+	}
+	// Route hop auth through the single owner (the orchestrator): only a trusted hop keeps
+	// the X-PinchTab-* identity headers above through ingress, so without this the source and
+	// tab id are stripped and the action records as "client".
+	if authorizer, ok := e.resolver.(RequestAuthorizer); ok {
+		if err := authorizer.AuthorizeTabRequest(t.TabID, req); err != nil {
+			return nil, fmt.Errorf("authorize scheduler request for tab %q: %w", t.TabID, err)
+		}
 	}
 
 	resp, err := e.client.Do(req)
@@ -102,7 +121,7 @@ func (e *actionEndpointExecutor) Execute(ctx context.Context, t *Task) (any, err
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("executor returned %d: %s", resp.StatusCode, string(respBody))
+		return nil, &InstanceError{Status: resp.StatusCode, Body: string(respBody)}
 	}
 
 	var result any

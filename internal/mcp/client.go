@@ -14,9 +14,10 @@ import (
 	"time"
 
 	"github.com/pinchtab/pinchtab/internal/activity"
+	"github.com/pinchtab/pinchtab/internal/api/types"
 )
 
-const vocabHeader = "X-PinchTab-Vocab"
+const vocabHeader = types.HeaderVocab
 
 // vocabStore holds the last snapshot vocabulary token per tab so an interaction
 // echoes it back and a ref minted under a superseded snapshot is refused rather
@@ -97,18 +98,58 @@ func (c *Client) doWithHeaders(req *http.Request) ([]byte, int, http.Header, err
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
 	req.Header.Set(activity.HeaderAgentID, "mcp")
-	req.Header.Set(activity.HeaderPTSource, "mcp")
+	// No X-PinchTab-Source: MCP calls the public front door with a bearer token, so
+	// the ingress strip layer drops inbound X-PinchTab-* headers. Setting a source
+	// here would be a silent no-op; MCP correctly falls back to "client" until a
+	// per-client MCP credential exists.
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("request %s %s: %w", req.Method, req.URL.Path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB limit
+	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponseBytes+1))
 	if err != nil {
 		return nil, resp.StatusCode, resp.Header, fmt.Errorf("read response: %w", err)
 	}
+	if len(body) > MaxResponseBytes {
+		return nil, resp.StatusCode, resp.Header, oversizeResponseError(req.URL.Path, resp.ContentLength)
+	}
 	return body, resp.StatusCode, resp.Header, nil
+}
+
+// MaxResponseBytes caps what the MCP server will read from one PinchTab response.
+// The read takes MaxResponseBytes+1 and refuses above the cap — the module's idiom
+// wherever a limit exists — because a body cut at exactly the cap is indistinguishable
+// from a whole one, and the consumer here is a language model that cannot tell a
+// truncated base64 image from a complete one.
+const MaxResponseBytes = 10 << 20
+
+// oversizeResponseError refuses the read and tells the agent how to ask for less.
+// A refusal an agent cannot act on is retried verbatim, so the remedy is keyed to the
+// endpoint that produced the body rather than being a generic "too large".
+func oversizeResponseError(path string, contentLength int64) error {
+	seen := "more than"
+	if contentLength >= 0 {
+		seen = fmt.Sprintf("%d bytes, over", contentLength)
+	}
+	return fmt.Errorf("%s returned %s the %d-byte response limit and was refused rather than truncated; %s",
+		path, seen, MaxResponseBytes, oversizeRemedy(path))
+}
+
+// oversizeRemedy names the narrowing argument of the tool that reaches each path.
+func oversizeRemedy(path string) string {
+	switch {
+	case strings.HasSuffix(path, "/screenshot"):
+		return "retry with beyondViewport=false, a lower quality, or a selector so only one element is captured"
+	case strings.HasSuffix(path, "/capture"):
+		return "retry with beyondViewport=false, a lower quality, or interactiveOnly so the snapshot half is smaller"
+	case strings.HasSuffix(path, "/snapshot"), strings.HasSuffix(path, "/text"),
+		strings.HasSuffix(path, "/html"), strings.HasSuffix(path, "/scrape"):
+		return "retry with a selector, a smaller depth, or interactiveOnly to read one region instead of the page"
+	default:
+		return "retry asking for less of the page"
+	}
 }
 
 // GetCapturingVocab performs a GET and records the response's vocabulary token
@@ -162,20 +203,40 @@ func (c *Client) Delete(ctx context.Context, path string, query url.Values) ([]b
 
 // Post performs a POST request with a JSON body.
 func (c *Client) Post(ctx context.Context, path string, payload any) ([]byte, int, error) {
+	req, err := c.newPostRequest(ctx, path, payload)
+	if err != nil {
+		return nil, 0, err
+	}
+	return c.do(req)
+}
+
+func (c *Client) PostCapturingVocab(ctx context.Context, path string, payload any, tabKey string) ([]byte, int, error) {
+	req, err := c.newPostRequest(ctx, path, payload)
+	if err != nil {
+		return nil, 0, err
+	}
+	body, code, hdr, err := c.doWithHeaders(req)
+	if err == nil && code < 400 {
+		c.vocab.set(tabKey, hdr.Get(vocabHeader))
+	}
+	return body, code, err
+}
+
+func (c *Client) newPostRequest(ctx context.Context, path string, payload any) (*http.Request, error) {
 	var body io.Reader
 	if payload != nil {
 		b, err := json.Marshal(payload)
 		if err != nil {
-			return nil, 0, fmt.Errorf("marshal payload: %w", err)
+			return nil, fmt.Errorf("marshal payload: %w", err)
 		}
 		body = bytes.NewReader(b)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url(path), body)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	return c.do(req)
+	return req, nil
 }

@@ -428,7 +428,8 @@
           "enum": [
             "",
             "keep",
-            "close_idle"
+            "close_idle",
+            "freeze_idle"
           ]
         },
         "closeDelaySec": {
@@ -477,6 +478,10 @@
         "allowCookies": {
           "$ref": "#/definitions/nullableBoolean"
         },
+        "allowMemory": {
+          "$ref": "#/definitions/nullableBoolean",
+          "description": "Enables POST /memory/snapshot and GET /memory/snapshot/{id}/summary. A heap snapshot holds every string on the page, tokens included. GET /memory stays available."
+        },
         "allowedDomains": {
           "$ref": "#/definitions/domainPatternArray"
         },
@@ -496,6 +501,19 @@
           ],
           "default": 20971520
         },
+        "memorySnapshotMaxBytes": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4294967296
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 536870912
+        },
         "allowUpload": {
           "$ref": "#/definitions/nullableBoolean"
         },
@@ -507,9 +525,6 @@
         },
         "stateEncryptionKey": {
           "$ref": "#/definitions/nullableString"
-        },
-        "enableActionGuards": {
-          "$ref": "#/definitions/nullableBoolean"
         },
         "uploadMaxRequestBytes": {
           "anyOf": [

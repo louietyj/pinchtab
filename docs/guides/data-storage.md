@@ -12,16 +12,28 @@ PinchTab stores configuration, profiles, session state, and usage logs on local 
 | `activity/events-YYYY-MM-DD.jsonl` | Primary daily request/activity log for `/api/activity`, CLI activity, and dashboard activity views | `server.stateDir`, `observability.activity.retentionDays` |
 | `activity/events-<source>-YYYY-MM-DD.jsonl` | Source-specific daily activity log for named sources such as `dashboard` or `orchestrator` | `server.stateDir`, `observability.activity.retentionDays` |
 | `<profile>/.pinchtab-state/config.json` | Child instance config written by the orchestrator | generated automatically for managed instances |
+| `server.log` | Output of a server started with `pinchtab server --background` | `server.stateDir` |
+| `heapsnapshots/<id>.heapsnapshot` | V8 heap snapshots from `POST /memory/snapshot` | `server.stateDir` |
+| `logs/daemon.out.log`, `logs/daemon.err.log` | Output of the background service (`pinchtab daemon`), always under `~/.pinchtab/logs/` | not configurable |
+
+## CLI State
+
+The command line keeps its own per-user scratch state outside the server's `stateDir`: the current-tab file per server (`current-tab-<host>-<port>`), the ref-vocabulary cache (`vocab-<host>-<port>`), the active recording marker (`current-recording`), and the once-per-run advisory markers (`advisories/`). It lives in:
+
+- `$XDG_STATE_HOME/pinchtab/`, if `XDG_STATE_HOME` is set
+- otherwise `~/.local/state/pinchtab/`
+
+Deleting it only resets CLI conveniences; it holds no browser data.
 
 ## Default Storage Location
 
-PinchTab uses the OS config directory:
+PinchTab keeps config and server state under one base directory. `server.stateDir` defaults to that directory, and `profiles.baseDir` defaults to `<server.stateDir>/profiles`:
 
 | OS | Default Base Directory |
 | --- | --- |
 | Linux | `~/.pinchtab/` |
 | macOS | `~/.pinchtab/` |
-| Windows | `%APPDATA%\\pinchtab\\` |
+| Windows | `%APPDATA%\pinchtab\` |
 
 Typical layout:
 
@@ -39,7 +51,7 @@ pinchtab/
 
 On macOS and Linux, `~/.pinchtab/` is the default base directory.
 
-On Windows, PinchTab uses the OS-native config directory under `%APPDATA%\\pinchtab\\`.
+On Windows, PinchTab uses the OS-native config directory under `%APPDATA%\pinchtab\`.
 
 ## Profiles
 
@@ -93,7 +105,7 @@ Bridge session restore data is stored as:
 <server.stateDir>/sessions.json
 ```
 
-This file is used for tab/session restoration when restore behavior is enabled.
+This file is used for tab/session restoration when restore behavior is enabled (`instanceDefaults.tabPolicy.restore`, default `false`).
 
 ## Activity Logs
 
@@ -109,13 +121,13 @@ Named sources also get their own daily files:
 <server.stateDir>/activity/events-<source>-YYYY-MM-DD.jsonl
 ```
 
-By default PinchTab keeps 1 day of activity data and prunes older daily files when new activity is recorded. You can change that with:
+By default PinchTab keeps 30 days of activity data and prunes older daily files when new activity is recorded. You can change that with:
 
 ```json
 {
   "observability": {
     "activity": {
-      "retentionDays": 1,
+      "retentionDays": 30,
       "sessionIdleSec": 1800,
       "events": {
         "dashboard": false,
@@ -156,7 +168,7 @@ Profile `logs` and `analytics` endpoints are derived from the activity store rat
 
 ```bash
 export PINCHTAB_CONFIG=/etc/pinchtab/config.json
-pinchtab
+pinchtab server
 ```
 
 ### Choose Different Profile And State Paths
@@ -175,7 +187,7 @@ pinchtab
 
 ## Container Use
 
-For Docker or other containers, persist both config and profile data with a mounted volume and point `PINCHTAB_CONFIG` at a file inside that volume.
+For Docker or other containers, persist both config and profile data with a mounted volume and point `PINCHTAB_CONFIG` at a file inside that volume. A config selected through `PINCHTAB_CONFIG` must carry `server.token` (or the container must set `PINCHTAB_TOKEN`); PinchTab will not generate one into an operator-supplied file.
 
 Example layout inside the volume:
 

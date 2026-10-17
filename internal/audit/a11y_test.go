@@ -1,11 +1,17 @@
 package audit
 
 import (
+	"encoding/json"
+	"flag"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
 	"github.com/pinchtab/pinchtab/internal/bridge/observe"
 )
+
+var updateGolden = flag.Bool("update", false, "rewrite the pinned native a11y report golden")
 
 var cleanFacts = PageFacts{Title: "Page", Lang: "en", HeadingLevels: []int{1, 2}}
 
@@ -18,6 +24,45 @@ func findingByRule(t *testing.T, report A11yReport, rule string) A11yFinding {
 	}
 	t.Fatalf("finding %q not present in %+v", rule, report.Findings)
 	return A11yFinding{}
+}
+
+// The AC requires that omitting ?engine= keeps the native report byte-for-byte.
+// The handler's native branch writes exactly what EvaluateA11y returns, so pinning
+// its JSON for a fixed node list is the regression the axe work must not disturb:
+// any drift in a native rule, its severity, its score weight or the field spelling
+// reds here. Regenerate deliberately with `go test ./internal/audit -update`.
+func TestNativeReportGoldenByteForByte(t *testing.T) {
+	nodes := []observe.A11yNode{
+		{Role: "image", Ref: "e1"},
+		{Role: "image", Name: "logo"},
+		{Role: "textbox", Ref: "e2"},
+		{Role: "link"},
+		{Role: "button"},
+		{Role: "button", Name: "Go"},
+	}
+	facts := PageFacts{HeadingLevels: []int{1, 3, 4, 6}}
+
+	got, err := json.MarshalIndent(EvaluateA11y(nodes, facts), "", "  ")
+	if err != nil {
+		t.Fatalf("marshal report: %v", err)
+	}
+	got = append(got, '\n')
+
+	path := filepath.Join("testdata", "a11y-native-report.golden.json")
+	if *updateGolden {
+		if err := os.WriteFile(path, got, 0644); err != nil {
+			t.Fatalf("write golden: %v", err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read golden: %v\nRun `go test ./internal/audit -update` and review the diff.", err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("native a11y report drifted from the golden (omitting engine must stay byte-for-byte).\n"+
+			"If the change is intended, run `go test ./internal/audit -update`, review the diff, and commit it.\n\n got:\n%s\nwant:\n%s", got, want)
+	}
 }
 
 func TestCleanTreeScoresPerfect(t *testing.T) {

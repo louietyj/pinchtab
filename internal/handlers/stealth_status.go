@@ -21,7 +21,7 @@ func (h *Handlers) HandleStealthStatus(w http.ResponseWriter, r *http.Request) {
 	status.AdvertisedBrowserVersion = stealth.ResolveBrowserVersion(h.Config)
 	status.BrowserBinaryVersion = stealth.ProbedBinaryVersion(h.Config)
 	if tabID := r.URL.Query().Get("tabId"); tabID != "" {
-		if tracker, ok := h.Bridge.(interface{ FingerprintRotateActive(string) bool }); ok {
+		if tracker, ok := bridgeAs[interface{ FingerprintRotateActive(string) bool }](h.Bridge); ok {
 			status.TabOverrides["fingerprintRotateActive"] = tracker.FingerprintRotateActive(tabID)
 		}
 	}

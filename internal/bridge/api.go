@@ -32,10 +32,8 @@ type BridgeAPI interface {
 	CloseTab(tabID string) error
 	FocusTab(tabID string) error
 
-	// ScheduleAutoClose (re)arms the per-tab idle close timer when the
-	// lifecycle policy is "close_idle". No-op otherwise.
-	ScheduleAutoClose(tabID string)
-	CancelAutoClose(tabID string)
+	ScheduleIdleLifecycle(tabID string)
+	CancelIdleLifecycle(tabID string)
 
 	GetRefCache(tabID string) *RefCache
 	SetRefCache(tabID string, cache *RefCache)
@@ -61,8 +59,9 @@ type BridgeAPI interface {
 	RunningBrowser() (string, bool)
 	StealthStatus() *stealth.Status
 
-	GetMemoryMetrics(tabID string) (*MemoryMetrics, error)
-	GetBrowserMemoryMetrics() (*MemoryMetrics, error)
+	// GetAggregatedMemoryMetrics measures the whole browser process tree. There is
+	// no per-tab reading behind it, so it takes no tab identifier: /tabs/{id}/metrics
+	// uses the id to select the owning instance, never the measurement.
 	GetAggregatedMemoryMetrics() (*MemoryMetrics, error)
 
 	GetCrashLogs() []string
@@ -123,7 +122,7 @@ type BridgeAPI interface {
 	PrintToPDF(ctx context.Context, params PDFParams) ([]byte, error)
 
 	SetFileInputFiles(ctx context.Context, nodeID int64, paths []string) error
-	ResolveSelectorToNodeID(ctx context.Context, selector string) (int64, error)
+	ResolveSelectorToNodeID(ctx context.Context, selector string, refCache *RefCache, frameID string) (int64, error)
 
 	DownloadURL(ctx context.Context, dlURL string, opts DownloadOpts) (*DownloadResult, error)
 
@@ -326,12 +325,32 @@ type Instance struct {
 	// Instance JSON byte-identical to pre-P2.4a output.
 	FallbackFrom   string `json:"fallbackFrom,omitempty"`
 	FallbackReason string `json:"fallbackReason,omitempty"`
+
+	Crashes *CrashSummary `json:"crashes,omitempty"`
+
+	Responsiveness string `json:"responsiveness"`
+}
+
+const (
+	ResponsivenessResponsive   = "responsive"
+	ResponsivenessUnresponsive = "unresponsive"
+	ResponsivenessUnknown      = "unknown"
+)
+
+func NormalizeResponsiveness(value string) string {
+	switch value {
+	case ResponsivenessResponsive, ResponsivenessUnresponsive:
+		return value
+	default:
+		return ResponsivenessUnknown
+	}
 }
 
 func (i Instance) MarshalJSON() ([]byte, error) {
 	type alias Instance
 	copy := alias(i)
 	copy.Mode = normalizeInstanceMode(copy.Mode, copy.Headless)
+	copy.Responsiveness = NormalizeResponsiveness(copy.Responsiveness)
 	return json.Marshal(copy)
 }
 

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Accessibility Violations Fixture</title>
+  <style>
+    .low-contrast { color: #aaaaaa; background: #ffffff; }
+  </style>
+</head>
+<body>
+  <h1>Accessibility violations fixture</h1>
+
+  <!-- image-alt: an image with no alt text -->
+  <img id="no-alt" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==">
+
+  <!-- label: a text input with no associated label -->
+  <form>
+    <input id="email" type="text" name="email">
+  </form>
+
+  <!-- color-contrast: grey-on-white text below the AA ratio -->
+  <p class="low-contrast">This paragraph is low contrast and fails WCAG AA.</p>
+
+  <!-- duplicate-id-aria: an id referenced by ARIA is used on two elements -->
+  <input type="text" aria-labelledby="dup">
+  <span id="dup">first label</span>
+  <span id="dup">second label</span>
+
+  <!-- an iframe with its own missing-alt image, audited by axe's frame support -->
+  <iframe title="child frame" srcdoc='<!doctype html><html lang="en"><body><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="></body></html>'></iframe>
+
+  <!-- Hostile tampering in the MAIN world: a fake axe that reports nothing, and a
+       poisoned getAttribute that hides missing alts. The audit runs in the
+       isolated world, so none of this reaches it and the violations still show. -->
+  <script>
+    window.axe = { run: function () { return Promise.resolve({ violations: [], passes: [], incomplete: [], inapplicable: [] }); } };
+    var realGetAttribute = Node.prototype.getAttribute;
+    Node.prototype.getAttribute = function (name) {
+      if (name === 'alt') { return 'not actually here'; }
+      return realGetAttribute.call(this, name);
+    };
+  </script>
+</body>
+</html>

@@ -186,25 +186,26 @@ func TestClearChromeSessions(t *testing.T) {
 	sessionsDir := filepath.Join(tmp, "Default", "Sessions")
 	_ = os.MkdirAll(sessionsDir, 0755)
 
-	// Create the specific session restore files
-	for _, name := range sessionRestoreFiles {
+	// Legacy fixed names plus the timestamped files current Chrome writes
+	restoreFiles := append([]string{"Session_13434935491923851", "Tabs_13434935492461093"}, sessionRestoreFiles...)
+	for _, name := range restoreFiles {
 		_ = os.WriteFile(filepath.Join(sessionsDir, name), []byte("data"), 0644)
 	}
 	// Also create an unrelated file that should NOT be deleted
-	_ = os.WriteFile(filepath.Join(sessionsDir, "Session_1"), []byte("other"), 0644)
+	_ = os.WriteFile(filepath.Join(sessionsDir, "unrelated"), []byte("other"), 0644)
 
 	ClearChromeSessions(tmp)
 
 	// Session restore files should be gone
-	for _, name := range sessionRestoreFiles {
+	for _, name := range restoreFiles {
 		if _, err := os.Stat(filepath.Join(sessionsDir, name)); !os.IsNotExist(err) {
 			t.Errorf("expected %s to be removed", name)
 		}
 	}
 
 	// Unrelated files should still exist
-	if _, err := os.Stat(filepath.Join(sessionsDir, "Session_1")); err != nil {
-		t.Error("expected unrelated Session_1 file to remain")
+	if _, err := os.Stat(filepath.Join(sessionsDir, "unrelated")); err != nil {
+		t.Error("expected unrelated file to remain")
 	}
 }
 

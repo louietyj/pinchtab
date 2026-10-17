@@ -109,7 +109,7 @@ trap '
 ' EXIT INT TERM
 
 # 3. Misc state
-rm -f ~/.local/state/pinchtab/current-tab 2>/dev/null
+rm -f ~/.local/state/pinchtab/current-tab-* 2>/dev/null
 rm -f "$PROJECT_ROOT/pinchtab" 2>/dev/null
 # Defensive: clear any stray *config*.json the agent might leave in a real ~/.pinchtab
 # (no-op because we stashed it above — but kept for runs that skip the stash).
@@ -226,9 +226,9 @@ Save the three report file paths — you pass the correct one to each subagent.
 
 Use the **Agent** tool with `run_in_background: true`. Split the 47 groups into three batches:
 
-- **Batch A**: groups 0–14 (45 steps)
+- **Batch A**: groups 0–14 (43 steps)
 - **Batch B**: groups 15–29 (30 steps)
-- **Batch C**: groups 30–46 (33 steps)
+- **Batch C**: groups 30–46 (35 steps)
 
 Each subagent receives a provider-aware prompt (replace the placeholders):
 
@@ -275,7 +275,7 @@ While agents run, periodically count step-end recordings:
 grep -c "step-end" <output_file>
 ```
 
-Expected totals: Batch A ~45, Batch B ~30, Batch C ~33 = 108 total per provider.
+Expected totals: Batch A ~43, Batch B ~30, Batch C ~35 = 108 total per provider.
 
 ### 5. Tear down + collect results
 
@@ -313,7 +313,7 @@ If running `all`, repeat steps 1–5 for each remaining provider, then present c
 
 ## Reference Numbers
 
-- **Baseline**: 108/108 steps, 272 ops, ~49s total, 2.5 ops/step (stored in `baseline-ref.json`)
+- **Baseline**: 108/108 steps, 272 ops, ~49s total, 2.5 ops/step (stored in `baseline-ref.json`; `baseline.sh` currently scripts only groups 0–44, 99 steps)
 - **Expected agent range**: 250–400 browser ops, 2.5–4 ops/step
 - **Group count**: 47 groups (`group-00` … `group-46`), 108 total steps
 
@@ -328,7 +328,7 @@ If running `all`, repeat steps 1–5 for each remaining provider, then present c
 | `tests/optimization/subagent-context.md` | Optimization subagent instructions (env, wrapper, recording) |
 | `tests/optimization/index.md` | Optimization group listing |
 | `tests/optimization/group-00.md` … `group-46.md` | Optimization task descriptions |
-| `tests/optimization/up.sh` | Provider-aware setup (chrome vs cloak) |
+| `tests/optimization/up.sh` | Provider-aware setup (chrome, cloak, ghost-chrome) |
 | `tests/optimization/down.sh` | Tear down after a provider run |
 | `skills/pinchtab/SKILL.md` | PinchTab command reference (read by subagents) |
 | `skills/pinchtab-dev/SKILL.md` | Build instructions (read by the setup subagent) |

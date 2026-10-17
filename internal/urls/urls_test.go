@@ -2,6 +2,7 @@ package urls
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -81,24 +82,35 @@ func TestIsValid(t *testing.T) {
 	}
 }
 
-func TestExtractHost(t *testing.T) {
+func TestEnsureScheme(t *testing.T) {
 	tests := []struct {
+		name     string
 		input    string
 		expected string
 	}{
-		{"https://example.com", "example.com"},
-		{"https://Example.COM/path", "example.com"},
-		{"http://sub.example.com:8080/path", "sub.example.com"},
-		{"example.com/path", "example.com"},
-		{"EXAMPLE.COM", "example.com"},
-		{"", ""},
+		{"bare host", "example.com", "https://example.com"},
+		{"single-label host", "intranet", "https://intranet"},
+		{"bare host with path", "example.com/path", "https://example.com/path"},
+		// The case url.Parse gets wrong on its own: it reads "intranet" as a
+		// scheme, so the host disappears entirely unless the port is recognised.
+		{"bare host with port", "intranet:8080", "https://intranet:8080"},
+		{"bare host with port and path", "example.com:8080/x", "https://example.com:8080/x"},
+		{"loopback with cdp port", "localhost:9222", "https://localhost:9222"},
+		{"scheme-ful url is untouched", "http://example.com", "http://example.com"},
+		{"file url is untouched", "file:///tmp/x", "file:///tmp/x"},
+		// Opaque schemes keep their meaning: prefixing these would invent a host
+		// where the form has none.
+		{"about is untouched", "about:blank", "about:blank"},
+		{"data is untouched", "data:text/plain,hi", "data:text/plain,hi"},
+		{"javascript is untouched", "javascript:alert(1)", "javascript:alert(1)"},
+		{"mailto is untouched", "mailto:someone@example.com", "mailto:someone@example.com"},
+		{"empty stays empty", "", ""},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			result := ExtractHost(tt.input)
-			if result != tt.expected {
-				t.Errorf("ExtractHost(%q) = %q, want %q", tt.input, result, tt.expected)
+		t.Run(tt.name, func(t *testing.T) {
+			if got := EnsureScheme(tt.input); got != tt.expected {
+				t.Errorf("EnsureScheme(%q) = %q, want %q", tt.input, got, tt.expected)
 			}
 		})
 	}
@@ -229,4 +241,55 @@ func TestRedactForLogTruncationBoundaries(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The card asks for the CLI and MCP normalizers to be PROBED against the same
+// table rather than assumed safe, and for the verdicts to be recorded. They are
+// recorded here as assertions:
+//
+//   - Sanitize (MCP) delegates to EnsureScheme, so it collapses the authority and
+//     hands the server a string whose host is readable.
+//   - Normalize (CLI) did NOT, and that was worse than a bypass: recognising only
+//     the literal "http://" and "https://" prefixes, it prepended a second scheme
+//     in front of these spellings and produced "https://https:/10.0.0.5/x", whose
+//     host reads as "https" — so the CLI sent the server a destination the user
+//     never typed. It now delegates to EnsureScheme, and this pins that.
+func TestTheCLIAndMCPNormalizersAgainstTheAuthorityTable(t *testing.T) {
+	for _, raw := range []string{
+		`https://10.0.0.5/x`,
+		`https:\\10.0.0.5\x`,
+		`https:/10.0.0.5/x`,
+		`https:\/10.0.0.5\x`,
+		`https:////10.0.0.5/x`,
+		`//10.0.0.5/x`,
+		`https:10.0.0.5/x`,
+		`/10.0.0.5/x`,
+	} {
+		t.Run(raw, func(t *testing.T) {
+			if got := EnsureScheme(raw); got != "https://10.0.0.5/x" {
+				t.Errorf("EnsureScheme(%q) = %q, want the collapsed authority", raw, got)
+			}
+
+			sanitized, err := Sanitize(raw)
+			if err != nil {
+				t.Fatalf("Sanitize(%q) error = %v", raw, err)
+			}
+			if host := hostOf(t, sanitized); host != "10.0.0.5" {
+				t.Errorf("Sanitize(%q) = %q, whose host reads as %q — MCP would hand the server a target the guard cannot check", raw, sanitized, host)
+			}
+
+			if host := hostOf(t, Normalize(raw)); host != "10.0.0.5" {
+				t.Errorf("Normalize(%q) = %q, whose host reads as %q — the CLI would send the server a destination the user never typed", raw, Normalize(raw), host)
+			}
+		})
+	}
+}
+
+func hostOf(t *testing.T, rawURL string) string {
+	t.Helper()
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return parsed.Hostname()
 }

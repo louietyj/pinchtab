@@ -3,6 +3,9 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,8 +13,11 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // upstreamRecorder records every request that reaches PinchTab, so a test can
@@ -218,71 +224,6 @@ func TestEveryHandlerHasASchemaAndEverySchemaAHandler(t *testing.T) {
 			t.Errorf("tool %q has a schema but no handler", name)
 		}
 	}
-}
-
-// Every argument the package reads with a TYPED accessor must be declared as
-// number/integer/boolean in some tool's schema. Two things follow from a missing
-// declaration: a model cannot discover the argument, and validateTypedArgs cannot
-// see it either — it derives from the schemas, so an undeclared argument keeps the
-// silent-coercion-drop this package otherwise rejects.
-//
-// A UNION check, not a per-tool one: the declared set is built across ALL tools,
-// so one declaration anywhere licenses the argument for every handler that reads
-// it. Over a shared handler that is structurally blind to the case this package
-// had twice — nodeId and x/y were each read for all nine action tools while only
-// three declared them, and both passed here. TestNoActionToolIsSentATypedArgumentItDoesNotDeclare covers
-// that per-tool half behaviourally, for the action family. The two are not one
-// check: this one spans every handler in the package and catches a name declared
-// nowhere at all; that one is narrower in scope and stricter within it.
-//
-// optString is deliberately NOT scanned. A string argument read without a
-// declaration is undiscoverable but not a correctness hazard: there is no
-// coercion, so nothing is silently dropped. Widening this census to optString
-// would produce false positives on the many string aliases the handlers accept.
-func TestEveryTypedAccessorArgumentIsDeclaredInASchema(t *testing.T) {
-	declared := map[string]string{}
-	for _, tool := range allTools() {
-		for name, kind := range typedArgsOf(tool) {
-			declared[name] = kind
-		}
-	}
-	if len(declared) == 0 {
-		t.Fatal("no typed arguments found in any schema — this census is checking nothing")
-	}
-
-	entries, err := os.ReadDir(".")
-	if err != nil {
-		t.Fatal(err)
-	}
-	accessor := regexp.MustCompile(`opt(?:Int|Float|Bool)\(r, "([^"]+)"\)`)
-
-	scanned, found := 0, 0
-	for _, entry := range entries {
-		name := entry.Name()
-		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
-		}
-		raw, err := os.ReadFile(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		scanned++
-		for _, match := range accessor.FindAllStringSubmatch(string(raw), -1) {
-			found++
-			arg := match[1]
-			if _, ok := declared[arg]; !ok {
-				t.Errorf("%s reads %q with a typed accessor but no tool schema declares it as number/integer/boolean — "+
-					"a model cannot discover it and validateTypedArgs cannot validate it, so a malformed value is silently dropped", name, arg)
-			}
-		}
-	}
-	if scanned == 0 {
-		t.Fatal("no Go source scanned — this census is checking nothing")
-	}
-	if found == 0 {
-		t.Fatal("no typed accessor call found — the pattern no longer matches how arguments are read")
-	}
-	t.Logf("checked %d typed-accessor call sites against %d declared typed arguments", found, len(declared))
 }
 
 // Declaring humanize is only half the fix: it was previously read solely to raise
@@ -511,14 +452,11 @@ func describeDifference(baseline, probed callOutcome) string {
 // somewhere else does not help the tool being called. handleAction reads its
 // arguments before switching on kind, so this is where that goes wrong.
 //
-// Behavioural rather than structural: reachability is observed as a BASELINE DIFF —
-// the same call with and without the probe — so the sentinel, a value derived from
-// it, a dropped field and an extra upstream request all count uniformly, and no
-// derivative has to be listed by hand. That needs no tool-to-handler-source mapping
-// and cannot go stale as the handler moves code around.
-//
-// Its blind spot is an undeclared read with no observable effect at all, which by
-// construction changes nothing a caller can see.
+// Behavioural rather than structural: the positive control observes reachability as a
+// BASELINE DIFF on a tool that declares the probe, and the sweep then requires every
+// tool that does NOT declare it to refuse the probe by name before upstream is called.
+// The structural half — which keys each handler reads — is
+// TestEveryArgumentAHandlerReadsIsDeclaredOnItsTool.
 func TestNoActionToolIsSentATypedArgumentItDoesNotDeclare(t *testing.T) {
 	probes := append([]argumentProbe(nil), combinationProbes...)
 	grouped := map[string]bool{}
@@ -548,9 +486,11 @@ func TestNoActionToolIsSentATypedArgumentItDoesNotDeclare(t *testing.T) {
 
 	const sentinel = 424242.0
 	probeArgs := func(tool string, probe argumentProbe, withProbe bool) map[string]any {
-		extra := map[string]any{"selector": "#a"}
+		extra := map[string]any{}
 		for name, value := range probe.companions {
-			extra[name] = value
+			if _, declared := schemaPropertiesOnce()[tool][name]; declared {
+				extra[name] = value
+			}
 		}
 		if withProbe {
 			for _, name := range probe.args {
@@ -561,7 +501,7 @@ func TestNoActionToolIsSentATypedArgumentItDoesNotDeclare(t *testing.T) {
 				extra[name] = sentinel
 			}
 		}
-		return actionArgs(tool, extra)
+		return targetedActionArgs(tool, extra)
 	}
 
 	// A diff oracle is only as trustworthy as the calls it compares. If anything in
@@ -628,11 +568,20 @@ func TestNoActionToolIsSentATypedArgumentItDoesNotDeclare(t *testing.T) {
 			}
 			checked++
 
-			baseline := observeToolCall(t, tc.tool, probeArgs(tc.tool, probe, false))
-			probed := observeToolCall(t, tc.tool, probeArgs(tc.tool, probe, true))
-			if diff := describeDifference(baseline, probed); diff != "" {
-				t.Errorf("%s: %s is reachable but the tool does not declare it — %s, so it is undiscoverable in tools/list and validateTypedArgs cannot type-check it",
-					tc.tool, probe.label(), diff)
+			srv, paths := upstreamRecorder(t)
+			result := callTool(t, tc.tool, probeArgs(tc.tool, probe, true), srv)
+			message := resultText(t, result)
+			if !result.IsError {
+				t.Errorf("%s: %s is undeclared but was accepted (%s); an undeclared argument must be refused, never dropped or acted on", tc.tool, probe.label(), message)
+				continue
+			}
+			for _, name := range probe.args {
+				if !strings.Contains(message, "unknown argument "+strconv.Quote(name)) {
+					t.Errorf("%s: refusal %q does not name the undeclared %q", tc.tool, message, name)
+				}
+			}
+			if len(*paths) != 0 {
+				t.Errorf("%s: a refused %s still reached upstream: %v", tc.tool, probe.label(), *paths)
 			}
 		}
 	}
@@ -677,5 +626,692 @@ func TestSelectorSchemasThatOfferWrappersStateWhatAnIndexMeans(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Fatal("no schema offers first/last/nth, so this guard checked nothing")
+	}
+}
+
+func TestEveryToolRefusesAnUndeclaredArgumentBeforeCallingUpstream(t *testing.T) {
+	const undeclared = "notAnArgumentOfAnyTool"
+	tools := allTools()
+	if len(tools) == 0 {
+		t.Fatal("allTools() is empty, so this table checks nothing")
+	}
+	for _, tool := range tools {
+		t.Run(tool.Name, func(t *testing.T) {
+			srv, paths := upstreamRecorder(t)
+			result := callTool(t, tool.Name, map[string]any{undeclared: "x"}, srv)
+			if !result.IsError {
+				t.Fatalf("an undeclared argument was accepted: %s", resultText(t, result))
+			}
+			message := resultText(t, result)
+			if !strings.Contains(message, `unknown argument "`+undeclared+`"`) {
+				t.Errorf("refusal %q does not name the undeclared key", message)
+			}
+			if !strings.Contains(message, "declared arguments: "+declaredArgList(schemaPropertiesOnce()[tool.Name])) {
+				t.Errorf("refusal %q does not list the tool's declared arguments", message)
+			}
+			if len(*paths) != 0 {
+				t.Errorf("a refused call still reached upstream: %v", *paths)
+			}
+		})
+	}
+}
+
+func TestUndeclaredArgumentsNameTheNearestDeclaredOne(t *testing.T) {
+	for _, tc := range []struct {
+		tool     string
+		args     map[string]any
+		wantHint string
+	}{
+		{tool: "pinchtab_snapshot", args: map[string]any{"filter": "interactive"}, wantHint: `unknown argument "filter" (did you mean "interactive": true?)`},
+		{tool: "pinchtab_wait", args: map[string]any{"for": "selector", "value": "#nope", "timeoutSeconds": float64(2)}, wantHint: `unknown argument "timeoutSeconds" (did you mean "timeoutMs"?)`},
+		{tool: "pinchtab_scrape", args: map[string]any{"url": "https://example.com", "timeout": float64(5)}, wantHint: `unknown argument "timeout" (did you mean "timeoutSeconds"?)`},
+		{tool: "pinchtab_click", args: map[string]any{"selecter": "#a"}, wantHint: `unknown argument "selecter" (did you mean "selector"?)`},
+		{tool: "pinchtab_navigate", args: map[string]any{"url": "https://example.com", "tabid": "t1"}, wantHint: `unknown argument "tabid" (did you mean "tabId"?)`},
+		{tool: "pinchtab_eval", args: map[string]any{"expression": "1", "zzz": true}, wantHint: `unknown argument "zzz";`},
+	} {
+		t.Run(tc.tool, func(t *testing.T) {
+			srv, paths := upstreamRecorder(t)
+			result := callTool(t, tc.tool, tc.args, srv)
+			if !result.IsError {
+				t.Fatalf("%v was accepted: %s", tc.args, resultText(t, result))
+			}
+			if message := resultText(t, result); !strings.Contains(message, tc.wantHint) {
+				t.Errorf("refusal %q, want it to contain %q", message, tc.wantHint)
+			}
+			if len(*paths) != 0 {
+				t.Errorf("a refused call still reached upstream: %v", *paths)
+			}
+		})
+	}
+}
+
+func TestWaitSendsTimeoutMsAndItsDeprecatedAliasAsTheWaitBudget(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args map[string]any
+		want float64
+	}{
+		{name: "timeoutMs", args: map[string]any{"timeoutMs": float64(1500)}, want: 1500},
+		{name: "deprecated timeout", args: map[string]any{"timeout": float64(1200)}, want: 1200},
+		{name: "timeoutMs wins over timeout", args: map[string]any{"timeoutMs": float64(1500), "timeout": float64(9000)}, want: 1500},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, _ := upstreamRecorder(t)
+			args := map[string]any{"for": "selector", "value": "#nope"}
+			for name, value := range tc.args {
+				args[name] = value
+			}
+			result := callTool(t, "pinchtab_wait", args, srv)
+			if result.IsError {
+				t.Fatalf("%v was refused: %s", tc.args, resultText(t, result))
+			}
+			body, _ := resultJSON(t, result)["body"].(map[string]any)
+			if got := body["timeout"]; got != tc.want {
+				t.Errorf("posted timeout = %v, want %v (body %v)", got, tc.want, body)
+			}
+		})
+	}
+}
+
+func TestWaitDeclaresTimeoutAsADeprecatedAliasOfTimeoutMs(t *testing.T) {
+	var wait mcp.Tool
+	for _, tool := range allTools() {
+		if tool.Name == "pinchtab_wait" {
+			wait = tool
+		}
+	}
+	properties := wait.InputSchema.Properties
+	canonical, _ := properties["timeoutMs"].(map[string]any)
+	if canonical["type"] != "number" {
+		t.Fatalf("pinchtab_wait timeoutMs = %v, want a declared number", properties["timeoutMs"])
+	}
+	alias, _ := properties["timeout"].(map[string]any)
+	description, _ := alias["description"].(string)
+	if !strings.Contains(description, "deprecated") || !strings.Contains(description, "timeoutMs") {
+		t.Errorf("pinchtab_wait timeout description %q must mark it deprecated and point at timeoutMs", description)
+	}
+}
+
+func TestEverySelectorAliasStillTargetsEveryActionTool(t *testing.T) {
+	for _, tc := range actionToolTargets {
+		if _, declared := schemaPropertiesOnce()[tc.tool]["selector"]; !declared {
+			continue
+		}
+		for _, key := range selectorArgKeys {
+			t.Run(tc.tool+"/"+key, func(t *testing.T) {
+				srv, _ := upstreamRecorder(t)
+				result := callTool(t, tc.tool, actionArgs(tc.tool, map[string]any{key: "e5"}), srv)
+				if result.IsError {
+					t.Fatalf("%s {%q: \"e5\"} was refused: %s", tc.tool, key, resultText(t, result))
+				}
+				body, _ := resultJSON(t, result)["body"].(map[string]any)
+				if got := body["selector"]; got != "e5" {
+					t.Errorf("posted selector = %v, want e5 (body %v)", got, body)
+				}
+			})
+		}
+	}
+}
+
+var dynamicArgumentReads = map[string][]string{
+	"handleKeyboard": {"key", "text"},
+}
+
+type argumentRead struct {
+	key   string
+	typed bool
+	fn    string
+}
+
+type argumentReader struct {
+	keyIndex int
+	variadic bool
+	typed    bool
+}
+
+type paramBinding struct {
+	param string
+	value string
+}
+
+type argumentReadCensus struct {
+	funcs        map[string]*ast.FuncDecl
+	readers      map[string]argumentReader
+	stringLists  map[string][]string
+	boolSets     map[string]map[string]bool
+	dynamicSites map[string]int
+	memo         map[string][]argumentRead
+}
+
+var requestAccessorMethod = regexp.MustCompile(`^(Require|Get)(String|Int|Float|Bool)(Slice)?$`)
+
+func newArgumentReadCensus(t *testing.T) *argumentReadCensus {
+	t.Helper()
+	census := &argumentReadCensus{
+		funcs:        map[string]*ast.FuncDecl{},
+		readers:      map[string]argumentReader{},
+		stringLists:  map[string][]string{},
+		boolSets:     map[string]map[string]bool{},
+		dynamicSites: map[string]int{},
+		memo:         map[string][]argumentRead{},
+	}
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, name, nil, 0)
+		if err != nil {
+			t.Fatalf("cannot parse %s: %v", name, err)
+		}
+		for _, decl := range file.Decls {
+			switch d := decl.(type) {
+			case *ast.FuncDecl:
+				if d.Recv != nil || d.Body == nil {
+					continue
+				}
+				census.funcs[d.Name.Name] = d
+				if reader, ok := readerOf(d); ok {
+					census.readers[d.Name.Name] = reader
+				}
+			case *ast.GenDecl:
+				census.recordPackageVars(d)
+			}
+		}
+	}
+	if len(census.funcs) == 0 || len(census.readers) == 0 {
+		t.Fatal("no package functions or argument readers found, so this census checks nothing")
+	}
+	return census
+}
+
+func readerOf(fn *ast.FuncDecl) (argumentReader, bool) {
+	if !takesToolRequest(fn) {
+		return argumentReader{}, false
+	}
+	index := 0
+	for _, field := range fn.Type.Params.List {
+		for _, name := range field.Names {
+			if name.Name == "key" || name.Name == "keys" {
+				_, variadic := field.Type.(*ast.Ellipsis)
+				return argumentReader{keyIndex: index, variadic: variadic, typed: returnsTypedValue(fn)}, true
+			}
+			index++
+		}
+	}
+	return argumentReader{}, false
+}
+
+func takesToolRequest(fn *ast.FuncDecl) bool {
+	for _, field := range fn.Type.Params.List {
+		sel, ok := field.Type.(*ast.SelectorExpr)
+		if ok && sel.Sel.Name == "CallToolRequest" {
+			return true
+		}
+	}
+	return false
+}
+
+func returnsTypedValue(fn *ast.FuncDecl) bool {
+	if fn.Type.Results == nil || len(fn.Type.Results.List) == 0 {
+		return false
+	}
+	ident, ok := fn.Type.Results.List[0].Type.(*ast.Ident)
+	return ok && (ident.Name == "float64" || ident.Name == "int" || ident.Name == "bool")
+}
+
+func (c *argumentReadCensus) recordPackageVars(decl *ast.GenDecl) {
+	for _, spec := range decl.Specs {
+		value, ok := spec.(*ast.ValueSpec)
+		if !ok || len(value.Names) != len(value.Values) {
+			continue
+		}
+		for i, name := range value.Names {
+			literal, ok := value.Values[i].(*ast.CompositeLit)
+			if !ok {
+				continue
+			}
+			switch literal.Type.(type) {
+			case *ast.ArrayType:
+				if list, ok := stringLiterals(literal.Elts); ok {
+					c.stringLists[name.Name] = list
+				}
+			case *ast.MapType:
+				members := map[string]bool{}
+				for _, elt := range literal.Elts {
+					kv, ok := elt.(*ast.KeyValueExpr)
+					if !ok {
+						continue
+					}
+					key, keyOK := stringLiteral(kv.Key)
+					flag, flagOK := kv.Value.(*ast.Ident)
+					if keyOK && flagOK && flag.Name == "true" {
+						members[key] = true
+					}
+				}
+				c.boolSets[name.Name] = members
+			}
+		}
+	}
+}
+
+func stringLiteral(expr ast.Expr) (string, bool) {
+	lit, ok := expr.(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return "", false
+	}
+	value, err := strconv.Unquote(lit.Value)
+	return value, err == nil
+}
+
+func stringLiterals(exprs []ast.Expr) ([]string, bool) {
+	values := make([]string, 0, len(exprs))
+	for _, expr := range exprs {
+		value, ok := stringLiteral(expr)
+		if !ok {
+			return nil, false
+		}
+		values = append(values, value)
+	}
+	return values, true
+}
+
+func (c *argumentReadCensus) keysAt(call *ast.CallExpr, reader argumentReader, rangeKeys map[string][]string) ([]string, bool) {
+	if reader.keyIndex >= len(call.Args) {
+		return nil, true
+	}
+	args := call.Args[reader.keyIndex : reader.keyIndex+1]
+	if reader.variadic {
+		args = call.Args[reader.keyIndex:]
+	}
+	if call.Ellipsis.IsValid() && len(args) == 1 {
+		ident, ok := args[0].(*ast.Ident)
+		if !ok {
+			return nil, false
+		}
+		list, ok := c.stringLists[ident.Name]
+		return list, ok
+	}
+	var keys []string
+	for _, arg := range args {
+		if literal, ok := stringLiteral(arg); ok {
+			keys = append(keys, literal)
+			continue
+		}
+		ident, ok := arg.(*ast.Ident)
+		if !ok || rangeKeys[ident.Name] == nil {
+			return nil, false
+		}
+		keys = append(keys, rangeKeys[ident.Name]...)
+	}
+	return keys, true
+}
+
+func literalRangeKeys(body *ast.BlockStmt) map[string][]string {
+	keys := map[string][]string{}
+	ast.Inspect(body, func(n ast.Node) bool {
+		loop, ok := n.(*ast.RangeStmt)
+		if !ok {
+			return true
+		}
+		literal, ok := loop.X.(*ast.CompositeLit)
+		if !ok {
+			return true
+		}
+		switch literal.Type.(type) {
+		case *ast.ArrayType:
+			ident, isIdent := loop.Value.(*ast.Ident)
+			values, allStrings := stringLiterals(literal.Elts)
+			if isIdent && allStrings {
+				keys[ident.Name] = values
+			}
+		case *ast.MapType:
+			ident, isIdent := loop.Key.(*ast.Ident)
+			if !isIdent {
+				return true
+			}
+			for _, elt := range literal.Elts {
+				if kv, ok := elt.(*ast.KeyValueExpr); ok {
+					if key, ok := stringLiteral(kv.Key); ok {
+						keys[ident.Name] = append(keys[ident.Name], key)
+					}
+				}
+			}
+		}
+		return true
+	})
+	return keys
+}
+
+func (c *argumentReadCensus) readsOf(fn string, binding *paramBinding, visiting map[string]bool) []argumentRead {
+	if binding == nil {
+		if cached, ok := c.memo[fn]; ok {
+			return cached
+		}
+	}
+	decl, ok := c.funcs[fn]
+	if !ok || visiting[fn] {
+		return nil
+	}
+	visiting[fn] = true
+	defer delete(visiting, fn)
+
+	_, isReader := c.readers[fn]
+	requestMaps := argumentMapIdents(decl.Body)
+	rangeKeys := literalRangeKeys(decl.Body)
+	var reads []argumentRead
+	callees := map[string]bool{}
+	record := func(keys []string, resolved, typed bool) {
+		if !resolved {
+			if !isReader {
+				c.dynamicSites[fn]++
+			}
+			return
+		}
+		for _, key := range keys {
+			reads = append(reads, argumentRead{key: key, typed: typed, fn: fn})
+		}
+	}
+
+	var visit func(ast.Node) bool
+	visit = func(n ast.Node) bool {
+		switch node := n.(type) {
+		case *ast.SwitchStmt:
+			if binding == nil || !isIdent(node.Tag, binding.param) {
+				return true
+			}
+			if node.Init != nil {
+				ast.Inspect(node.Init, visit)
+			}
+			for _, clause := range boundCaseClauses(node, binding.value) {
+				for _, stmt := range clause.Body {
+					ast.Inspect(stmt, visit)
+				}
+			}
+			return false
+		case *ast.IfStmt:
+			if binding == nil {
+				return true
+			}
+			if holds, known := c.evalCondition(node.Cond, binding); known && !holds {
+				if node.Init != nil {
+					ast.Inspect(node.Init, visit)
+				}
+				if node.Else != nil {
+					ast.Inspect(node.Else, visit)
+				}
+				return false
+			}
+		case *ast.CallExpr:
+			switch fun := node.Fun.(type) {
+			case *ast.Ident:
+				if reader, ok := c.readers[fun.Name]; ok {
+					keys, resolved := c.keysAt(node, reader, rangeKeys)
+					record(keys, resolved, reader.typed)
+				}
+				if _, ok := c.funcs[fun.Name]; ok {
+					callees[fun.Name] = true
+				}
+			case *ast.SelectorExpr:
+				if match := requestAccessorMethod.FindStringSubmatch(fun.Sel.Name); match != nil && len(node.Args) > 0 {
+					key, resolved := stringLiteral(node.Args[0])
+					record([]string{key}, resolved, match[2] != "String")
+				}
+			}
+		case *ast.IndexExpr:
+			if readsArgumentMap(node.X, requestMaps) {
+				key, resolved := stringLiteral(node.Index)
+				record([]string{key}, resolved, false)
+			}
+		}
+		return true
+	}
+	ast.Inspect(decl.Body, visit)
+
+	for callee := range callees {
+		reads = append(reads, c.readsOf(callee, nil, visiting)...)
+	}
+	for _, key := range dynamicArgumentReads[fn] {
+		reads = append(reads, argumentRead{key: key, fn: fn})
+	}
+	if binding == nil {
+		c.memo[fn] = reads
+	}
+	return reads
+}
+
+func boundCaseClauses(node *ast.SwitchStmt, value string) []*ast.CaseClause {
+	var fallback *ast.CaseClause
+	for _, stmt := range node.Body.List {
+		clause := stmt.(*ast.CaseClause)
+		if clause.List == nil {
+			fallback = clause
+			continue
+		}
+		for _, expr := range clause.List {
+			if literal, ok := stringLiteral(expr); ok && literal == value {
+				return []*ast.CaseClause{clause}
+			}
+		}
+	}
+	if fallback != nil {
+		return []*ast.CaseClause{fallback}
+	}
+	return nil
+}
+
+func (c *argumentReadCensus) evalCondition(expr ast.Expr, binding *paramBinding) (holds, known bool) {
+	switch cond := expr.(type) {
+	case *ast.ParenExpr:
+		return c.evalCondition(cond.X, binding)
+	case *ast.UnaryExpr:
+		if cond.Op == token.NOT {
+			holds, known := c.evalCondition(cond.X, binding)
+			return !holds, known
+		}
+	case *ast.BinaryExpr:
+		left, leftKnown := c.evalCondition(cond.X, binding)
+		right, rightKnown := c.evalCondition(cond.Y, binding)
+		switch cond.Op {
+		case token.LAND:
+			if (leftKnown && !left) || (rightKnown && !right) {
+				return false, true
+			}
+			return true, leftKnown && rightKnown
+		case token.LOR:
+			if (leftKnown && left) || (rightKnown && right) {
+				return true, true
+			}
+			return false, leftKnown && rightKnown
+		case token.EQL, token.NEQ:
+			literal, ok := stringLiteral(cond.Y)
+			if !ok || !isIdent(cond.X, binding.param) {
+				return false, false
+			}
+			return (literal == binding.value) == (cond.Op == token.EQL), true
+		}
+	case *ast.IndexExpr:
+		set, ok := cond.X.(*ast.Ident)
+		if !ok || !isIdent(cond.Index, binding.param) {
+			return false, false
+		}
+		members, ok := c.boolSets[set.Name]
+		if !ok {
+			return false, false
+		}
+		return members[binding.value], true
+	}
+	return false, false
+}
+
+func argumentMapIdents(body *ast.BlockStmt) map[string]bool {
+	idents := map[string]bool{}
+	ast.Inspect(body, func(n ast.Node) bool {
+		assign, ok := n.(*ast.AssignStmt)
+		if !ok || len(assign.Lhs) != len(assign.Rhs) {
+			return true
+		}
+		for i, rhs := range assign.Rhs {
+			if isGetArgumentsCall(rhs) {
+				if ident, ok := assign.Lhs[i].(*ast.Ident); ok {
+					idents[ident.Name] = true
+				}
+			}
+		}
+		return true
+	})
+	return idents
+}
+
+func isGetArgumentsCall(expr ast.Expr) bool {
+	call, ok := expr.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	return ok && sel.Sel.Name == "GetArguments"
+}
+
+func readsArgumentMap(expr ast.Expr, requestMaps map[string]bool) bool {
+	if isGetArgumentsCall(expr) {
+		return true
+	}
+	ident, ok := expr.(*ast.Ident)
+	return ok && requestMaps[ident.Name]
+}
+
+func toolRegistrations(t *testing.T) map[string]*ast.CallExpr {
+	t.Helper()
+	file, err := parser.ParseFile(token.NewFileSet(), "handlers.go", nil, 0)
+	if err != nil {
+		t.Fatalf("cannot parse handlers.go: %v", err)
+	}
+	registrations := map[string]*ast.CallExpr{}
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "rawHandlerMap" {
+			continue
+		}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			kv, ok := n.(*ast.KeyValueExpr)
+			if !ok {
+				return true
+			}
+			name, nameOK := stringLiteral(kv.Key)
+			call, callOK := kv.Value.(*ast.CallExpr)
+			if nameOK && callOK {
+				registrations[name] = call
+			}
+			return true
+		})
+	}
+	if len(registrations) == 0 {
+		t.Fatal("found no tool registrations in rawHandlerMap, so this census checks nothing")
+	}
+	return registrations
+}
+
+func (c *argumentReadCensus) bindingFor(call *ast.CallExpr) (string, *paramBinding) {
+	handler, ok := call.Fun.(*ast.Ident)
+	if !ok {
+		return "", nil
+	}
+	decl, ok := c.funcs[handler.Name]
+	if !ok {
+		return handler.Name, nil
+	}
+	index := 0
+	for _, field := range decl.Type.Params.List {
+		for _, name := range field.Names {
+			if index < len(call.Args) {
+				if value, ok := stringLiteral(call.Args[index]); ok {
+					return handler.Name, &paramBinding{param: name.Name, value: value}
+				}
+			}
+			index++
+		}
+	}
+	return handler.Name, nil
+}
+
+func TestEveryArgumentAHandlerReadsIsDeclaredOnItsTool(t *testing.T) {
+	census := newArgumentReadCensus(t)
+	registrations := toolRegistrations(t)
+	properties := schemaPropertiesOnce()
+
+	total := 0
+	for tool, call := range registrations {
+		handler, binding := census.bindingFor(call)
+		reads := census.readsOf(handler, binding, map[string]bool{})
+		if len(reads) == 0 && len(properties[tool]) > 0 {
+			t.Errorf("%s declares %d arguments but the census found no read in %s; the walk no longer follows how this handler reads arguments", tool, len(properties[tool]), handler)
+		}
+		for _, read := range reads {
+			total++
+			kind, declared := properties[tool][read.key]
+			if !declared {
+				t.Errorf("%s reads %q (in %s) but the tool does not declare it, so the argument is refused before the handler can see it and is undiscoverable in tools/list", tool, read.key, read.fn)
+				continue
+			}
+			if read.typed && kind != "number" && kind != "integer" && kind != "boolean" {
+				t.Errorf("%s reads %q (in %s) with a typed accessor but declares it as %q, so validateTypedArgs cannot reject a malformed value", tool, read.key, read.fn, kind)
+			}
+		}
+	}
+	if total == 0 {
+		t.Fatal("no argument read found in any handler, so this census checks nothing")
+	}
+
+	for fn, count := range census.dynamicSites {
+		if _, recorded := dynamicArgumentReads[fn]; !recorded {
+			t.Errorf("%s reads %d argument(s) under a name the census cannot resolve; use a literal key or record the names it can take in dynamicArgumentReads", fn, count)
+		}
+	}
+	for fn := range dynamicArgumentReads {
+		if census.dynamicSites[fn] == 0 {
+			t.Errorf("dynamicArgumentReads records %s, which no longer reads an argument under a computed name; drop the entry", fn)
+		}
+	}
+	t.Logf("checked %d argument reads across %d tools", total, len(registrations))
+}
+
+func TestTheReadCensusAttributesSharedHandlerReadsToTheBoundTool(t *testing.T) {
+	census := newArgumentReadCensus(t)
+	registrations := toolRegistrations(t)
+	readsFor := func(tool string) map[string]bool {
+		handler, binding := census.bindingFor(registrations[tool])
+		keys := map[string]bool{}
+		for _, read := range census.readsOf(handler, binding, map[string]bool{}) {
+			keys[read.key] = true
+		}
+		return keys
+	}
+
+	for _, tc := range []struct {
+		tool    string
+		reads   []string
+		ignores []string
+	}{
+		{tool: "pinchtab_click", reads: []string{"x", "humanize", "onDialog", "element", "target", "snap", "browser"}, ignores: []string{"pixels", "option"}},
+		{tool: "pinchtab_type", reads: []string{"text", "value", "ref"}, ignores: []string{"x", "humanize", "snap"}},
+		{tool: "pinchtab_wait", reads: []string{"timeoutMs", "timeout", "for", "value", "state"}},
+		{tool: "pinchtab_key", reads: []string{"key", "text", "action"}},
+	} {
+		keys := readsFor(tc.tool)
+		for _, key := range tc.reads {
+			if !keys[key] {
+				t.Errorf("census finds no read of %q on %s (found %v); it has lost track of an argument idiom", key, tc.tool, keys)
+			}
+		}
+		for _, key := range tc.ignores {
+			if keys[key] {
+				t.Errorf("census attributes %q to %s, whose kind never reads it; the shared-handler narrowing is broken", key, tc.tool)
+			}
+		}
 	}
 }

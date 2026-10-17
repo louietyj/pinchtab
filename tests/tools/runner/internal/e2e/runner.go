@@ -3,6 +3,7 @@ package e2e
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -31,6 +32,7 @@ type Runner struct {
 	logsMode  string
 	overall   overallReportData
 	overrides *providerOverrides
+	mem       *suiteMemory
 }
 
 type overallReportData struct {
@@ -215,7 +217,8 @@ func smokeLane() lane {
 
 func (r *Runner) bringUpAndRunPlans(stack string, plans []suitePlan) (codes map[string]int, restartFailed bool, setupCode int) {
 	services := servicesForPlans(plans, []string{"pinchtab", "fixtures"})
-	if code := r.bringUpSharedStack(stack, services); code != 0 {
+	buildServices := servicesToBuild(plans, []string{"pinchtab", "fixtures"})
+	if code := r.bringUpSharedStack(stack, services, buildServices); code != 0 {
 		return nil, false, code
 	}
 
@@ -509,7 +512,9 @@ func (r *Runner) runSingle(def suiteDef) int {
 		return 1
 	}
 	plan := suitePlan{def: def, scenarios: scenarios}
-	if code := r.bringUpSharedStack(def.Compose, servicesForPlans([]suitePlan{plan}, []string{"pinchtab", "fixtures"})); code != 0 {
+	plans := []suitePlan{plan}
+	fallback := []string{"pinchtab", "fixtures"}
+	if code := r.bringUpSharedStack(def.Compose, servicesForPlans(plans, fallback), servicesToBuild(plans, fallback)); code != 0 {
 		_ = r.composeDown(def.Compose)
 		return code
 	}
@@ -529,9 +534,17 @@ func (r *Runner) runSinglePlanWithCompose(plan suitePlan, composeFile string) in
 		return 1
 	}
 
+	var probe *memoryProbe
+	if !r.args.DryRun {
+		probe = r.startMemorySampler(composeFile)
+	}
 	code := r.runLoggedCommand("running "+def.Name+" suite", def.Output, command)
+	if probe != nil {
+		r.applyMemoryResult(probe.finish())
+	}
 	duration := time.Since(started)
 	summary := r.writeSuiteReports(def, duration, code)
+	r.mem = nil
 	r.recordOverallSummary(summary)
 	r.printSuiteSummary(def, summary, duration)
 	if code != 0 {
@@ -559,7 +572,7 @@ func (r *Runner) planSuites(defs []suiteDef) ([]suitePlan, int) {
 	return plans, 0
 }
 
-func (r *Runner) bringUpSharedStack(composeFile string, services []string) int {
+func (r *Runner) bringUpSharedStack(composeFile string, services, buildServices []string) int {
 	// Cloak pinchtab services are supplied by the provider override image.
 	// Build support images such as fixtures and runners, but keep compose from
 	// rebuilding the overridden pinchtab services.
@@ -579,7 +592,7 @@ func (r *Runner) bringUpSharedStack(composeFile string, services []string) int {
 			return code
 		}
 	} else {
-		if code := r.buildSharedStack(composeFile); code != 0 {
+		if code := r.buildSharedStack(composeFile, buildServices...); code != 0 {
 			return code
 		}
 	}
@@ -1016,6 +1029,154 @@ func (r *Runner) readLastRunningName(outputFile string) string {
 		}
 	}
 	return last
+}
+
+func (r *Runner) provider() string {
+	if r.args.Provider != "" {
+		return r.args.Provider
+	}
+	return defaultProvider
+}
+
+type memoryResult struct {
+	containers []containerMemory
+	note       string
+}
+
+type memoryProbe struct {
+	stop   chan struct{}
+	result chan memoryResult
+}
+
+const (
+	dockerProbeTimeout    = 10 * time.Second
+	memorySamplerDeadline = 15 * time.Second
+)
+
+func (r *Runner) startMemorySampler(composeFile string) *memoryProbe {
+	probe := &memoryProbe{stop: make(chan struct{}), result: make(chan memoryResult, 1)}
+	go func() {
+		acc := newMemoryAccumulator()
+		firstErr := ""
+		note := func(err error) {
+			if err != nil && firstErr == "" {
+				firstErr = err.Error()
+			}
+		}
+
+		stackIDs, err := r.stackContainerIDs(composeFile)
+		note(err)
+		ids := make([]string, 0, len(stackIDs))
+		for id := range stackIDs {
+			ids = append(ids, id)
+		}
+
+		sampleOnce := func() {
+			if len(ids) == 0 {
+				return
+			}
+			out, err := r.dockerStatsSnapshot(ids)
+			if err != nil {
+				note(err)
+				return
+			}
+			for _, s := range selectStackSamples(out, stackIDs) {
+				acc.add(s)
+			}
+		}
+
+		sampleOnce()
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-probe.stop:
+				sampleOnce()
+				containers := acc.reduce()
+				reason := ""
+				if len(containers) == 0 {
+					reason = "no pinchtab container memory sampled"
+					if firstErr != "" {
+						reason += " (" + firstErr + ")"
+					}
+				}
+				probe.result <- memoryResult{containers: containers, note: reason}
+				return
+			case <-ticker.C:
+				sampleOnce()
+			}
+		}
+	}()
+	return probe
+}
+
+func (p *memoryProbe) finish() memoryResult {
+	close(p.stop)
+	select {
+	case result := <-p.result:
+		return result
+	case <-time.After(memorySamplerDeadline):
+		return memoryResult{note: "memory sampler did not finish within " + memorySamplerDeadline.String()}
+	}
+}
+
+func (r *Runner) applyMemoryResult(result memoryResult) {
+	if len(result.containers) == 0 {
+		r.mem = nil
+		if result.note != "" {
+			_, _ = fmt.Fprintf(r.stdout, "  memory: %s\n", result.note)
+		}
+		return
+	}
+	r.mem = &suiteMemory{Provider: r.provider(), Containers: result.containers}
+}
+
+func (r *Runner) stackContainerIDs(composeFile string) (map[string]bool, error) {
+	out, err := r.captureWithTimeout(r.composeArgs(composeFile, "ps", "-q"))
+	if err != nil {
+		return nil, fmt.Errorf("docker compose ps: %w", err)
+	}
+	ids := map[string]bool{}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if id := strings.TrimSpace(line); id != "" {
+			ids[id] = true
+		}
+	}
+	return ids, nil
+}
+
+func (r *Runner) dockerStatsSnapshot(ids []string) (string, error) {
+	command := append([]string{"docker", "stats", "--no-stream", "--format", "{{.ID}},{{.Name}},{{.MemUsage}},{{.PIDs}}"}, ids...)
+	out, err := r.captureWithTimeout(command)
+	if err != nil {
+		return "", fmt.Errorf("docker stats unavailable: %w", err)
+	}
+	return out, nil
+}
+
+func (r *Runner) captureWithTimeout(command []string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dockerProbeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, command[0], command[1:]...) // #nosec G204 -- commands are fixed docker/compose invocations
+	cmd.Dir = r.repoRoot
+	cmd.Env = os.Environ()
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	err := cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		return "", fmt.Errorf("timed out after %s", dockerProbeTimeout)
+	}
+	if err != nil {
+		return "", fmt.Errorf("%v: %s", err, strings.TrimSpace(buf.String()))
+	}
+	return buf.String(), nil
+}
+
+func isPinchtabBrowserContainer(name string) bool {
+	return strings.Contains(name, "pinchtab") &&
+		!strings.Contains(name, "fixtures") &&
+		!strings.Contains(name, "runner")
 }
 
 func resolveCompose(dryRun bool) ([]string, error) {

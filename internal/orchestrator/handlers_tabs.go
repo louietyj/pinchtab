@@ -33,11 +33,9 @@ func (o *Orchestrator) handleInstanceTabOpen(w http.ResponseWriter, r *http.Requ
 	var req struct {
 		URL string `json:"url,omitempty"`
 	}
-	if r.ContentLength > 0 {
-		if err := httpx.DecodeJSONBody(w, r, 0, &req); err != nil {
-			httpx.Error(w, httpx.StatusForJSONDecodeError(err), fmt.Errorf("invalid JSON"))
-			return
-		}
+	if err := httpx.DecodeOptionalJSONBody(w, r, 0, &req); err != nil {
+		httpx.Error(w, httpx.StatusForJSONDecodeError(err), err)
+		return
 	}
 
 	payload, err := json.Marshal(map[string]any{

@@ -19,7 +19,6 @@ func Wait(client *http.Client, base, token string, args []string, cmd *cobra.Com
 	loadFlag, _ := cmd.Flags().GetString("load")
 	fnFlag, _ := cmd.Flags().GetString("fn")
 	stateFlag, _ := cmd.Flags().GetString("state")
-	timeoutFlag, _ := cmd.Flags().GetInt("timeout")
 	tabID, _ := cmd.Flags().GetString("tab")
 
 	if domQuiet, _ := cmd.Flags().GetBool("dom-quiet"); domQuiet {
@@ -28,6 +27,14 @@ func Wait(client *http.Client, base, token string, args []string, cmd *cobra.Com
 		}
 		output.Success()
 		return
+	}
+
+	// The server's /wait timeout is milliseconds. --timeout-ms is the canonical
+	// flag; --timeout is the deprecated millisecond alias (cobra prints its
+	// deprecation note on use). --timeout-ms wins when both are given.
+	timeoutMs, _ := cmd.Flags().GetInt("timeout-ms")
+	if timeoutMs == 0 {
+		timeoutMs, _ = cmd.Flags().GetInt("timeout")
 	}
 
 	switch {
@@ -52,12 +59,12 @@ func Wait(client *http.Client, base, token string, args []string, cmd *cobra.Com
 			}
 		}
 	default:
-		fmt.Println("Usage: pinchtab wait <selector|ms> [--text|--not-text|--url|--load|--fn] [--timeout ms] [--tab id]")
+		fmt.Println("Usage: pinchtab wait <selector|ms> [--text|--not-text|--url|--load|--fn] [--timeout-ms ms] [--tab id]")
 		return
 	}
 
-	if timeoutFlag > 0 {
-		body["timeout"] = timeoutFlag
+	if timeoutMs > 0 {
+		body["timeout"] = timeoutMs
 	}
 
 	path := "/wait"
@@ -65,17 +72,18 @@ func Wait(client *http.Client, base, token string, args []string, cmd *cobra.Com
 		path = "/tabs/" + tabID + "/wait"
 	}
 
+	result := apiclient.DoPostQuiet(client, base, token, path, body)
+
 	jsonOutput, _ := cmd.Flags().GetBool("json")
 	if jsonOutput {
-		apiclient.DoPost(client, base, token, path, body)
-		return
+		printIndented(result)
 	}
 
-	result := apiclient.DoPostQuiet(client, base, token, path, body)
-	// Server returns waited=false when condition isn't met within timeout
 	if waited, ok := result["waited"].(bool); ok && !waited {
 		output.Error("wait", "timeout", output.ExitTimeout)
 		return
 	}
-	output.Success()
+	if !jsonOutput {
+		output.Success()
+	}
 }

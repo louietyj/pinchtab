@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "properties": {
+    "site": {
+      "type": "string",
+      "description": "site name",
+      "x-pinchtab-hint": "role:heading"
+    },
+    "usernameLabel": {
+      "type": "string",
+      "description": "username field label"
+    },
+    "passwordLabel": {
+      "type": "string",
+      "description": "password field label"
+    },
+    "submit": {
+      "type": "string",
+      "description": "login button",
+      "x-pinchtab-hint": "role:button"
+    },
+    "quotesSource": {
+      "type": "string",
+      "description": "quotes by source"
+    }
+  }
+}

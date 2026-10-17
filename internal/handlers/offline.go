@@ -55,7 +55,7 @@ func (h *Handlers) setOffline(w http.ResponseWriter, r *http.Request, req offlin
 		req.UploadThroughput = -1
 	}
 
-	ctx, resolvedTabID, ok := h.guardedTabContext(w, r, req.TabID, guardDomainPolicy|guardHandoffPause)
+	ctx, resolvedTabID, ok := h.guardedTabContext(w, r, req.TabID, guardDialogBlocked|guardDomainPolicy|guardHandoffPause)
 	if !ok {
 		return
 	}

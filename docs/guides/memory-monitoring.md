@@ -1,45 +1,56 @@
 # Memory Monitoring
 
-PinchTab exposes memory information for the Chrome processes it launches. The current implementation measures browser memory at the process level and reports browser-wide aggregates for each instance.
+PinchTab exposes memory information for the Chrome processes it launches. Each instance reports two measurements side by side: the OS view of its process tree, and the page counters Chrome itself reports for the tabs that instance tracks.
 
 ## What PinchTab Measures
 
-PinchTab walks the Chrome process tree for a running instance:
+For the process tree, PinchTab walks the running instance's Chrome processes:
 
 1. find the main browser PID
 2. enumerate child processes
 3. sum RSS memory across the browser and its children
 4. count renderer processes
 
-This gives you real OS-level memory usage for that instance's Chrome process tree.
+For the pages, PinchTab asks every tab the instance tracks for its own `Performance.getMetrics` reading over CDP and sums the answers.
 
 ## Memory Fields
 
 | Field | Meaning |
 | --- | --- |
 | `memoryMB` | Real RSS memory across the browser process tree |
-| `jsHeapUsedMB` | Estimated value derived from `memoryMB` |
-| `jsHeapTotalMB` | Estimated value derived from `memoryMB` |
 | `renderers` | Number of renderer processes in the browser process tree |
-| `documents`, `frames`, `nodes`, `listeners` | Legacy compatibility fields; currently not populated with live DOM counts |
+| `page.targets` | Tabs whose reading is included in the `page` sums |
+| `page.jsHeapUsedMB` / `page.jsHeapTotalMB` | JavaScript heap used and reserved, summed over those tabs |
+| `page.documents` / `page.frames` / `page.nodes` / `page.jsEventListeners` | DOM counters summed over those tabs |
+| `unreadableTargets` | Tabs that did not answer within the read timeout; they contribute nothing |
+
+Every field is measured; none is derived from another field in the payload.
+
+## Aggregation Rule
+
+- **Which targets contribute:** every tab the instance tracks with a live context. Each is read separately with `Performance.getMetrics`, and the `page` block is the sum of the readings that arrived.
+- **Scope:** the instance. `memoryMB` is the whole process tree, which also holds the GPU and utility processes and the shared browser process; `page` covers only the tabs. The two describe different populations and are never combined or compared arithmetically.
+- **Absent versus unreadable:** `page` is omitted when no tab contributed. `unreadableTargets` says how many tabs were asked and did not answer (closed or crashed mid-collection, or a read timeout). No tab is ever reported as `0` heap or `0` nodes because it could not be read: `{"unreadableTargets":0}` with no `page` means no tabs, `{"unreadableTargets":2}` with no `page` means two tabs that would not answer.
+- **Cost (measured, five tabs open):** about 1 ms per tab read and about 30 ms for the process-tree walk, so a poll is a few tens of milliseconds per instance and grows by roughly a millisecond per open tab. The dashboard's **Memory metrics** toggle does not gate the CDP reads specifically: it gates whether the dashboard polls every running instance's `/metrics` on each monitoring tick at all. `GET /metrics` on an instance always collects both.
 
 Important limitation:
 
-- `jsHeapUsedMB` and `jsHeapTotalMB` are estimates, not true per-tab DevTools heap measurements
-- `GET /tabs/{id}/metrics` returns the owning browser instance's aggregate memory, not isolated per-tab memory
+- `GET /tabs/{id}/metrics` returns the owning browser instance's aggregate, including the `page` sum over all its tabs, not isolated per-tab figures
 
 ## Instance Metrics
 
-For a single running browser:
+For a single running browser, read the instance's own `/metrics`. Against `pinchtab bridge` that is the bridge port; behind `pinchtab server`, go through the instance route, because the server's own `GET /metrics` answers the front door's counters (`"layer": "frontDoor"`) with no `memory` block:
 
 ```bash
-curl http://localhost:9867/metrics
+curl http://localhost:9867/metrics                      # pinchtab bridge
+curl http://localhost:9867/instances/<instanceId>/metrics   # pinchtab server
 ```
 
-Example shape:
+Example shape (abridged; `failures` and `crashes` omitted):
 
 ```json
 {
+  "layer": "instance",
   "metrics": {
     "goHeapAllocMB": 12.5,
     "goHeapSysMB": 24.0,
@@ -47,9 +58,17 @@ Example shape:
   },
   "memory": {
     "memoryMB": 850.5,
-    "jsHeapUsedMB": 340.2,
-    "jsHeapTotalMB": 425.25,
-    "renderers": 11
+    "renderers": 11,
+    "page": {
+      "targets": 3,
+      "jsHeapUsedMB": 41.2,
+      "jsHeapTotalMB": 64.0,
+      "documents": 4,
+      "frames": 5,
+      "nodes": 9120,
+      "jsEventListeners": 212
+    },
+    "unreadableTargets": 0
   }
 }
 ```
@@ -65,17 +84,13 @@ Example shape:
 ```json
 {
   "memoryMB": 850.5,
-  "jsHeapUsedMB": 340.2,
-  "jsHeapTotalMB": 425.25,
   "renderers": 11,
-  "documents": 0,
-  "frames": 0,
-  "nodes": 0,
-  "listeners": 0
+  "page": { "targets": 3, "jsHeapUsedMB": 41.2, "jsHeapTotalMB": 64.0, "documents": 4, "frames": 5, "nodes": 9120, "jsEventListeners": 212 },
+  "unreadableTargets": 0
 }
 ```
 
-Treat this as “memory for the browser instance that owns this tab”, not “memory for this tab alone”.
+Treat this as “memory for the browser instance that owns this tab”, not “memory for this tab alone”: the `page` block is summed over every tab of that instance.
 
 ## All Running Instances
 
@@ -85,7 +100,19 @@ In orchestrator mode:
 curl http://localhost:9867/instances/metrics
 ```
 
-This returns one metrics object per running instance, which is the best API for comparing memory across a fleet.
+This returns one metrics object per running instance — `instanceId`, `profileName`, `memoryMB`, `renderers`, `page` and `unreadableTargets` — which is the best API for comparing memory across a fleet.
+
+## Page Heap And Leak Hunting
+
+The figures above are instance-wide. For one tab's JavaScript heap, heap snapshots, and snapshot comparison, use the `/memory` endpoints and `pinchtab memory` instead:
+
+```bash
+pinchtab memory --gc                 # GET /memory?gc=true: heap usage and DOM counters
+pinchtab memory snapshot             # POST /memory/snapshot (needs security.allowMemory)
+pinchtab memory compare <base> <head>
+```
+
+`GET /memory` is always available; snapshot, summary and compare need `security.allowMemory` (default off). See [Memory](../reference/memory.md) for the endpoints, response shapes and a leak-hunting walkthrough.
 
 ## Dashboard Monitoring
 

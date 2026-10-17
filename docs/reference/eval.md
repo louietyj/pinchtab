@@ -31,6 +31,23 @@ pinchtab eval "fetch('/api/data').then(r => r.json())" --await-promise
 pinchtab eval "document.title" --json    # {"result":"Example Domain"}
 ```
 
+## API Body Fields
+
+| Field | Description |
+|-------|-------------|
+| `expression` | JavaScript to evaluate (required; `400` when empty) |
+| `awaitPromise` | Resolve a returned Promise before responding |
+| `tabId` | Target a specific tab |
+
+Response: `{"result": <value>}`. A Promise returned without `awaitPromise`
+yields `{}` plus a `hint` field naming the flag.
+
+Errors: `403 evaluate_disabled` when `security.allowEvaluate` is off;
+`500 evaluate_null_ref` (with a `hint`) when the expression dereferences a
+null element; `409 dialog_blocked` while a JavaScript dialog is open.
+
+MCP: `pinchtab_eval` takes `expression` (required), `awaitPromise`, `tabId`.
+
 ## Notes
 
 - Requires `security.allowEvaluate: true`

@@ -68,7 +68,7 @@ func (h *Handlers) HandleFind(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctxTab, resolvedTabID, ok := h.guardedTabContext(w, r, req.TabID, guardDomainPolicy)
+	ctxTab, resolvedTabID, ok := h.guardedTabContext(w, r, req.TabID, guardDialogBlocked|guardDomainPolicy)
 	if !ok {
 		return
 	}
@@ -85,6 +85,7 @@ func (h *Handlers) HandleFind(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, serr.status, serr.err)
 		return
 	}
+	h.publishTabVocab(w, resolvedTabID)
 
 	descs := semanticDescriptorsFromNodes(nodes)
 
@@ -169,15 +170,15 @@ func (h *Handlers) acquireFindNodes(ctx context.Context, resolvedTabID string) (
 	return nodes, nil
 }
 
-// scanFindCorpusForIDPI scans the AX-node text corpus plus full page body text
-// for injection patterns before semantic matching. The interactive AX filter
+// scanFindCorpusForIDPI scans the AX-node text corpus, full page body text and
+// any extra caller-supplied strings for injection patterns before semantic matching. The interactive AX filter
 // omits non-interactive elements (<p>, headings, etc.), so body.innerText is
 // fetched as a bounded sub-operation to cover the full visible page. In strict
 // mode a detected threat blocks the request (writes HTTP 403 and returns
 // blocked=true); in warn mode the response headers and the returned warning
 // carry the advisory. A no-op (returns "",false) when IDPI content scanning is
 // disabled.
-func (h *Handlers) scanFindCorpusForIDPI(w http.ResponseWriter, ctx context.Context, nodes []bridge.A11yNode) (warning string, blocked bool) {
+func (h *Handlers) scanFindCorpusForIDPI(w http.ResponseWriter, ctx context.Context, nodes []bridge.A11yNode, extra ...string) (warning string, blocked bool) {
 	if !h.Config.IDPI.Enabled || !h.Config.IDPI.ScanContent {
 		return "", false
 	}
@@ -202,6 +203,10 @@ func (h *Handlers) scanFindCorpusForIDPI(w http.ResponseWriter, ctx context.Cont
 	_ = h.Bridge.Evaluate(scanCtx, `document.body ? document.body.innerText : ""`, &bodyText, bridge.EvalOpts{})
 	scanCancel()
 	sb.WriteString(bodyText)
+	for _, s := range extra {
+		sb.WriteByte('\n')
+		sb.WriteString(s)
+	}
 
 	corpus := sb.String()
 	if corpus == "" {

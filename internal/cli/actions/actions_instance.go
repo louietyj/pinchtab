@@ -44,15 +44,7 @@ func InstanceNavigate(client *http.Client, base, token string, args []string) {
 	instID := args[0]
 	targetURL := args[1]
 
-	openResp := apiclient.DoPost(client, base, token, fmt.Sprintf("/instances/%s/tabs/open", instID), map[string]any{
-		"url": "about:blank",
-	})
-	tabID, _ := openResp["tabId"].(string)
-	if tabID == "" {
-		cli.Fatal("failed to open tab for instance %s", instID)
-	}
-
-	apiclient.DoPost(client, base, token, fmt.Sprintf("/tabs/%s/navigate", tabID), map[string]any{
+	apiclient.DoPost(client, base, token, fmt.Sprintf("/instances/%s/tabs/open", instID), map[string]any{
 		"url": targetURL,
 	})
 }

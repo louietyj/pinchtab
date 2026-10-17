@@ -30,6 +30,18 @@ func TestFetchHealthSnapshotClassifiesOnlyValidDashboardHealthAsRunning(t *testi
 			want:   healthSnapshotRunning,
 		},
 		{
+			name:   "degraded dashboard health",
+			status: http.StatusOK,
+			body:   `{"status":"degraded","mode":"dashboard","version":"dev","unresponsiveInstances":["inst_1"]}`,
+			want:   healthSnapshotRunning,
+		},
+		{
+			name:   "unknown dashboard status",
+			status: http.StatusOK,
+			body:   `{"status":"draining","mode":"dashboard","version":"dev"}`,
+			want:   healthSnapshotInvalid,
+		},
+		{
 			name:   "protected listener",
 			status: http.StatusUnauthorized,
 			body:   `{"code":"missing_token","message":"unauthorized"}`,

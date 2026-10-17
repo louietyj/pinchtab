@@ -1,10 +1,7 @@
 package handlers
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -13,6 +10,7 @@ import (
 	"github.com/pinchtab/pinchtab/internal/bridge"
 	"github.com/pinchtab/pinchtab/internal/dashboard"
 	"github.com/pinchtab/pinchtab/internal/httpx"
+	"github.com/pinchtab/pinchtab/internal/remedy"
 )
 
 type tabHandoffController interface {
@@ -22,7 +20,7 @@ type tabHandoffController interface {
 }
 
 func (h *Handlers) handoffController() (tabHandoffController, bool) {
-	ctrl, ok := h.Bridge.(tabHandoffController)
+	ctrl, ok := bridgeAs[tabHandoffController](h.Bridge)
 	return ctrl, ok
 }
 
@@ -32,11 +30,14 @@ const handoffHintMessage = "return control to the user and ask them to manually 
 
 const handoffPausedCode = "tab_paused_handoff"
 
+var resumeRemedy = remedy.Declare("pinchtab resume <tab-id>")
+
 // handoffErrorDetails builds the details payload attached to 409 responses
 // when an action hits a tab that is paused for handoff. Always includes the
-// agent hint; when known, also includes the current reason and pausedAt.
+// agent hint and the resume remedy; when known, also includes the current
+// reason and pausedAt.
 func (h *Handlers) handoffErrorDetails(tabID string) map[string]any {
-	details := map[string]any{"hint": handoffHintMessage}
+	details := remedy.Details(handoffHintMessage, resumeRemedy.Fill(tabID))
 	if ctrl, ok := h.handoffController(); ok {
 		if state, exists := ctrl.TabHandoffState(tabID); exists {
 			if state.Reason != "" {
@@ -128,9 +129,8 @@ func (h *Handlers) pauseTabForHandoff(tabID, reason, source string, timeout time
 }
 
 func (h *Handlers) HandleTabHandoff(w http.ResponseWriter, r *http.Request) {
-	tabID := strings.TrimSpace(r.PathValue("id"))
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
+	tabID, ok := requirePathTabID(w, r)
+	if !ok {
 		return
 	}
 
@@ -138,8 +138,7 @@ func (h *Handlers) HandleTabHandoff(w http.ResponseWriter, r *http.Request) {
 		Reason    string `json:"reason"`
 		TimeoutMs int    `json:"timeoutMs"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodySize)).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
-		httpx.Error(w, 400, fmt.Errorf("decode: %w", err))
+	if !decodeOptionalJSON(w, r, &req) {
 		return
 	}
 
@@ -181,6 +180,9 @@ func (h *Handlers) HandleTabHandoff(w http.ResponseWriter, r *http.Request) {
 		"timeoutMs": req.TimeoutMs,
 		"hint":      handoffHintMessage,
 	}
+	if line := resumeRemedy.Fill(resolvedTabID); !line.Empty() {
+		resp["remedy"] = line.String()
+	}
 	if timeout > 0 {
 		resp["expiresAt"] = time.Now().UTC().Add(timeout).Format(time.RFC3339)
 	}
@@ -188,9 +190,8 @@ func (h *Handlers) HandleTabHandoff(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) HandleTabResume(w http.ResponseWriter, r *http.Request) {
-	tabID := strings.TrimSpace(r.PathValue("id"))
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
+	tabID, ok := requirePathTabID(w, r)
+	if !ok {
 		return
 	}
 
@@ -198,8 +199,7 @@ func (h *Handlers) HandleTabResume(w http.ResponseWriter, r *http.Request) {
 		Status string         `json:"status"`
 		Data   map[string]any `json:"resolvedData"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodySize)).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
-		httpx.Error(w, 400, fmt.Errorf("decode: %w", err))
+	if !decodeOptionalJSON(w, r, &req) {
 		return
 	}
 
@@ -249,9 +249,8 @@ func (h *Handlers) HandleTabResume(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) HandleTabHandoffStatus(w http.ResponseWriter, r *http.Request) {
-	tabID := strings.TrimSpace(r.PathValue("id"))
-	if tabID == "" {
-		httpx.Error(w, 400, fmt.Errorf("tab id required"))
+	tabID, ok := requirePathTabID(w, r)
+	if !ok {
 		return
 	}
 

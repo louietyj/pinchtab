@@ -27,6 +27,9 @@ func handleNavigate(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.
 		if tabID != "" {
 			payload["tabId"] = tabID
 		}
+		if v, ok := optBool(r, "newTab"); ok && v {
+			payload["newTab"] = true
+		}
 		body, code, err := c.Post(ctx, routedPathWithBody(r, "/navigate", payload), payload)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -57,7 +60,7 @@ func withOptionalSnapshot(ctx context.Context, c *Client, r mcp.CallToolRequest,
 	} else if returnedTabID := responseStringField(body, "tabId"); returnedTabID != "" {
 		q.Set("tabId", returnedTabID)
 	}
-	snapBody, _, snapErr := c.Get(ctx, "/snapshot", routedQuery(r, q))
+	snapBody, _, snapErr := c.GetCapturingVocab(ctx, "/snapshot", routedQuery(r, q), tabID)
 	if snapErr != nil {
 		return resultFromBytes(body, code)
 	}
@@ -78,7 +81,7 @@ func handleHistoryNav(c *Client, verb string) func(context.Context, mcp.CallTool
 		tabID := optString(r, "tabId")
 		path := "/" + verb
 		if tabID != "" {
-			path = "/tabs/" + url.PathEscape(tabID) + "/" + verb
+			path = tabRoutePath(tabID, verb)
 		}
 		body, code, err := c.Post(ctx, routedPath(r, path), nil)
 		if err != nil {
@@ -129,11 +132,7 @@ func handleSnapshot(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.
 		if v, ok := optBool(r, "noAnimations"); ok && v {
 			q.Set("noAnimations", "true")
 		}
-		body, code, err := c.GetCapturingVocab(ctx, "/snapshot", routedQuery(r, q), optString(r, "tabId"))
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return resultFromBytes(body, code)
+		return toolResult(c.GetCapturingVocab(ctx, "/snapshot", routedQuery(r, q), optString(r, "tabId")))
 	}
 }
 
@@ -156,22 +155,14 @@ func handleFrame(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.Cal
 			if tabID != "" {
 				q.Set("tabId", tabID)
 			}
-			body, code, err := c.Get(ctx, "/frame", routedQuery(r, q))
-			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
-			}
-			return resultFromBytes(body, code)
+			return toolResult(c.Get(ctx, "/frame", routedQuery(r, q)))
 		}
 
 		payload := map[string]any{"target": target}
 		if tabID != "" {
 			payload["tabId"] = tabID
 		}
-		body, code, err := c.Post(ctx, routedPath(r, "/frame"), payload)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return resultFromBytes(body, code)
+		return toolResult(c.Post(ctx, routedPath(r, "/frame"), payload))
 	}
 }
 
@@ -225,12 +216,22 @@ func handleScreenshot(c *Client) func(context.Context, mcp.CallToolRequest) (*mc
 	}
 }
 
+// maxEchoedScreenshotBytes bounds the raw-bytes fallback below. An error envelope
+// or an unrecognised field is small; anything of image scale that failed to parse
+// is a damaged payload, and echoing it verbatim spends the model's context on
+// megabytes of base64 that mean nothing.
+const maxEchoedScreenshotBytes = 8 << 10
+
 // screenshotResult turns the /screenshot JSON envelope into an MCP image
 // result so clients can render the picture natively. The text portion is
 // always a JSON object `{"format", "annotations": [...]}` so downstream
-// callers can parse one stable schema regardless of `annotate`. On any parse
-// hiccup we fall back to the raw bytes so error envelopes and future fields
-// still surface.
+// callers can parse one stable schema regardless of `annotate`.
+//
+// On a parse hiccup it falls back to the raw bytes, which serves the case it was
+// written for — a small error envelope, or a future field this struct does not
+// model. It refuses the other case that reaches the same branch: a body too large
+// to be either, which is a damaged image payload and is reported as one instead of
+// being handed to the model as text.
 func screenshotResult(body []byte, annotate bool) (*mcp.CallToolResult, error) {
 	var env struct {
 		Format      string          `json:"format"`
@@ -238,6 +239,11 @@ func screenshotResult(body []byte, annotate bool) (*mcp.CallToolResult, error) {
 		Annotations json.RawMessage `json:"annotations,omitempty"`
 	}
 	if err := json.Unmarshal(body, &env); err != nil || env.Base64 == "" {
+		if len(body) > maxEchoedScreenshotBytes {
+			return mcp.NewToolResultError(fmt.Sprintf(
+				"the screenshot response was %d bytes and carried no readable image; it is not echoed because a damaged image payload is not readable text — retry with beyondViewport=false, a lower quality, or a selector",
+				len(body))), nil
+		}
 		return resultFromBytes(body, 200)
 	}
 
@@ -392,7 +398,11 @@ func handleGetText(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.C
 		if tabID := optString(r, "tabId"); tabID != "" {
 			q.Set("tabId", tabID)
 		}
-		if v, ok := optBool(r, "raw"); ok && v {
+		// mode supersedes the boolean raw so a caller can ask for markdown; raw:true
+		// alone still maps to mode=raw for older callers.
+		if mode := optString(r, "mode"); mode != "" {
+			q.Set("mode", mode)
+		} else if v, ok := optBool(r, "raw"); ok && v {
 			q.Set("mode", "raw")
 		}
 		if format := optString(r, "format"); format != "" {
@@ -401,10 +411,6 @@ func handleGetText(c *Client) func(context.Context, mcp.CallToolRequest) (*mcp.C
 		if v, ok := optInt(r, "maxChars"); ok && v > 0 {
 			q.Set("maxChars", strconv.Itoa(v))
 		}
-		body, code, err := c.Get(ctx, "/text", routedQuery(r, q))
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return resultFromBytes(body, code)
+		return toolResult(c.Get(ctx, "/text", routedQuery(r, q)))
 	}
 }

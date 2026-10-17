@@ -155,6 +155,6 @@ direct-cdp  = better efficiency
 Today, the intended architecture is:
 
 - `managed + bridge` for PinchTab-launched instances
-- `attached + direct-cdp` for externally managed browsers
+- `attached + bridge` for externally managed browsers: `POST /instances/attach` spawns a `pinchtab bridge --cdp-attach <cdpUrl>` child (`attachType: cdp-bridge`), and `POST /instances/attach-bridge` registers an already running bridge (`attachType: bridge`) — see [Orchestration](../architecture/orchestration.md#attach-flow)
 
-`managed + direct-cdp` is a useful future model, but it is primarily an architectural option, not the default implementation.
+`managed + direct-cdp` is not implemented; it is an architectural option only. Every instance, managed or attached, is reached through a bridge.

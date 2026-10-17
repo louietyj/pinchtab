@@ -89,12 +89,14 @@ function createTestPluginApi(api: TestPluginApiInput): OpenClawPluginApi {
     clearRunContext() {},
     registerSessionSchedulerJob: () => undefined,
     registerMemoryCapability() {},
-    registerMemoryPromptSection() {},
+    registerMemoryPromptPreparation() {},
     registerMemoryPromptSupplement() {},
     registerMemoryCorpusSupplement() {},
-    registerMemoryFlushPlan() {},
-    registerMemoryRuntime() {},
-    registerMemoryEmbeddingProvider() {},
+    registerBoardWidgetContentKind() {},
+    registerSessionCatalog() {},
+    registerWidgetPresenter() {},
+    registerWorkerProvider() {},
+    registerMcpServerConnectionResolver() {},
     resolvePath(input) {
       return input;
     },

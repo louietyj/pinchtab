@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/pinchtab/pinchtab/internal/cli"
 	"github.com/pinchtab/pinchtab/internal/cli/apiclient"
 	"github.com/pinchtab/pinchtab/internal/cli/output"
 	"github.com/pinchtab/pinchtab/internal/selector"
@@ -20,7 +21,11 @@ func Text(client *http.Client, base, token string, cmd *cobra.Command, args []st
 	// considers chrome are retained.
 	raw, _ := cmd.Flags().GetBool("raw")
 	full, _ := cmd.Flags().GetBool("full")
-	if raw || full {
+	markdown, _ := cmd.Flags().GetBool("markdown")
+	switch {
+	case markdown:
+		params.Set("mode", "markdown")
+	case raw || full:
 		params.Set("mode", "raw")
 		params.Set("format", "text")
 	}
@@ -55,19 +60,38 @@ func Text(client *http.Client, base, token string, cmd *cobra.Command, args []st
 		return
 	}
 
+	outFile, _ := cmd.Flags().GetString("output")
+
 	body := apiclient.DoGetRaw(client, base, token, "/text", params)
 	var result struct {
 		Text       string `json:"text"`
 		Extraction string `json:"extraction"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		output.Value(string(body))
+		// A plain-text response (--full/--raw set format=text) is not an envelope;
+		// the whole body is the content.
+		writeTextOrPrint(outFile, string(body))
 		return
 	}
 	if result.Extraction == extractionReadabilityFallback {
 		output.Hint("readability extracted only a fragment of this page; returned the full page text instead (pass --full to request it directly)")
 	}
-	output.Value(result.Text)
+	writeTextOrPrint(outFile, result.Text)
+}
+
+// writeTextOrPrint writes the body to --output when set, printing a one-line
+// confirmation so a long page never floods the agent's context, and otherwise
+// prints the body. An explicit path is written as typed, overwrite included.
+func writeTextOrPrint(outFile, text string) {
+	if outFile == "" {
+		output.Value(text)
+		return
+	}
+	saved, err := writeOutputFile(outFile, false, []byte(text))
+	if err != nil {
+		cli.Fatal("Write failed: %v", err)
+	}
+	printSaved(saved, len(text))
 }
 
 // extractionReadabilityFallback mirrors the /text envelope value the server

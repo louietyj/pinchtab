@@ -23,6 +23,8 @@ type downloadPolicyBridge struct {
 	hasState bool
 }
 
+func (b *downloadPolicyBridge) GetDialogManager() *bridge.DialogManager { return nil }
+
 func (m *downloadPolicyBridge) BrowserContext() context.Context {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately - no browser spawned

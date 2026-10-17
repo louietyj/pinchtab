@@ -8,7 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pinchtab/pinchtab/internal/api/types"
 	"github.com/pinchtab/pinchtab/internal/cli/apiclient"
+	"github.com/pinchtab/pinchtab/internal/cli/clistate"
 	"github.com/spf13/cobra"
 )
 
@@ -31,6 +33,9 @@ func (tabStateStore) useLocal() bool {
 	if strings.TrimSpace(os.Getenv("PINCHTAB_SESSION")) != "" {
 		return false
 	}
+	if base, _ := resolveTabStateEndpoint(); base == "" {
+		return false
+	}
 	return resolveCLIAgentID() == ""
 }
 
@@ -43,15 +48,7 @@ func (s tabStateStore) path() string {
 	return s.dir() + "/current-tab-" + s.serverSlug()
 }
 
-func (tabStateStore) dir() string {
-	if dir := os.Getenv("XDG_STATE_HOME"); dir != "" {
-		return dir + "/pinchtab"
-	}
-	if home, err := os.UserHomeDir(); err == nil {
-		return home + "/.local/state/pinchtab"
-	}
-	return "/tmp/pinchtab"
-}
+func (tabStateStore) dir() string { return clistate.Dir() }
 
 // serverSlug turns the resolved base URL into a filename-safe identity. It stays
 // readable (127.0.0.1-9930) so an operator can tell which server a state file
@@ -170,7 +167,7 @@ func (tabStateStore) probe(tabID string) tabProbeResult {
 	if err != nil {
 		return tabProbeInconclusive
 	}
-	req.Header.Set("X-PinchTab-Source", "client")
+	req.Header.Set(types.HeaderSource, "client")
 	if token != "" {
 		if strings.HasPrefix(token, "ses_") {
 			req.Header.Set("Authorization", "Session "+token)

@@ -61,38 +61,66 @@ func (tm *TabManager) CleanStaleTabs(ctx context.Context, interval time.Duration
 			return
 		case <-ticker.C:
 		}
+		tm.dropTabsTheBrowserNoLongerHas()
+	}
+}
 
-		targets, err := tm.ListTargets()
-		if err != nil {
+// dropTabsTheBrowserNoLongerHas removes tracked tabs whose CDP target is gone.
+//
+// A tab can die without PinchTab hearing about it. Target.targetDestroyed is
+// delivered over the CDP session of the tab chromedp adopted for the
+// browser-level context, so once that tab dies the event stops arriving for
+// every other tab too. That is routine for an attached browser, where the tabs
+// belong to the user and PinchTab adopted one of them. A dead entry keeps a
+// context that no longer has a session behind it, so calls on it block until
+// their deadline rather than failing, and tab selection keeps choosing it.
+//
+// Target.getTargets is a browser-level command, so what it reports stays true
+// whichever tab has died.
+func (tm *TabManager) dropTabsTheBrowserNoLongerHas() {
+	if tm == nil {
+		return
+	}
+	tm.mu.RLock()
+	tracked := len(tm.tabs)
+	tm.mu.RUnlock()
+	if tracked == 0 {
+		return
+	}
+
+	targets, err := tm.ListTargets()
+	if err != nil {
+		// Without a target list nothing is proven dead. Dropping the set here
+		// would evict live tabs every time the browser is briefly busy.
+		return
+	}
+	alive := make(map[string]bool, len(targets))
+	for _, t := range targets {
+		alive[string(t.TargetID)] = true
+	}
+
+	type staleTab struct {
+		tabID string
+		cdpID string
+	}
+	var staleTabs []staleTab
+	tm.mu.RLock()
+	for id, entry := range tm.tabs {
+		// Only an entry that records which CDP target it belongs to can be
+		// missing from the listing. RegisterTab binds a context without one,
+		// and for those absence proves nothing, so they are left alone.
+		if entry == nil || entry.CDPID == "" {
 			continue
 		}
+		if !alive[entry.CDPID] {
+			staleTabs = append(staleTabs, staleTab{tabID: id, cdpID: entry.CDPID})
+		}
+	}
+	tm.mu.RUnlock()
 
-		alive := make(map[string]bool, len(targets))
-		for _, t := range targets {
-			alive[string(t.TargetID)] = true
-		}
-
-		type staleTab struct {
-			tabID string
-			cdpID string
-		}
-		var staleTabs []staleTab
-		tm.mu.RLock()
-		for id, entry := range tm.tabs {
-			if !alive[id] {
-				cdpID := entry.CDPID
-				if cdpID == "" {
-					cdpID = id
-				}
-				staleTabs = append(staleTabs, staleTab{tabID: id, cdpID: cdpID})
-			}
-		}
-		tm.mu.RUnlock()
-
-		for _, stale := range staleTabs {
-			tm.purgeTrackedTabState(stale.tabID, stale.cdpID)
-			slog.Info("cleaned stale tab", "id", stale.tabID)
-		}
+	for _, stale := range staleTabs {
+		tm.purgeTrackedTabState(stale.tabID, stale.cdpID)
+		slog.Info("cleaned stale tab", "id", stale.tabID)
 	}
 }
 
@@ -106,10 +134,8 @@ func (tm *TabManager) purgeTrackedTabState(tabID, cdpTargetID string) bool {
 	}
 
 	tm.mu.Lock()
-	if entry, ok := tm.tabs[resolvedTabID]; ok && entry.autoCloseTimer != nil {
-		entry.autoCloseTimer.Stop()
-		entry.autoCloseTimer = nil
-		entry.autoCloseGen++
+	if entry, ok := tm.tabs[resolvedTabID]; ok {
+		entry.stopIdleTimer()
 	}
 	delete(tm.tabs, resolvedTabID)
 	delete(tm.snapshots, resolvedTabID)

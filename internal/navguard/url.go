@@ -2,7 +2,6 @@ package navguard
 
 import (
 	"fmt"
-	"net"
 	"net/url"
 	"strings"
 )
@@ -12,12 +11,9 @@ const MaxURLLen = 8 << 10
 
 // ValidateURL checks that raw is a well-formed, scheme-safe navigation URL.
 // It allows http, https, about:blank, and bare hostnames (no scheme).
-func (v *Validator) ValidateURL(raw string) error {
-	return ValidateURL(raw)
-}
-
-// ValidateURL is the standalone (non-method) URL validator, usable without a
-// Validator instance.
+//
+// Not a Validator method: the answer depends on nothing a Validator carries, and
+// hanging it off one implied that TrustedResolveCIDRs applied to it.
 func ValidateURL(raw string) error {
 	return ValidateURLAllowingFile(raw, false)
 }
@@ -61,39 +57,4 @@ func IsFileURL(raw string) bool {
 		return false
 	}
 	return strings.EqualFold(parsed.Scheme, "file")
-}
-
-// ExtractHost extracts the hostname from a raw URL string.
-// Returns the lowercase, dot-trimmed host and true if found.
-func ExtractHost(raw string) (string, bool) {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return "", false
-	}
-	if host := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), "."); host != "" {
-		return host, true
-	}
-	if parsed.Scheme != "" {
-		return "", false
-	}
-
-	bare := parsed.Path
-	bare = strings.SplitN(bare, "/", 2)[0]
-	bare = strings.SplitN(bare, "?", 2)[0]
-	bare = strings.SplitN(bare, "#", 2)[0]
-	bare = strings.TrimSpace(bare)
-	if bare == "" || strings.HasPrefix(bare, "/") || strings.HasPrefix(bare, ".") {
-		return "", false
-	}
-	if h, _, err := net.SplitHostPort(bare); err == nil {
-		bare = h
-	}
-	host := strings.TrimSuffix(strings.ToLower(bare), ".")
-	if host == "" {
-		return "", false
-	}
-	if host == "localhost" || strings.HasSuffix(host, ".localhost") || net.ParseIP(host) != nil || strings.Contains(host, ".") || strings.Contains(host, ":") {
-		return host, true
-	}
-	return "", false
 }

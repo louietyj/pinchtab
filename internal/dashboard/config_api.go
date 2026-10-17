@@ -15,6 +15,7 @@ import (
 	"github.com/pinchtab/pinchtab/internal/browsersession"
 	"github.com/pinchtab/pinchtab/internal/config"
 	"github.com/pinchtab/pinchtab/internal/httpx"
+	"github.com/pinchtab/pinchtab/internal/session"
 )
 
 type profileLister interface {
@@ -30,16 +31,17 @@ type agentCounter interface {
 }
 
 type ConfigAPI struct {
-	runtime   *config.RuntimeConfig
-	instances InstanceLister
-	profiles  profileLister
-	applier   runtimeConfigApplier
-	agents    agentCounter
-	sessions  *browsersession.Manager
-	version   string
-	startedAt time.Time
-	boot      config.FileConfig
-	mu        sync.RWMutex
+	live          *config.Live
+	instances     InstanceLister
+	profiles      profileLister
+	applier       runtimeConfigApplier
+	agents        agentCounter
+	sessions      *browsersession.Manager
+	agentSessions *session.Store
+	version       string
+	startedAt     time.Time
+	boot          config.FileConfig
+	mu            sync.RWMutex
 
 	// Config-file snapshot cached by mtime so read-only health/config polls answer
 	// from memory instead of re-reading + parsing the file every request. Guarded
@@ -60,7 +62,7 @@ type configEnvelope struct {
 }
 
 func NewConfigAPI(
-	runtime *config.RuntimeConfig,
+	live *config.Live,
 	instances InstanceLister,
 	profiles profileLister,
 	applier runtimeConfigApplier,
@@ -75,7 +77,7 @@ func NewConfigAPI(
 		boot = *fc
 	}
 	return &ConfigAPI{
-		runtime:   runtime,
+		live:      live,
 		instances: instances,
 		profiles:  profiles,
 		applier:   applier,
@@ -86,11 +88,29 @@ func NewConfigAPI(
 	}
 }
 
+// cfg is the one read of the published runtime config, shared with the
+// orchestrator and the auth API so a save is seen by all three at once.
+func (c *ConfigAPI) cfg() *config.RuntimeConfig {
+	if c == nil {
+		return nil
+	}
+	return c.live.Get()
+}
+
 func (c *ConfigAPI) SetSessionManager(sessions *browsersession.Manager) {
 	if c == nil {
 		return
 	}
 	c.sessions = sessions
+}
+
+// SetAgentSessionStore wires the agent session store so a save of the
+// sessions.agent block reaches the running store instead of only the file.
+func (c *ConfigAPI) SetAgentSessionStore(store *session.Store) {
+	if c == nil {
+		return
+	}
+	c.agentSessions = store
 }
 
 func (c *ConfigAPI) RegisterHandlers(mux *http.ServeMux) {
@@ -163,6 +183,19 @@ func (c *ConfigAPI) parseConfigUpdate(w http.ResponseWriter, r *http.Request, cu
 		return config.FileConfig{}, false
 	}
 
+	if unknown := config.UnknownFileConfigKeys(body); len(unknown) > 0 {
+		httpx.ErrorCode(w, 400, "unrecognized_config_keys", "PUT the inner config object, not the GET envelope", false, map[string]any{
+			"unrecognizedKeys": unknown,
+		})
+		return config.FileConfig{}, false
+	}
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil || len(fields) == 0 {
+		httpx.ErrorCode(w, 400, "empty_config_update", "config update contains no recognized fields", false, nil)
+		return config.FileConfig{}, false
+	}
+
 	normalized := *current
 	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&normalized); err != nil {
 		httpx.ErrorCode(w, 400, "bad_config_json", "invalid config payload", false, nil)
@@ -207,12 +240,18 @@ func (c *ConfigAPI) persistAndApply(w http.ResponseWriter, normalized *config.Fi
 	// writes landing in the same filesystem mtime tick.
 	c.cfgCacheValid = false
 
-	config.ApplyFileConfigToRuntime(c.runtime, normalized)
+	// A save publishes a NEW value; the object the orchestrator's goroutines are
+	// already reading is never written to.
+	next := config.NextRuntimeConfig(c.cfg(), normalized)
+	c.live.Publish(next)
 	if c.sessions != nil {
-		c.sessions.UpdateConfig(BrowserSessionConfig(c.runtime))
+		c.sessions.UpdateConfig(browserSessionConfig(next, c.sessions.PersistPath()))
+	}
+	if c.agentSessions != nil {
+		c.agentSessions.UpdateConfig(AgentSessionConfig(next, c.agentSessions.PersistPath()))
 	}
 	if c.applier != nil {
-		c.applier.ApplyRuntimeConfig(c.runtime)
+		c.applier.ApplyRuntimeConfig(next)
 	}
 	return true
 }
@@ -234,14 +273,15 @@ func (c *ConfigAPI) respondConfigUpdated(w http.ResponseWriter, r *http.Request,
 }
 
 func (c *ConfigAPI) hasConfigWriteElevation(r *http.Request) bool {
-	if c == nil || c.runtime == nil || strings.TrimSpace(c.runtime.Token) == "" {
+	cfg := c.cfg()
+	if cfg == nil || strings.TrimSpace(cfg.Token) == "" {
 		return true
 	}
 	creds := authn.CredentialsFromRequest(r)
 	if creds.Method != authn.MethodCookie {
 		return true
 	}
-	return c.sessions != nil && c.sessions.IsElevated(creds.Value, c.runtime.Token)
+	return c.sessions != nil && c.sessions.IsElevated(creds.Value, cfg.Token)
 }
 
 func (c *ConfigAPI) currentConfig() (config.FileConfig, string, []string, error) {
