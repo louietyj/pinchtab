@@ -123,3 +123,61 @@ func TestAttachIndicatorRejectsInvalidPort(t *testing.T) {
 		t.Fatalf("valid cleanup script error=%v", err)
 	}
 }
+
+// A page that enforces its own title the same way must not be locked in an
+// endless microtask loop with the indicator: that hung the renderer at 100% CPU.
+func TestAttachIndicatorYieldsToAPageThatFightsForItsTitle(t *testing.T) {
+	chromePath := testbrowser.Path(t)
+	profile := testbrowser.ProfileDir(t)
+	alloc, cancelAlloc := chromedp.NewExecAllocator(context.Background(), append(
+		chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.ExecPath(chromePath),
+		chromedp.UserDataDir(profile),
+		chromedp.Flag("headless", true),
+		chromedp.Flag("no-sandbox", true),
+	)...)
+	ctx, cancelBrowser := chromedp.NewContext(alloc)
+	ctx, cancelTimeout := context.WithTimeout(ctx, 20*time.Second)
+	t.Cleanup(func() {
+		cancelTimeout()
+		cancelBrowser()
+		cancelAlloc()
+		_ = os.RemoveAll(profile)
+	})
+	html := `<title>Mine</title><script>
+new MutationObserver(() => { if (document.title !== 'Mine') document.title = 'Mine'; })
+  .observe(document.head, {subtree: true, childList: true, characterData: true});
+</script>`
+	fightURL := "data:text/html;base64," + base64.StdEncoding.EncodeToString([]byte(html))
+	if err := chromedp.Run(ctx, chromedp.Navigate(fightURL)); err != nil {
+		t.Fatal(err)
+	}
+
+	b := New(context.Background(), ctx, &config.RuntimeConfig{Port: "9876"})
+	b.stealthLaunchMode = stealth.LaunchModeAttached
+	target := chromedp.FromContext(ctx).Target
+	b.RegisterTab("tab-fight", cdp.WithExecutor(ctx, target))
+	t.Cleanup(b.Cleanup)
+
+	// Installed on a loaded page, then again at document start on a new one.
+	for _, step := range []string{"install", "navigate"} {
+		stepCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		var err error
+		if step == "install" {
+			err = b.tabSetup(cdp.WithExecutor(stepCtx, target), "tab-fight")
+		} else {
+			err = chromedp.Run(stepCtx, chromedp.Navigate(fightURL))
+		}
+		var title string
+		if err == nil {
+			err = chromedp.Run(stepCtx, chromedp.Title(&title))
+		}
+		cancel()
+		if err != nil {
+			t.Fatalf("%s: page hung: %v", step, err)
+		}
+		if title != "Mine" {
+			t.Fatalf("%s: title = %q, want the page's own", step, title)
+		}
+	}
+}

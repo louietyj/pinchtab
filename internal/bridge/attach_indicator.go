@@ -32,7 +32,7 @@ func attachIndicatorScript(port string) (string, error) {
   const prefixPattern = /^\[PinchTab :\d+(?:,:\d+)*\]\s*/;
   let state = globalThis[key];
   if (!state || !(state.ports instanceof Set)) {
-    state = {ports: new Set(), observer: null, start: null, disposed: false};
+    state = {ports: new Set(), observer: null, start: null, disposed: false, yielded: false, writes: []};
     globalThis[key] = state;
   }
   state.disposed = false;
@@ -41,11 +41,22 @@ func attachIndicatorScript(port string) (string, error) {
     const clean = document.title.replace(prefixPattern, "");
     const ports = Array.from(state.ports).sort((a, b) => a - b);
     const prefix = ports.length ? "[PinchTab " + ports.map(p => ":" + p).join(",") + "] " : "";
-    if (document.title !== prefix + clean) document.title = prefix + clean;
+    if (document.title === prefix + clean) return;
+    // A page or extension that re-asserts its own title would otherwise trade
+    // writes with this observer forever in microtasks, hanging the renderer.
+    const now = performance.now();
+    state.writes = state.writes.filter(t => now - t < 1000);
+    if (state.writes.length >= 5) {
+      state.yielded = true;
+      state.observer.disconnect();
+      return;
+    }
+    state.writes.push(now);
+    document.title = prefix + clean;
   };
   if (!state.observer) state.observer = new MutationObserver(apply);
   if (!state.start) state.start = () => {
-    if (state.disposed || !state.ports.size) return;
+    if (state.disposed || state.yielded || !state.ports.size) return;
     apply();
     if (document.head) state.observer.observe(document.head, {subtree:true, childList:true, characterData:true});
   };
