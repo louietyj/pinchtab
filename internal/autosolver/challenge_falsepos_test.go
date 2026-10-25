@@ -1,6 +1,11 @@
 package autosolver
 
 import (
+	"compress/gzip"
+	"io"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -15,11 +20,51 @@ func TestOrdinaryPagesAreNotChallenges(t *testing.T) {
 		{"wikipedia reCAPTCHA", "reCAPTCHA - Wikipedia", "https://en.wikipedia.org/wiki/ReCAPTCHA", article},
 		{"code sample in an article", "reCAPTCHA - Wikipedia", "https://en.wikipedia.org/wiki/ReCAPTCHA", `<pre>&lt;div class=&quot;g-recaptcha&quot; data-sitekey=&quot;your_site_key&quot;&gt;&lt;/div&gt; loads https://www.google.com/recaptcha/api.js and renders api2/anchor</pre>` + article},
 		{"noscript boilerplate", "Roblox", "https://www.roblox.com/login", `<noscript>Please enable JavaScript to use this site.</noscript><script>if(navigator.webdriver){report('anti-bot')}</script><form><button type="submit">Log In</button></form>`},
+		{"cloudflare bot-management beacon", "Discord - Group Chat That's All Fun & Games", "https://discord.com/", `<script>var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';</script>`},
 	} {
 		if intent := DetectChallengeIntent(tc.title, tc.url, tc.html); intent != nil {
 			t.Errorf("%s: read as %s (%s)", tc.name, intent.ChallengeType, intent.Details)
 		}
 	}
+}
+
+// Real unchallenged pages, as cloak rendered them, behind vendors that leave
+// scripts on every page. Styles, SVGs, JSON and data: URIs are emptied for size;
+// scripts are whole.
+func TestCapturedOrdinaryPagesAreNotChallenges(t *testing.T) {
+	files, err := filepath.Glob("testdata/ordinary/*.html.gz")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no captured pages: %v", err)
+	}
+	header := regexp.MustCompile(`^<!-- url: (\S+) -->\n<!-- title: (.*) -->\n`)
+	for _, f := range files {
+		page := readGzip(t, f)
+		m := header.FindStringSubmatch(page)
+		if m == nil {
+			t.Fatalf("%s: missing url/title header", f)
+		}
+		if intent := DetectChallengeIntent(m[2], m[1], page); intent != nil {
+			t.Errorf("%s: read as %s (%s)", filepath.Base(f), intent.ChallengeType, intent.Details)
+		}
+	}
+}
+
+func readGzip(t *testing.T, path string) string {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	zr, err := gzip.NewReader(f)
+	if err != nil {
+		t.Fatalf("%s: %v", path, err)
+	}
+	b, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatalf("%s: %v", path, err)
+	}
+	return string(b)
 }
 
 func TestRealChallengePagesAreStillDetected(t *testing.T) {

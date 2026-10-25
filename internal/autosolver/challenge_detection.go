@@ -218,7 +218,8 @@ func isTurnstileChallenge(title, url, html string) bool {
 		// challenge-platform script shows up in the markup while the URL still
 		// looks like the site. Matching it only in the URL meant the real page
 		// was recognised by its title and not by the thing running it.
-		"cdn-cgi/challenge-platform",
+		// Only /h/: bot management puts .../scripts/jsd/main.js on every page.
+		"cdn-cgi/challenge-platform/h/",
 		"__cf_chl_",
 		"cf-browser-verification",
 	) {
@@ -285,9 +286,11 @@ func isHCaptchaChallenge(url, html string) bool {
 
 // The widget markers count only in real attributes. An article's code sample
 // shows the same words escaped (class=&quot;g-recaptcha&quot;) or as text.
+// The vendor's api.js is not a widget: Epic Games Store loads hCaptcha's on every
+// page and renders nothing.
 var (
-	recaptchaWidgetRe = regexp.MustCompile(`class=["'][^"']*\bg-recaptcha\b|src=["'][^"']*(?:google\.com|recaptcha\.net)/recaptcha/(?:api\.js|enterprise\.js|api2/anchor|enterprise/anchor)`)
-	hcaptchaWidgetRe  = regexp.MustCompile(`class=["'][^"']*\bh-captcha\b|src=["'][^"']*hcaptcha\.com/(?:1/api\.js|captcha/)`)
+	recaptchaWidgetRe = regexp.MustCompile(`class=["'][^"']*\bg-recaptcha\b|src=["'][^"']*(?:google\.com|recaptcha\.net)/recaptcha/(?:api2/anchor|enterprise/anchor)`)
+	hcaptchaWidgetRe  = regexp.MustCompile(`class=["'][^"']*\bh-captcha\b|src=["'][^"']*hcaptcha\.com/captcha/`)
 )
 
 // isFunCaptchaChallenge keys on Arkose's resource paths and widget attribute,
