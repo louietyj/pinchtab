@@ -124,10 +124,14 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 			}
 		}
 
-		solved, entry := as.trySemantic(ctx, page, executor, intent)
-		appendAttempt(result, entry)
-		if solved {
-			return as.finalizeSuccess(result, page, entry.Solver, start), nil
+		// v3 is invisible: there is nothing on the page for the semantic stage to
+		// click, and its clicks land on the page's own controls.
+		if intent.ChallengeType != "recaptcha-v3" {
+			solved, entry := as.trySemantic(ctx, page, executor, intent)
+			appendAttempt(result, entry)
+			if solved {
+				return as.finalizeSuccess(result, page, entry.Solver, start), nil
+			}
 		}
 
 		solved, spent, entries := as.trySolvers(ctx, page, executor, refused)
@@ -141,7 +145,7 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 		}
 
 		if as.config.LLMFallback && as.llm != nil {
-			solved, entry = as.tryLLM(ctx, page, executor, result.History)
+			solved, entry := as.tryLLM(ctx, page, executor, result.History)
 			appendAttempt(result, entry)
 			if solved {
 				return as.finalizeSuccess(result, page, llmFallbackSolverLabel, start), nil

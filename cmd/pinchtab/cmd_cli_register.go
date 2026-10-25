@@ -28,7 +28,7 @@ func browserRootCommands() []*cobra.Command {
 		keyboardCmd, keydownCmd, keyupCmd, scrollintoviewCmd, dialogCmd, consoleCmd, errorsCmd,
 		clipboardCmd, cacheCmd, cookiesCmd, setCmd, storageCmd, stateCmd, closeCmd, handoffCmd,
 		resumeCmd, handoffStatusCmd, recordCmd, auditCmd, compareCmd, scrapeCmd, a11yCmd, memoryCmd,
-		visionCmd,
+		visionCmd, solveCmd,
 	}
 }
 
@@ -271,6 +271,7 @@ func configureBrowserFlags() {
 		countCmd,
 		boxCmd,
 		visionCmd,
+		solveCmd,
 		visibleCmd,
 		enabledCmd,
 		checkedCmd,

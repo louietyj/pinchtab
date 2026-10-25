@@ -23,6 +23,9 @@ type autoSolveTabs struct {
 	// tab, so later actions report it instead of trying again. The caller has
 	// been told the challenge is theirs now.
 	gaveUp map[string]gaveUpChallenge
+	// noted is the page URL per tab whose reCAPTCHA v3 the caller was told is
+	// left to the browser, so the HINT comes once rather than on every action.
+	noted map[string]string
 }
 
 type gaveUpChallenge struct {
@@ -84,6 +87,21 @@ func (t *autoSolveTabs) forget(tabID string) {
 	delete(t.solved, tabID)
 	delete(t.retry, tabID)
 	delete(t.gaveUp, tabID)
+	delete(t.noted, tabID)
+}
+
+// noteOnce reports whether tabID's page at url is being noted for the first time.
+func (t *autoSolveTabs) noteOnce(tabID, url string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.noted[tabID] == url {
+		return false
+	}
+	if t.noted == nil {
+		t.noted = map[string]string{}
+	}
+	t.noted[tabID] = url
+	return true
 }
 
 // markGaveUp records the final outcome for tabID's challenge of this type.

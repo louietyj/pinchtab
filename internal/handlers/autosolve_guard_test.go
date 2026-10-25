@@ -39,3 +39,22 @@ func TestAutoSolveTabsRemembersASolvedChallengeUntilNavigation(t *testing.T) {
 		t.Error("navigation did not clear the solved challenge")
 	}
 }
+
+// A v3 page is reported once: every fill and click re-detects it.
+func TestLeaveV3ToBrowserReportsOncePerPage(t *testing.T) {
+	h := &Handlers{}
+	out := h.leaveV3ToBrowser("t1", "https://a.test/login")
+	if out == nil || out["leftToBrowser"] != true || out["solved"] != false {
+		t.Fatalf("first report = %v, want leftToBrowser and not solved", out)
+	}
+	if out := h.leaveV3ToBrowser("t1", "https://a.test/login"); out != nil {
+		t.Errorf("reported again on the same page: %v", out)
+	}
+	if h.leaveV3ToBrowser("t1", "https://a.test/signup") == nil {
+		t.Error("a v3 on another page was not reported")
+	}
+	h.autoSolve.forget("t1")
+	if h.leaveV3ToBrowser("t1", "https://a.test/signup") == nil {
+		t.Error("navigating back to a v3 page did not report it again")
+	}
+}

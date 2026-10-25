@@ -178,6 +178,25 @@ Every image is checked before anything is billed. Drags use the humanized path.`
 	},
 }
 
+var solveCmd = &cobra.Command{
+	Use:   "solve [solver]",
+	Short: "Solve the challenge on the page now, including invisible reCAPTCHA v3",
+	Long: `Runs the solvers on the current page now, or only the named one (pinchtab solve capsolver).
+
+nav and other actions solve captchas on their own, except invisible reCAPTCHA v3:
+there the browser's own token is used, since v3 only scores the browser. If the
+site then refuses the form ("Security check didn't pass"), reload, fill the form
+again and run this right before the click that submits: it buys a high-score
+token and makes the page send it instead. The token expires after two minutes.
+Sites refuse some bought tokens too, so a second try may pass where the first did not.`,
+	Args: cobra.MaximumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		runCLI(func(rt cliRuntime) {
+			browseractions.Solve(rt.client, rt.base, rt.token, cmd, args)
+		})
+	},
+}
+
 var boxCmd = &cobra.Command{
 	Use:   "box <ref>",
 	Short: "Get the bounding box of an element by ref",

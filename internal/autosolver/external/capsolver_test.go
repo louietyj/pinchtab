@@ -147,7 +147,7 @@ func TestExtractArkoseSubdomain(t *testing.T) {
 func TestCapsolverTaskType(t *testing.T) {
 	cases := map[string]string{
 		"recaptcha":    "ReCaptchaV2TaskProxyLess",
-		"recaptcha-v3": "ReCaptchaV3TaskProxyLess",
+		"recaptcha-v3": "ReCaptchaV3M1TaskProxyLess",
 		"turnstile":    "AntiTurnstileTaskProxyLess",
 	}
 	for in, want := range cases {
@@ -335,7 +335,7 @@ func TestSolveRecaptchaV3(t *testing.T) {
 	if !res.Solved {
 		t.Fatalf("expected solved, got error=%q", res.Error)
 	}
-	if task.Type != "ReCaptchaV3TaskProxyLess" {
+	if task.Type != "ReCaptchaV3M1TaskProxyLess" {
 		t.Errorf("task type = %q", task.Type)
 	}
 	if task.WebsiteKey != "6Lc_V3_KEY" {
@@ -437,7 +437,7 @@ func TestCapsolverTaskCarriesRecaptchaVariants(t *testing.T) {
 		{
 			name: "v3 enterprise",
 			html: `<script src="https://www.google.com/recaptcha/enterprise.js?render=6Lel"></script><script>grecaptcha.enterprise.execute('6Lel', {action: 'demo_action'})</script>`,
-			want: capsolverTask{Type: "ReCaptchaV3EnterpriseTaskProxyLess", WebsiteKey: "6Lel", PageAction: "demo_action"},
+			want: capsolverTask{Type: "ReCaptchaV3EnterpriseM1TaskProxyLess", WebsiteKey: "6Lel", PageAction: "demo_action"},
 		},
 		{
 			name: "turnstile metadata",

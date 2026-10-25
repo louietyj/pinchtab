@@ -174,6 +174,9 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) (autoSolveOu
 		return nil, nil
 	}
 	challengeURL := page.URL()
+	if challenge.ChallengeType == recaptchaV3 {
+		return h.leaveV3ToBrowser(tabID, challengeURL), nil
+	}
 	if h.autoSolve.recentlySolved(tabID, challengeURL, challenge.ChallengeType) {
 		return nil, nil
 	}
@@ -294,13 +297,25 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) (autoSolveOu
 		// lets a slider pass through to an item page whose data request it then
 		// punishes with reCAPTCHA. Nobody else would look before the next call.
 		next := h.challengeAfterSolve(ctx, page)
-		if round == autoSolveMaxRounds || next == nil ||
+		if round == autoSolveMaxRounds || next == nil || next.ChallengeType == recaptchaV3 ||
 			h.autoSolve.recentlySolved(tabID, page.URL(), next.ChallengeType) {
 			return outcome, nil
 		}
 		challenge, challengeURL = next, page.URL()
 	}
 	return nil, nil
+}
+
+const recaptchaV3 = "recaptcha-v3"
+
+// leaveV3ToBrowser reports a reCAPTCHA v3 page once and buys nothing: v3 only
+// scores the browser at submit, and a bought token replaces one that often
+// scores better. `pinchtab solve` buys one after a site has refused it.
+func (h *Handlers) leaveV3ToBrowser(tabID, url string) autoSolveOutcome {
+	if !h.autoSolve.noteOnce(tabID, url) {
+		return nil
+	}
+	return autoSolveOutcome{"solved": false, "challengeType": recaptchaV3, "leftToBrowser": true}
 }
 
 // manualPointerAction is an agent working a widget by hand, such as dragging a

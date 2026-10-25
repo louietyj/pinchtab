@@ -124,6 +124,14 @@ func autoSolveHint(result map[string]any) string {
 			challenge, pendingSolveCheck(result))
 	}
 
+	if left, _ := raw["leftToBrowser"].(bool); left {
+		return "this page uses invisible reCAPTCHA v3, and pinchtab is NOT solving it: the browser's own " +
+			"token is used, and usually passes. If submitting the form fails a security or robot check " +
+			"(\"Security check didn't pass\"), reload the page, fill the form again, and run `pinchtab solve` " +
+			"right before the click that submits: it buys a high-score token (~$0.003) for the page to send instead. " +
+			"Sites refuse some bought tokens too, so if that fails, the same again may pass."
+	}
+
 	if solved, _ := raw["solved"].(bool); solved {
 		// "cleared" means no solver succeeded and the challenge went away, which
 		// a Cloudflare interstitial does on its own.

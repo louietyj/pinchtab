@@ -62,8 +62,10 @@ func capsolverTaskFor(c *captcha) any {
 	task := capsolverTask{Type: taskType, WebsiteURL: c.url, WebsiteKey: c.key, PageAction: c.pageAction}
 	switch c.typ {
 	case "recaptcha", "recaptcha-v3", "punish-frame":
-		if c.enterprise {
-			// ReCaptchaV2TaskProxyLess -> ReCaptchaV2EnterpriseTaskProxyLess, and v3 alike.
+		if c.enterprise && c.typ == "recaptcha-v3" {
+			task.Type = "ReCaptchaV3EnterpriseM1TaskProxyLess"
+		} else if c.enterprise {
+			// ReCaptchaV2TaskProxyLess -> ReCaptchaV2EnterpriseTaskProxyLess.
 			task.Type = strings.Replace(task.Type, "TaskProxyLess", "EnterpriseTaskProxyLess", 1)
 		}
 		task.IsInvisible = c.invisible
@@ -102,7 +104,8 @@ func capsolverTaskType(captchaType string) (string, bool) {
 	case "recaptcha", "punish-frame":
 		return "ReCaptchaV2TaskProxyLess", true
 	case "recaptcha-v3":
-		return "ReCaptchaV3TaskProxyLess", true
+		// M1, the high-score tier: v3 is bought only after a site refused the browser's own.
+		return "ReCaptchaV3M1TaskProxyLess", true
 	case "turnstile":
 		return "AntiTurnstileTaskProxyLess", true
 	case "mtcaptcha":

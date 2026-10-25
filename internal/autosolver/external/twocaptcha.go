@@ -59,9 +59,9 @@ func NewTwoCaptcha(cfg TwoCaptchaConfig) *TwoCaptcha {
 // accounts.hcaptcha.com/demo took 55s and 106s on consecutive tries.
 const twoCaptchaSolveTimeout = 180 * time.Second
 
-// twoCaptchaV3MinScore is the middle of the three scores 2Captcha offers (0.3,
-// 0.7, 0.9): most sites gate at 0.5, and 0.9 fails more often.
-const twoCaptchaV3MinScore = 0.7
+// twoCaptchaV3MinScore is the highest of the scores 2Captcha offers (0.3, 0.7,
+// 0.9): a v3 token is bought only after the site refused the browser's own.
+const twoCaptchaV3MinScore = 0.9
 
 func twoCaptchaTaskFor(c *captcha) any {
 	task := map[string]any{"websiteURL": c.url}
