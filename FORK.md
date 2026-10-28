@@ -20,12 +20,16 @@ README under "Captcha solving"; this file is how the fork is worked on.
     against Louie's Chrome (`pinchtab-windows`). The sandbox CLI and that bridge
     must be the same build, so they always ship together;
   - `pinchtab-linux-arm64` and `pinchtab-darwin-arm64`, for ARM hosts.
-- `scripts/fork-release.sh <N> notes.md` builds all four in Docker (the host is
-  Windows), stamps `pinchtab --version` and `/health` with the tag, and publishes
-  the release. Builds before capsolver.32 report `dev`.
-
-- Notes: prepend a `**Since capsolver.N-1**: …` section to the previous
-  release's body, so the latest release reads as the whole changelog.
+- Pushing an annotated tag publishes the release: `git tag -a v0.15.2-capsolver.N
+  -m '<notes section>' && git push origin v0.15.2-capsolver.N`.
+  `.github/workflows/fork-release.yml` builds all four, stamps `pinchtab
+  --version` and `/health` with the tag, and publishes. This is how Claude
+  sessions release: they can push a tag but not create a release.
+  `scripts/fork-release.sh <N> notes.md` does the same from Louie's host, in
+  Docker. Builds before capsolver.32 report `dev`.
+- Notes: a `**Since capsolver.N-1**: …` section prepended to the previous
+  release's body, so the latest release reads as the whole changelog. The
+  workflow does the prepending; the tag message is the section alone.
 - Upstream's tag-driven pipeline (RELEASE.md) is not how fork builds ship.
 
 ## Tests

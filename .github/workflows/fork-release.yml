@@ -1,0 +1,56 @@
+name: Fork / Release
+
+# Pushing an annotated tag v<upstream>-capsolver.<N> on capsolver-rebase
+# publishes the fork release the web-browser skill installs from
+# releases/latest. The tag's message is the new "**Since capsolver.<N-1>**"
+# section, prepended to the previous release's notes. See FORK.md.
+on:
+  push:
+    tags:
+      - 'v*-capsolver.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Check the tag
+        run: |
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/capsolver-rebase \
+            || { echo "::error::$TAG is not on capsolver-rebase"; exit 1; }
+          git tag -l --format='%(contents)' "$TAG" > section.md
+          grep -q '[^[:space:]]' section.md \
+            || { echo "::error::$TAG has no message; tag with: git tag -a $TAG -m '<notes section>'"; exit 1; }
+        env:
+          TAG: ${{ github.ref_name }}
+
+      - name: Build
+        run: |
+          for asset in pinchtab-linux-amd64 pinchtab-linux-arm64 pinchtab-darwin-arm64 pinchtab-windows-amd64.exe; do
+            platform=${asset#pinchtab-}; platform=${platform%.exe}
+            CGO_ENABLED=0 GOOS=${platform%-*} GOARCH=${platform#*-} \
+              go build -ldflags "-s -w -X main.version=$TAG" -o "$asset" ./cmd/pinchtab
+          done
+        env:
+          TAG: ${{ github.ref_name }}
+
+      - name: Publish
+        run: |
+          { printf '%s\n\n---\n\n' "$(cat section.md)"; gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .body; } > notes.md
+          gh release create "$TAG" --verify-tag --latest \
+            --title "${TAG%-capsolver.*} + CapSolver (fork build)" --notes-file notes.md \
+            pinchtab-linux-amd64 pinchtab-linux-arm64 pinchtab-darwin-arm64 pinchtab-windows-amd64.exe
+        env:
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
