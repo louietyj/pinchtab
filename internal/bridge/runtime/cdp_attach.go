@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/chromedp/chromedp"
@@ -10,8 +11,9 @@ import (
 )
 
 // normalizeAttachURL applies the attach allowlist (loopback always allowed;
-// non-loopback hosts must be in security.attach.allowHosts) and host-pins the
-// URL to the resolved IP so the dial can't be re-routed by a second DNS answer.
+// non-loopback hosts must be in security.attach.allowHosts) and host-pins a
+// plaintext URL to the resolved IP so the dial can't be re-routed by a second
+// DNS answer; a wss:// URL keeps its hostname, which TLS authenticates.
 func normalizeAttachURL(rawURL string, cfg *config.RuntimeConfig) (string, error) {
 	return NormalizeCDPURLWithAllowlist(rawURL, cfg.AttachAllowHosts, cfg.AttachAllowSchemes)
 }
@@ -25,9 +27,18 @@ func newRemoteCDPContexts(ctx context.Context, normalizedURL string) (
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	allocCtx, allocCancel = chromedp.NewRemoteAllocator(ctx, normalizedURL)
+	allocCtx, allocCancel = chromedp.NewRemoteAllocator(ctx, normalizedURL, remoteAllocatorOptions(normalizedURL)...)
 	browserCtx, browserCancel = chromedp.NewContext(allocCtx)
 	return
+}
+
+// remoteAllocatorOptions stops chromedp swapping a wss:// host for its IP: a
+// local Chrome needs that, but a hosted browser's certificate names the host.
+func remoteAllocatorOptions(wsURL string) []chromedp.RemoteAllocatorOption {
+	if strings.HasPrefix(strings.ToLower(wsURL), "wss://") {
+		return []chromedp.RemoteAllocatorOption{chromedp.NoModifyURL}
+	}
+	return nil
 }
 
 // Chrome holds each DevTools connection until its "Allow remote debugging?"

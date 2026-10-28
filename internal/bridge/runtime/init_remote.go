@@ -35,7 +35,8 @@ func InitRemoteCDP(ctx context.Context, cfg *config.RuntimeConfig, cdpURL string
 		ctx = context.Background()
 	}
 
-	allocCtx, allocCancel := chromedp.NewRemoteAllocator(ctx, normalized)
+	installProxyAwareWSDial()
+	allocCtx, allocCancel := chromedp.NewRemoteAllocator(ctx, normalized, remoteAllocatorOptions(normalized)...)
 	probeCtx, probeCancel := context.WithTimeout(ctx, 10*time.Second)
 	// Probe the ORIGINAL URL, not the normalized one: normalization pins the
 	// host by rewriting it to the resolved IP, and re-validating that bare IP

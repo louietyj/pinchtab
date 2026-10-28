@@ -31,7 +31,11 @@ func RunBridgeServer(cfg *config.RuntimeConfig, version string) {
 		ProfileDir:   cfg.ProfileDir,
 	})
 
-	providerhooks.CleanupProfile(config.NormalizeBrowser(cfg.DefaultBrowser), cfg.ProfileDir)
+	// An attached bridge launches no Chrome of its own, so whatever runs on its
+	// profile dir is someone else's browser, often a local server's.
+	if cfg.RemoteCDPURL == "" {
+		providerhooks.CleanupProfile(config.NormalizeBrowser(cfg.DefaultBrowser), cfg.ProfileDir)
+	}
 
 	bridgeInstance := bridge.New(context.Background(), nil, cfg)
 	actStore, err := activity.NewRecorder(activity.Config{

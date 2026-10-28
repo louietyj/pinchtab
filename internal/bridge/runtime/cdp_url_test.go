@@ -72,6 +72,53 @@ func TestNormalizeCDPURL_AllowsExplicitlyAllowlistedRemoteHost(t *testing.T) {
 	}
 }
 
+func TestNormalizeCDPURL_WSSKeepsHostnameForTLS(t *testing.T) {
+	stubCDPResolver(t, func(context.Context, string, string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("203.0.113.20")}, nil
+	})
+	got, err := NormalizeCDPURLWithAllowlist("wss://b1.cdp.example.com/devtools/browser/abc", []string{"*.cdp.example.com"}, []string{"wss"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "wss://b1.cdp.example.com:443/devtools/browser/abc" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestCDPHostAllowed_Wildcard(t *testing.T) {
+	allow := []string{"*.cdp.example.com"}
+	for host, want := range map[string]bool{
+		"b1.cdp.example.com":   true,
+		"a.b.cdp.example.com":  true,
+		"cdp.example.com":      false,
+		"evilcdp.example.com":  false,
+		"b1.cdp.example.com.x": false,
+	} {
+		if got := cdpHostAllowed(host, allow); got != want {
+			t.Errorf("cdpHostAllowed(%q) = %v, want %v", host, got, want)
+		}
+	}
+}
+
+func TestNormalizeResolvedDevToolsURL_WSSKeepsRequestedHostname(t *testing.T) {
+	requested, err := url.Parse("https://b1.cdp.example.com")
+	if err != nil {
+		t.Fatalf("parse requested URL: %v", err)
+	}
+	got, err := normalizeResolvedDevToolsURL(
+		"wss://b1.cdp.example.com/devtools/browser/abc",
+		requested,
+		netip.MustParseAddr("203.0.113.20"),
+		[]string{"*.cdp.example.com"},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "wss://b1.cdp.example.com:443/devtools/browser/abc" {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestNormalizeCDPURL_RejectsDisallowedAttachScheme(t *testing.T) {
 	_, err := NormalizeCDPURLWithAllowlist("http://127.0.0.1:9222", []string{"127.0.0.1"}, []string{"ws"})
 	if err == nil {

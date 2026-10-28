@@ -83,6 +83,12 @@ func NormalizeCDPURLWithAllowlist(raw string, allowedHosts, allowedSchemes []str
 		if err != nil {
 			return "", err
 		}
+		if scheme == "wss" {
+			// TLS already proves which host answered, and its certificate names
+			// the host, not the IP: pinning would fail every hosted browser.
+			parsed.Host = net.JoinHostPort(parsed.Hostname(), portForScheme(scheme, parsed.Port()))
+			return parsed.String(), nil
+		}
 		parsed.Host = urlHostForAddr(pinned, parsed.Port())
 		return parsed.String(), nil
 	case "http", "https":
@@ -175,7 +181,11 @@ func fetchCDPVersion(ctx context.Context, target string, pinned netip.Addr, port
 	if err != nil {
 		return CDPVersionProbe{}, err
 	}
-	resp, err := pinnedCDPHTTPClient(pinned, port).Do(req)
+	client := pinnedCDPHTTPClient(pinned, port)
+	if req.URL.Scheme == "https" {
+		client = tlsCDPHTTPClient()
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return CDPVersionProbe{}, fmt.Errorf("fetch %s: %w", target, err)
 	}
@@ -220,6 +230,10 @@ func normalizeResolvedDevToolsURL(raw string, requested *url.URL, requestedPinne
 	}
 	if wsURL.Host == "" {
 		return "", fmt.Errorf("webSocketDebuggerUrl must include a host")
+	}
+	if strings.EqualFold(wsURL.Scheme, "wss") && requested != nil && strings.EqualFold(wsURL.Hostname(), requested.Hostname()) {
+		wsURL.Host = net.JoinHostPort(wsURL.Hostname(), portForScheme("wss", wsURL.Port()))
+		return wsURL.String(), nil
 	}
 	if requested != nil && requested.Host != "" && shouldUseRequestedDevToolsHost(wsURL.Hostname()) {
 		wsURL.Host = urlHostForAddr(requestedPinned, requested.Port())
@@ -331,6 +345,10 @@ func cdpHostAllowed(host string, allowedHosts []string) bool {
 		if allowed == "*" || allowed == host {
 			return true
 		}
+		// "*.example.com" for providers that put a browser id in the hostname.
+		if strings.HasPrefix(allowed, "*.") && strings.HasSuffix(host, allowed[1:]) {
+			return true
+		}
 	}
 	return false
 }
@@ -375,6 +393,19 @@ func pinnedCDPHTTPClient(addr netip.Addr, port string) *http.Client {
 				return dialer.DialContext(ctx, network, net.JoinHostPort(addr.String(), port))
 			},
 			TLSHandshakeTimeout: 3 * time.Second,
+		},
+	}
+}
+
+// tlsCDPHTTPClient is for HTTPS DevTools endpoints: the certificate check
+// stands in for IP pinning, and the dial honours HTTPS_PROXY.
+func tlsCDPHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout:       10 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Transport: &http.Transport{
+			Proxy:               http.ProxyFromEnvironment,
+			TLSHandshakeTimeout: 10 * time.Second,
 		},
 	}
 }
