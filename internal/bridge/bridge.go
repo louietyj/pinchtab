@@ -21,7 +21,9 @@ type Bridge struct {
 	BrowserCancel context.CancelFunc
 	Config        *config.RuntimeConfig
 	URLReader     URLReader
-	IdMgr         *ids.Manager
+	// DocumentReader reads the tab's DocumentKey; nil uses DocumentKey.
+	DocumentReader func(ctx context.Context) string
+	IdMgr          *ids.Manager
 	*TabManager
 	StealthBundle *stealth.Bundle
 	Actions       map[string]ActionFunc

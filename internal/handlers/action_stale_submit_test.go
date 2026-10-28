@@ -213,8 +213,9 @@ func TestAStaleRefWhoseRecoveredClickNavigatesSucceedsAndDisclosesTheSubstitutio
 	if landed, _ := result[bridge.ResultLandedURL].(string); !strings.Contains(landed, "/terms") {
 		t.Errorf("landed url = %v, want the link's own target", result[bridge.ResultLandedURL])
 	}
-	if result[bridge.ResultRefsStale] != true {
-		t.Errorf("result does not say the caller's refs are dead: %v", result)
+	// The fixture's link moves with pushState, which keeps the document and its refs.
+	if result[bridge.ResultRefsStale] != false {
+		t.Errorf("a pushState navigation reports the caller's refs dead: %v", result)
 	}
 	if rr == nil {
 		t.Fatal("no recovery record published for a dispatched click, so nothing says which element was clicked")

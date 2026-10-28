@@ -144,7 +144,7 @@ pinchtab_click(selector="e5")
 ```
 
 - Use refs from snapshot (e.g., `e5`).
-- A click that navigates **succeeds** (no error to handle): the result adds `navigated`, `url` (landed), `previousUrl`, `refsStale` — never guess whether your refs survived. A `#fragment` jump is not a navigation; refs survive.
+- A click that navigates **succeeds** (no error to handle): the result adds `navigated`, `url` (landed), `previousUrl`, `refsStale` — never guess whether your refs survived. A `pushState` or `#fragment` change keeps the document; refs survive.
 - `waitNav=true` is not permission to navigate — it *waits* for the navigation to settle, for when the next step needs the new page loaded. Fields above are reported whichever form you use.
 - To save a round-trip: add `snap=true` to get a snapshot after the click.
 
