@@ -98,6 +98,7 @@ func configureBrowserFlags() {
 	addPointerActionFlags(mouseWheelCmd, bridge.ActionMouseWheel)
 
 	typeCmd.Flags().Bool("humanize", false, "Use humanized per-character keypress timing (overrides instance config)")
+	addPostActionFlags(typeCmd, "typing", true)
 	addPostActionFlags(pressCmd, "key press", true)
 	mouseWheelCmd.Flags().Int("dx", 0, "Wheel delta X")
 	mouseWheelCmd.Flags().Int("dy", 0, "Wheel delta Y")

@@ -201,6 +201,11 @@ func TestPostActionFlagsBundle(t *testing.T) {
 	wantUsage(clickCmd, "text", "Output page text after action (for verification)")
 	wantUsage(clickCmd, "submit", "Dispatch one DOM click and report bounded post-submit state")
 
+	// type was the one keystroke command without these, while fill and press had
+	// them; typing into an autocomplete is exactly when the diff is the answer.
+	wantUsage(typeCmd, "snap-diff", "Output snapshot diff after typing (changes only)")
+	wantUsage(typeCmd, "text", "Output page text after typing (for verification)")
+
 	wantUsage(reloadCmd, "snap", "Output interactive snapshot after reload")
 	wantUsage(reloadCmd, "snap-diff", "Output snapshot diff after reload (changes only)")
 	wantUsage(reloadCmd, "text", "Output page text after reload (for verification)")
