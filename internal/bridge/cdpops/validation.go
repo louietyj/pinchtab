@@ -61,8 +61,23 @@ func PointerPointForNode(ctx context.Context, backendNodeID int64, requireTopMos
 	const probeJS = `function() {
 		const view = (this.ownerDocument && this.ownerDocument.defaultView) || window;
 		const doc = this.ownerDocument || document;
-		const r = this.getBoundingClientRect();
-		const style = view.getComputedStyle(this);
+		const related = (el, hit) => !!hit && (hit === el || el.contains(hit) || hit.contains(el));
+		const hitAtCentre = (el) => {
+			const b = el.getBoundingClientRect();
+			return b.width > 0 && b.height > 0 && related(el, doc.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2));
+		};
+		// A custom-styled radio or checkbox keeps its native input at opacity 0,
+		// either on top of the ring it paints (Material: Google Flights' "Nonstop
+		// only" was refused as hidden at 48x48) or out of the way behind its
+		// label. Clicking where the input is hit-testable, or else its visible
+		// label, is what a user's click does: it toggles the input.
+		let target = this;
+		const toggleType = this.tagName === 'INPUT' ? String(this.type || '').toLowerCase() : '';
+		if ((toggleType === 'radio' || toggleType === 'checkbox') && Number(view.getComputedStyle(this).opacity) === 0 && !hitAtCentre(this)) {
+			target = Array.from(this.labels || []).find((label) => hitAtCentre(label)) || this;
+		}
+		const r = target.getBoundingClientRect();
+		const style = view.getComputedStyle(target);
 		const localX = r.left + (r.width / 2);
 		const localY = r.top + (r.height / 2);
 		let x = localX;
@@ -107,8 +122,11 @@ func PointerPointForNode(ctx context.Context, backendNodeID int64, requireTopMos
 			const root = n.getRootNode && n.getRootNode();
 			return root && root.host ? root.host : null;
 		};
+		// The toggle itself is exempt: its opacity 0 is the styling above, and
+		// it was only kept as the target because it is hit-testable at its centre.
+		const nativeToggle = target === this && toggleType !== '';
 		const transparentAncestor = () => {
-			for (let n = this; n && n.nodeType === 1; n = parentAcrossShadow(n)) {
+			for (let n = nativeToggle ? parentAcrossShadow(target) : target; n && n.nodeType === 1; n = parentAcrossShadow(n)) {
 				const s = view.getComputedStyle(n);
 				if (s && !(Number(s.opacity === '' || s.opacity == null ? '1' : s.opacity) > 0)) {
 					return true;
@@ -116,7 +134,8 @@ func PointerPointForNode(ctx context.Context, backendNodeID int64, requireTopMos
 			}
 			return false;
 		};
-		const visible = !!style && style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || '1') > 0;
+		const visible = !!style && style.display !== 'none' && style.visibility !== 'hidden' &&
+			(Number(style.opacity || '1') > 0 || (nativeToggle && hitAtCentre(target)));
 		const pointerEvent = style ? String(style.pointerEvents || '') : '';
 		let occluded = false;
 		let topTag = '';
@@ -124,8 +143,27 @@ func PointerPointForNode(ctx context.Context, backendNodeID int64, requireTopMos
 			const top = doc.elementFromPoint(localX, localY);
 			if (top) {
 				topTag = String(top.tagName || '').toLowerCase();
-				const related = top === this || this.contains(top) || top.contains(this);
-				occluded = !related;
+				occluded = !related(target, top);
+			}
+		}
+		// A covered centre is not a covered element. Airbnb's listing link spans
+		// the whole card under the photo carousel, so its centre hits an <img> and
+		// the ref click was refused while a click lower on the card works. Look for
+		// a point inside the element that the element itself answers, centre-out.
+		if (occluded) {
+			const fractions = [0.5, 0.25, 0.75, 0.1, 0.9];
+			search: for (const fy of fractions) {
+				for (const fx of fractions) {
+					const px = r.left + r.width * fx;
+					const py = r.top + r.height * fy;
+					if (px < 0 || py < 0 || px > view.innerWidth || py > view.innerHeight) continue;
+					if (related(target, doc.elementFromPoint(px, py))) {
+						x += px - localX;
+						y += py - localY;
+						occluded = false;
+						break search;
+					}
+				}
 			}
 		}
 		return {
@@ -184,7 +222,11 @@ func PointerPointForNode(ctx context.Context, backendNodeID int64, requireTopMos
 		return 0, 0, fmt.Errorf("%w: pointer-events=none", ErrElementBlocked)
 	}
 	if requireTopMost && probe.Occluded {
-		return 0, 0, fmt.Errorf("%w: top=%s", ErrElementOccluded, probe.TopTag)
+		// No point of the element answers for it. Name what does, and where, so
+		// the caller can check the screenshot and click it by coordinate if that
+		// is what it means: the alternative is a debugging session in text.
+		return 0, 0, fmt.Errorf("%w: top=%s covers it everywhere; to click the %s at its centre, `click --x %.0f --y %.0f`",
+			ErrElementOccluded, probe.TopTag, probe.TopTag, probe.X, probe.Y)
 	}
 
 	return probe.X, probe.Y, nil
