@@ -2,6 +2,7 @@ package cdpops
 
 import (
 	"context"
+	"strings"
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
@@ -26,8 +27,37 @@ func SetResourceBlocking(ctx context.Context, patterns []string) error {
 			if pattern == "" {
 				continue
 			}
-			blockPatterns = append(blockPatterns, &network.BlockPattern{URLPattern: pattern, Block: true})
+			for _, p := range absoluteURLPatterns(pattern) {
+				blockPatterns = append(blockPatterns, &network.BlockPattern{URLPattern: p, Block: true})
+			}
 		}
 		return network.SetBlockedURLs().WithURLPatterns(blockPatterns).Do(ctx)
 	}))
+}
+
+// absoluteURLPatterns turns the globs above into the absolute URLPattern
+// strings urlPatterns requires; Chrome ignores a relative one like "*.jpg".
+//
+//	"*.jpg"              -> "*://*:*/*.jpg"
+//	"*doubleclick.net/*" -> "*://*doubleclick.net:*/*"
+//	"*/collect?*"        -> "/collect?…" at the root or under any directory
+//	"*analytics.gif*"    -> "*://*:*/*analytics.gif*"
+func absoluteURLPatterns(glob string) []string {
+	switch {
+	case strings.Contains(glob, "://"):
+		return []string{glob}
+	case strings.HasPrefix(glob, "*."):
+		return []string{"*://*:*/" + glob}
+	case strings.HasPrefix(glob, "*/"):
+		rest := glob[2:]
+		return []string{"*://*:*/" + rest, "*://*:*/*/" + rest}
+	}
+	host, path, found := strings.Cut(glob, "/")
+	if !found || !strings.Contains(host, ".") || strings.ContainsAny(host, "?") {
+		return []string{"*://*:*/" + glob}
+	}
+	if path == "" {
+		path = "*"
+	}
+	return []string{"*://" + host + ":*/" + path}
 }
