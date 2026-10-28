@@ -213,6 +213,7 @@ func printActionResult(kind string, result map[string]any) {
 		output.Error(kind, errMsg, output.ExitNotFound)
 		return
 	}
+	printRecoveryHint(result)
 	if actionResult, ok := result["result"].(map[string]any); ok {
 		// A submit reports its own bounded post-state, which says more than "it
 		// moved" — so it is the headline, and the navigation rides underneath it
@@ -248,6 +249,21 @@ func printActionResult(kind string, result map[string]any) {
 	}
 
 	output.Success()
+}
+
+// printRecoveryHint says when the action went to a different ref than the caller
+// named. A ref whose node a re-render replaced is healed onto its closest match
+// in the current snapshot, and the CLI used to print a bare OK for that: the one
+// time the caller's ref was stale, nothing said so.
+func printRecoveryHint(result map[string]any) {
+	recovery, _ := result["recovery"].(map[string]any)
+	if recovery["recovered"] != true {
+		return
+	}
+	original, _ := recovery["original_ref"].(string)
+	matched, _ := recovery["new_ref"].(string)
+	confidence, _ := recovery["confidence"].(string)
+	output.Hint(fmt.Sprintf("%s had gone stale; acted on %s, its closest match now (%s confidence) — check the screenshot", original, matched, confidence))
 }
 
 // printNavigationOutcome reports the landing for an action whose headline is
