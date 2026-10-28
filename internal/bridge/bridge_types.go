@@ -49,6 +49,9 @@ type RefCache struct {
 	Nodes    []A11yNode
 	DomEpoch string
 	Book     *RefBook
+	// Document is the DocumentKey of the document the refs were read from, or
+	// empty when it could not be read.
+	Document string
 }
 
 // RefBook gives each backend DOM node a stable ref within a DOM epoch: a node
@@ -60,13 +63,19 @@ type RefCache struct {
 // every read and is never resolvable, so its instability is harmless; a snapshot
 // made entirely of such nodes is a statically fetched page whose refs are kept
 // stable per element by the static browser itself and are preserved untouched.
+//
+// The book also keeps where each ref it handed out points, so a ref from an
+// earlier read of the same document still resolves after a narrower one: the
+// page's refs while a dialog-scoped read is the latest, or the dialog's after it
+// closes. A ref whose node has since left the DOM fails at resolution as stale.
 type RefBook struct {
-	byNode map[int64]string
-	next   int
+	byNode  map[int64]string
+	targets map[string]RefTarget
+	next    int
 }
 
 func NewRefBook() *RefBook {
-	return &RefBook{byNode: make(map[int64]string)}
+	return &RefBook{byNode: make(map[int64]string), targets: make(map[string]RefTarget)}
 }
 
 func (b *RefBook) assign(backendNodeID int64) string {
@@ -99,6 +108,7 @@ func (b *RefBook) Rebind(nodes []A11yNode) map[string]int64 {
 		nodes[i].Ref = ref
 		if nodes[i].NodeID != 0 {
 			refs[ref] = nodes[i].NodeID
+			b.targets[ref] = refTargetOf(nodes[i])
 		}
 	}
 	return refs
@@ -139,6 +149,9 @@ func (c *RefCache) bookFromCache() *RefBook {
 		for id, ref := range c.Book.byNode {
 			book.byNode[id] = ref
 		}
+		for ref, target := range c.Book.targets {
+			book.targets[ref] = target
+		}
 		book.next = c.Book.next
 		return book
 	}
@@ -166,20 +179,35 @@ func refNumber(ref string) (int, bool) {
 }
 
 // EpochRefs rebinds nodes against the tab's DOM-epoch ref book and returns the
-// RefCache to publish. When the nodes share a backend node with the prior epoch
-// it carries that epoch's book and vocab token, so a node keeps its ref across
-// filter, depth, selector and republish reads and the superseded-vocabulary
-// guard does not fire. When they share none — a fresh document — it starts a new
-// epoch: a book numbering from e0 and a fresh vocab token.
-func EpochRefs(prev *RefCache, nodes []A11yNode) *RefCache {
+// RefCache to publish. Within one document it carries that epoch's book and vocab
+// token, so a node keeps its ref across filter, depth, selector, dialog-scoped
+// and republish reads and the superseded-vocabulary guard does not fire. A new
+// document starts a new epoch: a book numbering from e0 and a fresh vocab token.
+//
+// document is the read's DocumentKey. When both reads have one, it alone decides
+// whether the document changed. Sharing no backend node is not enough: a read
+// scoped to an open dropdown or dialog shares none with the page read before it,
+// and treating that as a new document renumbered the whole page each time a
+// popup opened or closed (measured on Google Flights: every listbox, the date
+// picker and each filter dialog). Without a key on both sides — a static page,
+// the ghost-chrome escalation seam — sharing no node is still the signal.
+func EpochRefs(prev *RefCache, nodes []A11yNode, document string) *RefCache {
 	book := prev.bookFromCache()
-	vocab := ""
+	vocab, prevDocument := "", ""
 	if prev != nil {
-		vocab = prev.DomEpoch
+		vocab, prevDocument = prev.DomEpoch, prev.Document
 	}
-	if !book.sharesNode(nodes) {
+	var newDocument bool
+	if document != "" && prevDocument != "" {
+		newDocument = document != prevDocument
+	} else {
+		newDocument = !book.sharesNode(nodes)
+	}
+	if newDocument {
 		book = NewRefBook()
 		vocab = ""
+	} else if document == "" {
+		document = prevDocument
 	}
 	if vocab == "" {
 		vocab = MintVocabToken()
@@ -191,6 +219,7 @@ func EpochRefs(prev *RefCache, nodes []A11yNode) *RefCache {
 		Nodes:    nodes,
 		DomEpoch: vocab,
 		Book:     book,
+		Document: document,
 	}
 }
 
@@ -220,6 +249,11 @@ func (c *RefCache) Lookup(ref string) (RefTarget, bool) {
 			return RefTarget{BackendNodeID: nid}, true
 		}
 	}
+	if c.Book != nil {
+		if target, ok := c.Book.targets[ref]; ok {
+			return target, true
+		}
+	}
 	return RefTarget{}, false
 }
 
@@ -233,17 +267,21 @@ func RefTargetsFromNodes(nodes []A11yNode) map[string]RefTarget {
 		if node.Ref == "" || node.NodeID == 0 {
 			continue
 		}
-		targets[node.Ref] = RefTarget{
-			BackendNodeID:  node.NodeID,
-			FrameID:        node.FrameID,
-			FrameURL:       node.FrameURL,
-			FrameName:      node.FrameName,
-			ChildFrameID:   node.ChildFrameID,
-			ChildFrameURL:  node.ChildFrameURL,
-			ChildFrameName: node.ChildFrameName,
-		}
+		targets[node.Ref] = refTargetOf(node)
 	}
 	return targets
+}
+
+func refTargetOf(node A11yNode) RefTarget {
+	return RefTarget{
+		BackendNodeID:  node.NodeID,
+		FrameID:        node.FrameID,
+		FrameURL:       node.FrameURL,
+		FrameName:      node.FrameName,
+		ChildFrameID:   node.ChildFrameID,
+		ChildFrameURL:  node.ChildFrameURL,
+		ChildFrameName: node.ChildFrameName,
+	}
 }
 
 type FrameScope struct {

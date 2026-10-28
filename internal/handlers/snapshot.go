@@ -326,7 +326,7 @@ func (h *Handlers) HandleSnapshot(w http.ResponseWriter, r *http.Request) {
 		prevNodes = prev.Nodes
 	}
 
-	cache := bridge.EpochRefs(prev, flat)
+	cache := bridge.EpochRefs(prev, flat, bridge.DocumentKey(tCtx))
 	h.Bridge.SetRefCache(resolvedTabID, cache)
 	publishVocab(w, resolvedTabID, cache.DomEpoch)
 

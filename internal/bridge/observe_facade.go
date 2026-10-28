@@ -49,6 +49,25 @@ func FetchFrameTree(ctx context.Context) (RawFrameTree, error) {
 	return bridgeobserve.FetchFrameTree(ctx)
 }
 
+// DocumentKey names the document a tab is showing: its main frame and that
+// frame's loader. A cross-document navigation or a reload replaces the loader; a
+// pushState, a re-render or an opened dialog does not. Empty when the frame tree
+// cannot be read.
+func DocumentKey(ctx context.Context) string {
+	tree, err := FetchFrameTree(ctx)
+	if err != nil {
+		return ""
+	}
+	return DocumentKeyOf(tree.Frame.ID, tree.Frame.LoaderID)
+}
+
+func DocumentKeyOf(frameID, loaderID string) string {
+	if loaderID == "" {
+		return ""
+	}
+	return frameID + "/" + loaderID
+}
+
 type FrameContext = bridgeobserve.FrameContext
 
 func FetchFrameContext(ctx context.Context) (FrameContext, error) {

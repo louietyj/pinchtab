@@ -100,7 +100,7 @@ func (h *Handlers) acquireExtractNodes(w http.ResponseWriter, ctx context.Contex
 	if len(result.Nodes) == 0 {
 		return nil, "", &statusError{500, fmt.Errorf("no elements found in snapshot for tab %s — navigate first", tabID)}
 	}
-	cache := bridge.EpochRefs(h.Bridge.GetRefCache(tabID), result.Nodes)
+	cache := bridge.EpochRefs(h.Bridge.GetRefCache(tabID), result.Nodes, bridge.DocumentKey(ctx))
 	h.Bridge.SetRefCache(tabID, cache)
 	publishVocab(w, tabID, cache.DomEpoch)
 	return result.Nodes, cache.DomEpoch, nil

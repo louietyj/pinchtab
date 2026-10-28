@@ -18,7 +18,7 @@ func refOf(nodes []A11yNode, nodeID int64) string {
 // guard stays silent for the reader that changed only its filter.
 func TestARefSurvivesAChangeOfFilterAndTheFilteredViewIsSparse(t *testing.T) {
 	full := []A11yNode{{NodeID: 10}, {NodeID: 20}, {NodeID: 30}, {NodeID: 40}}
-	c1 := EpochRefs(nil, full)
+	c1 := EpochRefs(nil, full, "")
 
 	want := map[int64]string{10: "e0", 20: "e1", 30: "e2", 40: "e3"}
 	for id, ref := range want {
@@ -30,7 +30,7 @@ func TestARefSurvivesAChangeOfFilterAndTheFilteredViewIsSparse(t *testing.T) {
 	// A filtered / scoped re-read that keeps only two of the four nodes, in a
 	// different slice, must return their ORIGINAL refs.
 	filtered := []A11yNode{{NodeID: 40}, {NodeID: 20}}
-	c2 := EpochRefs(c1, filtered)
+	c2 := EpochRefs(c1, filtered, "")
 	if got := refOf(filtered, 20); got != "e1" {
 		t.Errorf("node 20 ref after filter = %q, want e1 — a ref must denote the node, not its row", got)
 	}
@@ -50,15 +50,68 @@ func TestARefSurvivesAChangeOfFilterAndTheFilteredViewIsSparse(t *testing.T) {
 // minted, so an action carrying a stale ref+token is refused loudly rather than
 // resolved against the wrong node.
 func TestANewDocumentStartsAFreshEpochAndSupersedesTheToken(t *testing.T) {
-	c1 := EpochRefs(nil, []A11yNode{{NodeID: 10}, {NodeID: 20}})
+	c1 := EpochRefs(nil, []A11yNode{{NodeID: 10}, {NodeID: 20}}, "")
 	newDoc := []A11yNode{{NodeID: 99}, {NodeID: 88}}
-	c2 := EpochRefs(c1, newDoc)
+	c2 := EpochRefs(c1, newDoc, "")
 
 	if c2.DomEpoch == c1.DomEpoch {
 		t.Error("a new document kept the prior vocabulary token; the superseded guard could not fire")
 	}
 	if got := refOf(newDoc, 99); got != "e0" {
 		t.Errorf("new epoch first node ref = %q, want e0", got)
+	}
+}
+
+// A read scoped to an open dropdown shares no node with the page read before it,
+// and neither does the page read after it closes. With a document key on both
+// sides, that is still one document: the popup's nodes get new numbers and the
+// page's nodes keep theirs, under one vocabulary token.
+func TestADialogScopedReadOfTheSameDocumentKeepsTheEpoch(t *testing.T) {
+	page := []A11yNode{{NodeID: 10}, {NodeID: 20}, {NodeID: 30}}
+	c1 := EpochRefs(nil, page, "F/L1")
+
+	popup := []A11yNode{{NodeID: 500}, {NodeID: 501}}
+	c2 := EpochRefs(c1, popup, "F/L1")
+	if c2.DomEpoch != c1.DomEpoch {
+		t.Error("opening a dropdown minted a new vocabulary token")
+	}
+	if got := refOf(popup, 500); got != "e3" {
+		t.Errorf("popup's first node ref = %q, want e3: refs restarted at e0 and now name two elements", got)
+	}
+	if target, ok := c2.Lookup("e2"); !ok || target.BackendNodeID != 30 {
+		t.Errorf("page ref e2 does not resolve while the dropdown read is the latest: %+v, %v", target, ok)
+	}
+
+	closed := []A11yNode{{NodeID: 10}, {NodeID: 30}}
+	c3 := EpochRefs(c2, closed, "F/L1")
+	if got := refOf(closed, 30); got != "e2" {
+		t.Errorf("page node ref after the dropdown closed = %q, want e2", got)
+	}
+	if c3.Refs["e2"] != 30 || c3.DomEpoch != c1.DomEpoch {
+		t.Errorf("page ref e2 no longer resolves to its node under the page's token: %v", c3.Refs)
+	}
+}
+
+// A different loader is a new document even if a backend node id recurs.
+func TestADifferentDocumentKeyStartsAFreshEpoch(t *testing.T) {
+	c1 := EpochRefs(nil, []A11yNode{{NodeID: 10}, {NodeID: 20}}, "F/L1")
+	reloaded := []A11yNode{{NodeID: 20}, {NodeID: 40}}
+	c2 := EpochRefs(c1, reloaded, "F/L2")
+	if c2.DomEpoch == c1.DomEpoch {
+		t.Error("a reload kept the prior vocabulary token")
+	}
+	if got := refOf(reloaded, 20); got != "e0" {
+		t.Errorf("first node after reload = %q, want e0", got)
+	}
+}
+
+// A read that could not get a key keeps the epoch's key, so the next keyed read
+// is still compared against the document the refs came from.
+func TestAnUnkeyedReadKeepsTheEpochsDocument(t *testing.T) {
+	c1 := EpochRefs(nil, []A11yNode{{NodeID: 10}}, "F/L1")
+	c2 := EpochRefs(c1, []A11yNode{{NodeID: 10}}, "")
+	if c2.Document != "F/L1" {
+		t.Errorf("document = %q after an unkeyed read, want F/L1", c2.Document)
 	}
 }
 
@@ -71,7 +124,7 @@ func TestStaticRefsArePreservedNotRenumbered(t *testing.T) {
 	// A sparse, out-of-order static ref set, exactly as a filtered static re-read
 	// produces it.
 	static := []A11yNode{{Ref: "e5", NodeID: 0}, {Ref: "e2", NodeID: 0}}
-	c := EpochRefs(nil, static)
+	c := EpochRefs(nil, static, "")
 
 	if static[0].Ref != "e5" || static[1].Ref != "e2" {
 		t.Fatalf("static refs were renumbered to %q,%q; they must be preserved verbatim", static[0].Ref, static[1].Ref)
@@ -85,7 +138,7 @@ func TestStaticRefsArePreservedNotRenumbered(t *testing.T) {
 
 	// A second static read (different subset) still leaves the refs alone.
 	static2 := []A11yNode{{Ref: "e2", NodeID: 0}}
-	EpochRefs(c, static2)
+	EpochRefs(c, static2, "")
 	if static2[0].Ref != "e2" {
 		t.Errorf("static ref renumbered on a re-read to %q, want e2", static2[0].Ref)
 	}
@@ -99,7 +152,7 @@ func TestStaticRefsArePreservedNotRenumbered(t *testing.T) {
 func TestEscalationSeamPreservesTheStaticRefString(t *testing.T) {
 	escalation := &RefCache{Refs: map[string]int64{"e3": 100}}
 	chromeNodes := []A11yNode{{NodeID: 100}, {NodeID: 200}}
-	c := EpochRefs(escalation, chromeNodes)
+	c := EpochRefs(escalation, chromeNodes, "")
 
 	if got := refOf(chromeNodes, 100); got != "e3" {
 		t.Errorf("node 100 ref after escalation = %q, want e3 — the static ref must survive the transition to Chrome", got)
@@ -117,7 +170,7 @@ func TestEscalationSeamPreservesTheStaticRefString(t *testing.T) {
 // is harmless precisely because such a ref never enters the resolvable set.
 func TestAZeroIdNodeAmongResolvableNodesIsNeverResolvable(t *testing.T) {
 	mixed := []A11yNode{{NodeID: 10}, {NodeID: 0}, {NodeID: 20}}
-	c := EpochRefs(nil, mixed)
+	c := EpochRefs(nil, mixed, "")
 
 	zeroRef := mixed[1].Ref
 	if zeroRef == "" {

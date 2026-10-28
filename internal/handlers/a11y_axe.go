@@ -147,7 +147,7 @@ func (h *Handlers) snapshotBackendRefs(tCtx context.Context, tabID string) (map[
 		return nil, ""
 	}
 	flat, _ := bridge.BuildSnapshot(rawNodes, "", -1)
-	cache := bridge.EpochRefs(h.Bridge.GetRefCache(tabID), flat)
+	cache := bridge.EpochRefs(h.Bridge.GetRefCache(tabID), flat, bridge.DocumentKey(tCtx))
 	h.Bridge.SetRefCache(tabID, cache)
 
 	refs := make(map[int64]string, len(cache.Nodes))

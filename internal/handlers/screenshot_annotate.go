@@ -61,7 +61,7 @@ func (h *Handlers) collectScreenshotAnnotations(
 		flat, _ = bridge.BuildSnapshot(rawNodes, "", -1)
 	}
 
-	h.Bridge.SetRefCache(tabID, bridge.EpochRefs(h.Bridge.GetRefCache(tabID), flat))
+	h.Bridge.SetRefCache(tabID, bridge.EpochRefs(h.Bridge.GetRefCache(tabID), flat, bridge.DocumentKey(ctx)))
 
 	items = make([]cdptk.AnnotationItem, 0, len(flat))
 	for _, n := range flat {
