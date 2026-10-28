@@ -12,10 +12,10 @@ NOTES=${2:?usage: fork-release.sh <N> <notes-file>}
 TAG=v0.15.2-capsolver.$N
 cd "$(dirname "$0")/.."
 
-[ "$(git rev-parse --abbrev-ref HEAD)" = capsolver-rebase ] || { echo "not on capsolver-rebase" >&2; exit 1; }
+[ "$(git rev-parse --abbrev-ref HEAD)" = main ] || { echo "not on main" >&2; exit 1; }
 [ -z "$(git status --porcelain)" ] || { echo "working tree is dirty" >&2; exit 1; }
-git fetch -q origin capsolver-rebase
-[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/capsolver-rebase)" ] || { echo "HEAD is not pushed" >&2; exit 1; }
+git fetch -q origin main
+[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || { echo "HEAD is not pushed" >&2; exit 1; }
 
 ASSETS=(pinchtab-linux-amd64 pinchtab-linux-arm64 pinchtab-darwin-arm64 pinchtab-windows-amd64.exe)
 
@@ -27,7 +27,7 @@ build() { # <output>, named pinchtab-<goos>-<goarch>[.exe]
 }
 for asset in "${ASSETS[@]}"; do build "$asset"; done
 
-gh release create "$TAG" -R louietyj/pinchtab --target capsolver-rebase \
+gh release create "$TAG" -R louietyj/pinchtab --target main \
   --title "v0.15.2 + CapSolver (fork build)" --notes-file "$NOTES" --latest \
   "${ASSETS[@]}"
 rm -f "${ASSETS[@]}"

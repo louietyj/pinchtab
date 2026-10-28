@@ -9,27 +9,28 @@ README under "Captcha solving"; this file is how the fork is worked on.
 
 ## Branch and releases
 
-- Work goes straight onto `capsolver-rebase`; the fork's `main` is upstream's.
+- Work goes straight onto `main`. (`capsolver-rebase` was the working branch
+  through capsolver.37; `main` was fast-forwarded to it on 2026-10-28.)
 - Upstream comes in by `git merge upstream/main`, not a rebase, despite the
   branch name: a rebase replays each conflict once per fork commit that touches
   it. The first merge (capsolver.34) is tagged `pre-upstream-sync-2026-10` before it.
-- Releases are GitHub releases tagged `v0.15.2-capsolver.N`, installed from
-  `releases/latest` so a release needs no skill re-upload:
+- Every push to `main` publishes an edge release, `edge-<run>-<sha7>`, marked
+  latest (`.github/workflows/fork-release.yml`), after `go vet` and the builds
+  pass. The skill installs `releases/latest`, so a push reaches the next
+  sandbox with no skill re-upload; to roll back, mark an older release latest.
+  The newest 20 edge releases are kept. Each carries:
   - `pinchtab-linux-amd64`, which the skill's `setup.sh` runs in the sandbox;
   - `pinchtab-windows-amd64.exe`, the bridge the skill's Windows gatekeeper runs
     against Louie's Chrome (`pinchtab-windows`). The sandbox CLI and that bridge
     must be the same build, so they always ship together;
   - `pinchtab-linux-arm64` and `pinchtab-darwin-arm64`, for ARM hosts.
-- Pushing an annotated tag publishes the release: `git tag -a v0.15.2-capsolver.N
-  -m '<notes section>' && git push origin v0.15.2-capsolver.N`.
-  `.github/workflows/fork-release.yml` builds all four, stamps `pinchtab
-  --version` and `/health` with the tag, and publishes. This is how Claude
-  sessions release: they can push a tag but not create a release.
-  `scripts/fork-release.sh <N> notes.md` does the same from Louie's host, in
-  Docker. Builds before capsolver.32 report `dev`.
-- Notes: a `**Since capsolver.N-1**: …` section prepended to the previous
-  release's body, so the latest release reads as the whole changelog. The
-  workflow does the prepending; the tag message is the section alone.
+- All four are stamped with the tag, which `pinchtab --version` and `/health`
+  report. Notes are the commit subjects since the previous release, so write
+  commit messages for that reader.
+- Claude sessions can push to `main` but may neither create releases nor push
+  tags, so this is how they ship. `scripts/fork-release.sh <N> notes.md`, from
+  Louie's host in Docker, still cuts a numbered `v0.15.2-capsolver.N` release
+  (capsolver.37 was the last); builds before capsolver.32 report `dev`.
 - Upstream's tag-driven pipeline (RELEASE.md) is not how fork builds ship.
 
 ## Tests

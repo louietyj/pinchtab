@@ -1,16 +1,19 @@
-name: Fork / Release
+name: Fork / Edge release
 
-# Pushing an annotated tag v<upstream>-capsolver.<N> on capsolver-rebase
-# publishes the fork release the web-browser skill installs from
-# releases/latest. The tag's message is the new "**Since capsolver.<N-1>**"
-# section, prepended to the previous release's notes. See FORK.md.
+# Every push to main publishes an edge release, marked latest: the web-browser
+# skill installs releases/latest, so a push reaches the next sandbox. Each push
+# gets its own release, so a download never meets a half-uploaded one, and
+# rolling back is marking an older one latest. See FORK.md.
 on:
   push:
-    tags:
-      - 'v*-capsolver.*'
+    branches: [main]
 
 permissions:
   contents: write
+
+concurrency:
+  group: fork-release
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -24,16 +27,11 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Check the tag
-        run: |
-          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/capsolver-rebase \
-            || { echo "::error::$TAG is not on capsolver-rebase"; exit 1; }
-          git tag -l --format='%(contents)' "$TAG" > section.md
-          grep -q '[^[:space:]]' section.md \
-            || { echo "::error::$TAG has no message; tag with: git tag -a $TAG -m '<notes section>'"; exit 1; }
-        env:
-          TAG: ${{ github.ref_name }}
+      - name: Name it
+        run: echo "TAG=edge-$GITHUB_RUN_NUMBER-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Vet
+        run: go vet ./...
 
       - name: Build
         run: |
@@ -42,15 +40,20 @@ jobs:
             CGO_ENABLED=0 GOOS=${platform%-*} GOARCH=${platform#*-} \
               go build -ldflags "-s -w -X main.version=$TAG" -o "$asset" ./cmd/pinchtab
           done
-        env:
-          TAG: ${{ github.ref_name }}
 
       - name: Publish
         run: |
-          { printf '%s\n\n---\n\n' "$(cat section.md)"; gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .body; } > notes.md
-          gh release create "$TAG" --verify-tag --latest \
-            --title "${TAG%-capsolver.*} + CapSolver (fork build)" --notes-file notes.md \
+          prev=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          { echo "Since $prev:"; echo; git log --no-merges --format='- %s (%h)' "$prev..$GITHUB_SHA"; } > notes.md
+          gh release create "$TAG" --target "$GITHUB_SHA" --latest \
+            --title "$TAG" --notes-file notes.md \
             pinchtab-linux-amd64 pinchtab-linux-arm64 pinchtab-darwin-arm64 pinchtab-windows-amd64.exe
         env:
-          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Prune old edge releases
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.tag_name | startswith("edge-")) | .tag_name' \
+            | tail -n +21 | while read -r tag; do gh release delete "$tag" --cleanup-tag --yes; done
+        env:
           GH_TOKEN: ${{ github.token }}
