@@ -252,9 +252,8 @@ func printActionResult(kind string, result map[string]any) {
 }
 
 // printRecoveryHint says when the action went to a different ref than the caller
-// named. A ref whose node a re-render replaced is healed onto its closest match
-// in the current snapshot, and the CLI used to print a bare OK for that: the one
-// time the caller's ref was stale, nothing said so.
+// named: a ref whose node a re-render replaced is healed onto its closest match
+// in the current snapshot.
 func printRecoveryHint(result map[string]any) {
 	recovery, _ := result["recovery"].(map[string]any)
 	if recovery["recovered"] != true {
@@ -270,10 +269,9 @@ func printRecoveryHint(result map[string]any) {
 // something else. Every form that navigates says where it landed, including the
 // forms that declare the navigation.
 //
-// Neither form adds a hint that the caller's refs are dead. It used to, after
-// every URL change, and on a single-page app that was nearly every click and
-// false each time; agents called it noise. A ref that did die is refused when it
-// is used, and that error says to re-snapshot.
+// Neither form says the caller's refs are dead: on a single-page app nearly every
+// click changes the URL and keeps them. A ref that did die is refused when used,
+// and that error says to re-snapshot.
 func printNavigationOutcome(actionResult map[string]any) {
 	if actionResult["navigated"] != true {
 		return

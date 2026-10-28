@@ -22,10 +22,7 @@ var ErrSelectorAmbiguous = errors.New("selector is ambiguous")
 // already worked out which elements are controls (their role), what each is
 // called (its accessible name, from aria-label, a <label>, a placeholder or its
 // rendered text), and which text is rendered at all (script source, display:none
-// and aria-hidden content are not in the tree, or are marked hidden). Matching
-// DOM textContent instead meant re-deriving all three by hand, and each site
-// found another gap: prose outranking a link, display:none text, a tab missing
-// from a role list, a tooltip's text inside a tab, a page's JSON in a <script>.
+// and aria-hidden content are not in the tree, or are marked hidden).
 //
 // Candidates are the controls whose name matches; only when no control does,
 // the rendered text runs that match, each standing for the element holding it.
@@ -213,8 +210,6 @@ func nameMatchRank(name, want string) int {
 	return 0
 }
 
-// normalizeAccessibleName lowercases, collapses whitespace runs and trims, as the
-// DOM text matcher's normalize does.
 func normalizeAccessibleName(s string) string {
 	return strings.Join(strings.Fields(strings.ToLower(s)), " ")
 }

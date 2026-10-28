@@ -187,9 +187,8 @@ func refNumber(ref string) (int, bool) {
 // document is the read's DocumentKey. When both reads have one, it alone decides
 // whether the document changed. Sharing no backend node is not enough: a read
 // scoped to an open dropdown or dialog shares none with the page read before it,
-// and treating that as a new document renumbered the whole page each time a
-// popup opened or closed (measured on Google Flights: every listbox, the date
-// picker and each filter dialog). Without a key on both sides — a static page,
+// and treating that as a new document would renumber the whole page each time a
+// popup opens or closes. Without a key on both sides — a static page,
 // the ghost-chrome escalation seam — sharing no node is still the signal.
 func EpochRefs(prev *RefCache, nodes []A11yNode, document string) *RefCache {
 	book := prev.bookFromCache()

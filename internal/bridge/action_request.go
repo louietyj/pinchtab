@@ -365,9 +365,7 @@ func (b *Bridge) ExecuteAction(ctx context.Context, kind string, req ActionReque
 // when the action moved the page. They ride on the SUCCESSFUL result — the
 // action ran, so the caller gets what it earned plus what it now needs to know:
 // where it landed, and whether its refs died with the document. A pushState
-// navigation keeps the document and its refs, so RefsStale is false there; a
-// single-page app changes its URL on most clicks, and calling those refs dead
-// sent agents to re-snapshot after every one.
+// navigation keeps the document and its refs, so RefsStale is false there.
 const (
 	ResultNavigated   = "navigated"
 	ResultLandedURL   = "url"
