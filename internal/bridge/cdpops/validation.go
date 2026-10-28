@@ -62,6 +62,8 @@ func PointerPointForNode(ctx context.Context, backendNodeID int64, requireTopMos
 		const view = (this.ownerDocument && this.ownerDocument.defaultView) || window;
 		const doc = this.ownerDocument || document;
 		const related = (el, hit) => !!hit && (hit === el || el.contains(hit) || hit.contains(el));
+		const innerControlSelector = 'a, button, input, select, textarea, summary, [role=button], [role=link], [role=tab], ' +
+			'[role=checkbox], [role=radio], [role=switch], [role=menuitem], [role=option], [role=combobox]';
 		const hitAtCentre = (el) => {
 			const b = el.getBoundingClientRect();
 			return b.width > 0 && b.height > 0 && related(el, doc.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2));
@@ -150,18 +152,32 @@ func PointerPointForNode(ctx context.Context, backendNodeID int64, requireTopMos
 		// the whole card under the photo carousel, so its centre hits an <img> and
 		// the ref click was refused while a click lower on the card works. Look for
 		// a point inside the element that the element itself answers, centre-out.
-		if (occluded) {
+		//
+		// A centre on a control nested inside the element is not the element's
+		// own either: Google Flights' "Best" tab is centred on its info button,
+		// and clicking the tab opened the info tooltip. So the first pass wants a
+		// point that no inner control claims; only an element that is all inner
+		// control (a wrapper around one button) falls back to any related point.
+		const ownPoint = (hit) => {
+			if (!related(target, hit)) return false;
+			const inner = hit.closest && hit.closest(innerControlSelector);
+			return !inner || inner === target || inner.contains(target);
+		};
+		const ownCentre = !occluded && ownPoint(doc.elementFromPoint(localX, localY));
+		if (!ownCentre) {
 			const fractions = [0.5, 0.25, 0.75, 0.1, 0.9];
-			search: for (const fy of fractions) {
-				for (const fx of fractions) {
-					const px = r.left + r.width * fx;
-					const py = r.top + r.height * fy;
-					if (px < 0 || py < 0 || px > view.innerWidth || py > view.innerHeight) continue;
-					if (related(target, doc.elementFromPoint(px, py))) {
-						x += px - localX;
-						y += py - localY;
-						occluded = false;
-						break search;
+			search: for (const accept of occluded ? [ownPoint, (hit) => related(target, hit)] : [ownPoint]) {
+				for (const fy of fractions) {
+					for (const fx of fractions) {
+						const px = r.left + r.width * fx;
+						const py = r.top + r.height * fy;
+						if (px < 0 || py < 0 || px > view.innerWidth || py > view.innerHeight) continue;
+						if (accept(doc.elementFromPoint(px, py))) {
+							x += px - localX;
+							y += py - localY;
+							occluded = false;
+							break search;
+						}
 					}
 				}
 			}

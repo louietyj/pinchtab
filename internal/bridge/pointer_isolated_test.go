@@ -192,6 +192,8 @@ const pointerCardHTML = `<!doctype html><body style="margin:0">
   <input id="radio" type="radio" style="position:absolute;inset:0;margin:0;width:48px;height:48px;opacity:0">
 </span>
 <input id="check" type="checkbox" style="position:absolute;left:-9999px;opacity:0"><label id="checklabel" for="check">Nonstop only</label>
+<div id="besttab" role="tab" style="position:absolute;left:400px;top:100px;width:200px;height:40px">Best
+  <button id="info" style="position:absolute;left:90px;top:10px;width:20px;height:20px">i</button></div>
 <button id="covered" style="position:absolute;left:400px;top:0;width:100px;height:40px">Buy</button>
 <div style="position:absolute;left:390px;top:0;width:130px;height:60px;background:#000"></div>
 </body>`
@@ -204,6 +206,7 @@ func TestPointerPointFindsAnAnsweringPointAndAToggleBehindItsStyling(t *testing.
 		{"#target", "target"},
 		{"#radio", "radio"},
 		{"#check", "checklabel"},
+		{"#besttab", "besttab"},
 	} {
 		nodeID, err := ResolveCSSToNodeID(ctx, tc.selector)
 		if err != nil {
