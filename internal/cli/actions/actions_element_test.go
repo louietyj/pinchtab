@@ -1045,6 +1045,20 @@ func TestPrintActionResultANavigatingClickReportsWhereItLanded(t *testing.T) {
 	}
 }
 
+// A click recovery redirected says so: the caller named one ref and the click went
+// to another, which is the one moment its ref is known to be stale.
+func TestPrintActionResultARecoveredClickNamesTheSubstitution(t *testing.T) {
+	recovered := map[string]any{
+		"success":  true,
+		"result":   map[string]any{"clicked": true},
+		"recovery": map[string]any{"recovered": true, "original_ref": "e18", "new_ref": "e522", "confidence": "high"},
+	}
+	hint := captureStderr(t, func() { printActionResult("click", recovered) })
+	if !strings.Contains(hint, "e18 had gone stale; acted on e522") {
+		t.Errorf("stderr = %q; a recovered click does not say which ref it acted on", hint)
+	}
+}
+
 // A click that did not move the page keeps the plain answer: the landed-URL line is
 // the navigation report, not decoration on every click.
 func TestPrintActionResultAClickThatDidNotNavigateStaysPlain(t *testing.T) {

@@ -145,6 +145,8 @@ const textProseFixtureHTML = `<!doctype html>
 <p id="p2">More about the weather</p>
 <div style="display:none">Where from?</div><input placeholder="Where from?">
 <ul><li class="next"><a id="next" href="#p2">Next <span aria-hidden="true">→</span></a></li></ul>
+<p>Cheapest flights this week</p><div role="tablist"><div id="cheapest" role="tab">Cheapest</div>
+<div id="best" role="tab" style="width:300px"><div>Best <button aria-label="Learn more">i</button></div></div></div>
 </body></html>`
 
 func TestTextSelectorPrefersALinkOverProseThatIsALeaf(t *testing.T) {
@@ -163,12 +165,23 @@ func TestTextSelectorRefusesAmbiguousProse(t *testing.T) {
 	if !errors.Is(err, ErrSelectorAmbiguous) {
 		t.Fatalf("text:weather err = %v, want ErrSelectorAmbiguous", err)
 	}
+	// A tab is a control, so it is the answer over prose.
+	want := resolve(t, ctx, "css:#cheapest")
+	if got := resolve(t, ctx, "text:Cheapest"); got != want {
+		t.Errorf("text:Cheapest resolved to %s, want the role=tab", describeNode(t, ctx, got))
+	}
+	// A label that also holds the tab's info button stands for the tab, whose
+	// centre is not that button.
+	want = resolve(t, ctx, "css:#best")
+	if got := resolve(t, ctx, "text:Best"); got != want {
+		t.Errorf("text:Best resolved to %s, want the role=tab", describeNode(t, ctx, got))
+	}
 	// A hidden element is no answer, even the only one.
 	if _, err := ResolveTextToNodeID(ctx, "Where from"); !errors.Is(err, ErrSelectorNoMatch) {
 		t.Errorf("text:Where from err = %v, want ErrSelectorNoMatch: only a display:none div carries it", err)
 	}
 	// One prose leaf is still an answer.
-	want := resolve(t, ctx, "css:#quote")
+	want = resolve(t, ctx, "css:#quote")
 	if got := resolve(t, ctx, "text:great adventure"); got != want {
 		t.Errorf("text:great adventure resolved to %s, want span#quote", describeNode(t, ctx, got))
 	}

@@ -505,11 +505,15 @@ const resolveSelectorAtFn = `function(kind, value, index, fromEnd, positional) {
 	// label, so a bare text: lands on the <button> rather than the <div> beside it.
 	// This ranking is the BARE text: selector's rule only — a positional wrapper
 	// indexes the document, like css: and xpath:.
+	// The roles beyond button/link/textbox are the other things a user clicks by
+	// their label: Google Flights' sort order is a role=tab, and without it the
+	// bare selector found no control and refused text:Cheapest as ambiguous.
+	const controlTags = new Set(["button", "a", "input", "select", "textarea", "summary"]);
+	const controlRoles = new Set(["button", "link", "textbox", "tab", "menuitem", "menuitemcheckbox",
+		"menuitemradio", "option", "checkbox", "radio", "switch", "combobox", "treeitem"]);
 	const semanticWeight = (el) => {
-		const tag = (el.tagName || "").toLowerCase();
-		if (tag === "button" || tag === "a" || tag === "input") return 0.25;
-		const role = normalize(el.getAttribute && el.getAttribute("role"));
-		if (role === "button" || role === "link" || role === "textbox") return 0.2;
+		if (controlTags.has((el.tagName || "").toLowerCase())) return 0.25;
+		if (controlRoles.has(normalize(el.getAttribute && el.getAttribute("role")))) return 0.2;
 		return 0;
 	};
 	// Leaf-most wins: the fewest descendants is the most specific match. This
@@ -532,7 +536,7 @@ const resolveSelectorAtFn = `function(kind, value, index, fromEnd, positional) {
 	// Google" button. A leaf inside a control weighs as that control, so the
 	// <span>Save</span> of a button is not beaten by a bare "Save changes" button.
 	const exactBonus = 0.01;
-	const controlSelector = "button, a, input, [role=button], [role=link], [role=textbox]";
+	const controlSelector = [...controlTags, ...[...controlRoles].map((role) => "[role=" + role + "]")].join(", ");
 	const textWeight = (el, query) => {
 		const control = (el.closest && el.closest(controlSelector)) || el;
 		return semanticWeight(control) + (normalize(el.textContent || "") === query ? exactBonus : 0);
@@ -616,9 +620,15 @@ const resolveSelectorAtFn = `function(kind, value, index, fromEnd, positional) {
 				parent = parent.parentElement || (parent.getRootNode && parent.getRootNode().host);
 			}
 		}
+		// A match that holds a control of its own is clicked at its centre, which
+		// can be that inner control: on Google Flights the "Best" tab's label div
+		// also holds the tab's info button, and text:Best opened the info tooltip.
+		// Such a match stands for the control around it.
+		const lift = (el) => (el.querySelector(controlSelector) && el.parentElement && el.parentElement.closest(controlSelector)) || el;
 		const candidates = matches
 			.map((item) => item.el)
-			.filter((el) => !containsMatch.has(el) && el.getClientRects().length > 0);
+			.filter((el) => !containsMatch.has(el) && el.getClientRects().length > 0)
+			.map(lift);
 		if (!candidates.length) return null;
 		const weight = (el) => semanticWeight((el.closest && el.closest(controlSelector)) || el);
 		const top = Math.max(...candidates.map(weight));
