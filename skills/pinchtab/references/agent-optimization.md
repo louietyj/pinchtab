@@ -15,19 +15,19 @@ Need to check page state?
 ├─ Need to read text/data only? → pinchtab text  (no tree overhead)
 ├─ Need to find a specific element? → pinchtab find "<text>"
 ├─ Need full page structure? → snap --full
-├─ Need to debug visually? → screenshot  (use sparingly, large output)
+├─ Need to see what happened? → screenshot  (a small one is ~370 tokens)
 └─ Need to run a JS check? → eval  (precise, zero visual overhead)
 ```
 
 **Token cost ranking (cheapest → most expensive):**
 1. `eval` — single value, no DOM traversal output
 2. `find` — targeted element list only
-3. `text` — readable text only
-4. `snap` / `snap -i -c` — interactive elements, compact format
-5. `snap --full` — full JSON tree
-6. `screenshot` — image payload, highest token cost
+3. a small screenshot — ~370 tokens, and it shows popups, images and dead clicks that no text read does
+4. `text` — readable text only
+5. `snap` / `snap -i -c` — interactive elements, compact format
+6. `snap --full` — full JSON tree
 
-**Rule of thumb:** Reach for `snap -i -c` as your default snapshot. Only escalate to `screenshot` when visual layout matters (canvas or complex CSS).
+**Rule of thumb:** Reach for `snap -i -c` to find refs, and look at the screenshot at the end of every operation. Under the web-browser skill, every page-changing command has already saved one (its `latest-small.jpg`).
 
 ---
 
@@ -127,7 +127,7 @@ pinchtab find "target text"   # avoids eval entirely
 
 **Recovery:**
 1. `pinchtab screenshot` — confirm login page is showing
-2. Navigate to the login page and ask the user to complete sign-in. Do not request or enter credentials, one-time codes, or session tokens.
+2. Navigate to the login page and ask the user to complete sign-in, unless they set up a login procedure for their own accounts (the web-browser skill's "Logged-in accounts"). Otherwise do not request or enter credentials, one-time codes, or session tokens.
 3. If using a profile, start or target that profile explicitly: `pinchtab instance start --profile <name>`
 
 ---
@@ -157,7 +157,7 @@ pinchtab snap -i -c      # fresh snapshot → new refs
 # Now use the new refs from this response
 ```
 
-**Prevention:** Use `--snap-diff` on actions to get updated refs with each interaction. Never cache refs across navigations.
+**Prevention:** Put `--snap-diff` on the action (or the `execute-batch`) that ends an operation to get its updated refs. Never cache refs across navigations.
 
 ---
 
@@ -174,9 +174,9 @@ pinchtab nav <url> --block-images --snap
 
 ## General Efficiency Rules
 
-- **Use `--snap-diff` on actions.** `click e5 --snap-diff` returns OK + only changed elements in one call — most token-efficient for multi-step flows.
+- **Fewer calls, not fewer looks.** Each call replays the whole context, so the call count is most of the cost. Under the web-browser skill, run every step you can see as ONE `pinchtab execute-batch`, then look at its screenshot; `--snap-diff` on the batch returns only what changed.
 - **Set a stable agent ID up front.** Use `pinchtab --agent-id <agent-id> ...`, `PINCHTAB_AGENT_ID`, or `X-Agent-Id` for raw HTTP calls so work stays attributable to the same agent.
-- **Batch reads before writes.** Snap once, extract all refs, then act. Use `--snap-diff` on each action to see changes without re-fetching the full tree.
+- **Batch reads before writes.** Snap once, extract all refs, then act on them in one batch.
 - **Use `text` for extraction tasks.** If you only need to read content (not interact), `text` is cheaper than `snap` + parsing.
 - **Scope snapshots.** Use `snap -s <selector>` to target a specific section of the page when you know where the element is.
 - **Prefer `fill` over `type` for framework forms.** Saves retries caused by React/Vue not detecting raw keystroke events.

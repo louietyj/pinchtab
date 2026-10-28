@@ -40,6 +40,9 @@ jobs:
             CGO_ENABLED=0 GOOS=${platform%-*} GOARCH=${platform#*-} \
               go build -ldflags "-s -w -X main.version=$TAG" -o "$asset" ./cmd/pinchtab
           done
+          # The web-browser skill prints this release's own SKILL.md and references,
+          # not the npm package's upstream copy.
+          tar czf pinchtab-skill.tar.gz -C skills pinchtab
 
       - name: Publish
         run: |
@@ -47,7 +50,8 @@ jobs:
           { echo "Since $prev:"; echo; git log --no-merges --format='- %s (%h)' "$prev..$GITHUB_SHA"; } > notes.md
           gh release create "$TAG" --target "$GITHUB_SHA" --latest \
             --title "$TAG" --notes-file notes.md \
-            pinchtab-linux-amd64 pinchtab-linux-arm64 pinchtab-darwin-arm64 pinchtab-windows-amd64.exe
+            pinchtab-linux-amd64 pinchtab-linux-arm64 pinchtab-darwin-arm64 pinchtab-windows-amd64.exe \
+            pinchtab-skill.tar.gz
         env:
           GH_TOKEN: ${{ github.token }}
 
