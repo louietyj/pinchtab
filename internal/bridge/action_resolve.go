@@ -590,25 +590,43 @@ const resolveSelectorAtFn = `function(kind, value, index, fromEnd, positional) {
 			return hits / tokens.length >= 0.7;
 		});
 	};
-	// The bare text: selector's rule. Control-likeness is decided first, over
-	// every element containing the query, and leaf-most only chooses among the
-	// survivors. The other order let prose that mentions the word outrank the
-	// control labelled with it: on quotes.toscrape.com/page/4/, text:Next took
-	// the quote "...death is but the next great adventure" (a leaf <span>) over
-	// the "Next →" link (an <a> with a child span), and the click scrolled
-	// instead of navigating, reporting OK. When nothing control-like matches and
-	// several leaves do, it refuses rather than guess: acting on prose does
-	// nothing and still reports OK.
+	// The bare text: selector's rule. Each place the text occurs is one
+	// candidate: the deepest element containing it, with no matching element
+	// inside. Candidates must be rendered; then control-likeness decides, and an
+	// exact label breaks ties.
+	//
+	// It used to take the fewest-descendants match before weighing controls, so
+	// prose beat a link with a child element: on quotes.toscrape.com/page/4/,
+	// text:Next took the quote "...death is but the next great adventure" (a
+	// leaf <span>) over "Next →" (an <a> holding the arrow in a <span>), and the
+	// click scrolled instead of navigating, reporting OK. Unrendered matches went
+	// the same way: Google Flights keeps "Where from?" in display:none divs beside
+	// the input that shows it as a placeholder, and text:Where from resolved to
+	// one and failed with "Node does not have a layout object".
+	//
+	// When nothing control-like matches and several candidates do, it refuses
+	// rather than guess: acting on prose does nothing and still reports OK.
 	const bareTextMatch = (query) => {
 		const matches = textMatches(query, false);
-		if (!matches.length) return null;
+		const containsMatch = new Set();
+		for (const item of matches) {
+			let parent = item.el.parentElement || (item.el.getRootNode && item.el.getRootNode().host);
+			while (parent && !containsMatch.has(parent)) {
+				containsMatch.add(parent);
+				parent = parent.parentElement || (parent.getRootNode && parent.getRootNode().host);
+			}
+		}
+		const candidates = matches
+			.map((item) => item.el)
+			.filter((el) => !containsMatch.has(el) && el.getClientRects().length > 0);
+		if (!candidates.length) return null;
 		const weight = (el) => semanticWeight((el.closest && el.closest(controlSelector)) || el);
-		const top = Math.max(...matches.map((item) => weight(item.el)));
-		const leaves = unique(smallestMatches(matches.filter((item) => weight(item.el) === top)));
-		if (top > 0 || leaves.length === 1) return bestRanked(leaves, query);
-		const pointer = leaves.filter((el) => getComputedStyle(el).cursor === "pointer");
+		const top = Math.max(...candidates.map(weight));
+		const best = unique(candidates.filter((el) => weight(el) === top));
+		if (top > 0 || best.length === 1) return bestRanked(best, query);
+		const pointer = best.filter((el) => getComputedStyle(el).cursor === "pointer");
 		if (pointer.length === 1) return pointer[0];
-		return "ambiguous: " + leaves.length + " elements contain this text and none is a button, link or field; use a ref from snap, or first:/nth:text:";
+		return "ambiguous: " + best.length + " elements contain this text and none is a button, link or field; use a ref from snap, or first:/nth:text:";
 	};
 
 	try {

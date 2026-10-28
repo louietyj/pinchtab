@@ -143,6 +143,7 @@ const textProseFixtureHTML = `<!doctype html>
 <div class="quote"><span id="quote">death is but the next great adventure</span></div>
 <p id="p1">A note on the weather</p>
 <p id="p2">More about the weather</p>
+<div style="display:none">Where from?</div><input placeholder="Where from?">
 <ul><li class="next"><a id="next" href="#p2">Next <span aria-hidden="true">→</span></a></li></ul>
 </body></html>`
 
@@ -161,6 +162,10 @@ func TestTextSelectorRefusesAmbiguousProse(t *testing.T) {
 	_, err := ResolveTextToNodeID(ctx, "weather")
 	if !errors.Is(err, ErrSelectorAmbiguous) {
 		t.Fatalf("text:weather err = %v, want ErrSelectorAmbiguous", err)
+	}
+	// A hidden element is no answer, even the only one.
+	if _, err := ResolveTextToNodeID(ctx, "Where from"); !errors.Is(err, ErrSelectorNoMatch) {
+		t.Errorf("text:Where from err = %v, want ErrSelectorNoMatch: only a display:none div carries it", err)
 	}
 	// One prose leaf is still an answer.
 	want := resolve(t, ctx, "css:#quote")
