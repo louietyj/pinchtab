@@ -147,6 +147,8 @@ Positional wrappers index the candidates in **document order** for every selecto
 
 When more than one control is named equally well, a bare `text:` is **refused** (`400 selector is ambiguous`, listing them) rather than resolved to the first; `first:`, `last:` and `nth:N:` index exactly those controls in document order. When no control's name matches, `text:` falls back to elements whose visible text contains X, ranked as before. Prefer the full label when controls share a prefix — `Delete` and `Delete all` are one typo apart in effect.
 
+An action whose selector matches nothing yet waits up to 3 s for it to appear before failing, so a chain can name an option or dialog button that is still animating in: `click "text:From" && click "text:London Stansted"`. Refs never wait — a missing ref is a stale snapshot, and fails at once.
+
 Selector prefixes are case-insensitive, so `CSS:#login` and `css:#login` mean the same thing. Only the prefix is case-folded; the value after it is passed through unchanged.
 
 Structured forms such as `role:`, `label:`, and `testid:` are matched by the semantic engine against enriched snapshot descriptors. CSS, XPath, refs, the existing `text:` action selector, and bare CSS/text wrappers remain browser-side selector resolution.

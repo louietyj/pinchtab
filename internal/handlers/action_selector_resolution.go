@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/pinchtab/pinchtab/internal/bridge"
 	"github.com/pinchtab/pinchtab/internal/selector"
@@ -26,7 +27,35 @@ func frameScopedSelectorError(kind string, err error) error {
 	return fmt.Errorf("%s in current frame: %w", kind, err)
 }
 
+// actionTargetWait is how long an action waits for a selector's element to
+// appear: a chained click on an option that is still animating in would
+// otherwise fail. Refs never wait; a missing ref is a stale snapshot.
+var actionTargetWait = 3 * time.Second
+
+const actionTargetPoll = 100 * time.Millisecond
+
 func (h *Handlers) resolveActionRequestSelector(ctx context.Context, tabID string, req *bridge.ActionRequest) (actionSelectorResolution, error) {
+	original := *req
+	original.NormalizeSelector()
+	waits := original.NodeID == 0 && original.Selector != "" && selector.Parse(original.Selector).Kind != selector.KindRef
+	deadline := time.Now().Add(actionTargetWait)
+	for {
+		attempt := original
+		resolution, err := h.resolveActionRequestSelectorOnce(ctx, tabID, &attempt)
+		if !waits || !errors.Is(err, bridge.ErrSelectorNoMatch) || time.Now().After(deadline) {
+			*req = attempt
+			return resolution, err
+		}
+		select {
+		case <-ctx.Done():
+			*req = attempt
+			return resolution, err
+		case <-time.After(actionTargetPoll):
+		}
+	}
+}
+
+func (h *Handlers) resolveActionRequestSelectorOnce(ctx context.Context, tabID string, req *bridge.ActionRequest) (actionSelectorResolution, error) {
 	original := *req
 	original.NormalizeSelector()
 	if original.NodeID != 0 {
