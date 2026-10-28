@@ -15,15 +15,14 @@ OK
 ## When the click navigates
 
 A click that moves the page **succeeds**. There is nothing to declare in advance and
-nothing to opt into: the result reports where the tab landed and that your refs are
-gone.
+nothing to opt into: the result reports where the tab landed and whether your refs
+went with the old document.
 
 ```bash
 pinchtab nav https://example.com --snap
 # e1:link "Learn more"
 pinchtab click e1
 # OK navigated https://www.iana.org/help/example-domains
-# HINT: every ref from your last snapshot is dead — run `pinchtab snap -i` before the next action
 echo $?   # 0
 ```
 
@@ -47,16 +46,22 @@ against the URL after — not on the element's role or tag, so it is the same an
 a link, a router `<button>`, and a form control that redirects. A fragment-only change
 (`#section`) is not a navigation: the document is the same and your refs still resolve.
 
-**`refsStale: true` means every ref from your previous `/snapshot` is dead.** Refs are
-minted per snapshot, so take a new one before the next ref-targeted action:
+**`refsStale` says whether the click loaded a new document.** When it is `true`, every
+ref from your previous `/snapshot` is dead, so take a new one before the next
+ref-targeted action:
 
 ```bash
 pinchtab click e1 --snap    # click, then print the new snapshot in one call
 ```
 
+A single-page app that changes its URL with `pushState` keeps its document, so
+`refsStale` is `false` and your refs still resolve. A ref that did die is refused when
+you use it, with an error that says to re-snapshot; the CLI prints no hint on the
+navigation itself.
+
 These fields are present whichever form you use: a plain click, a click with
 `--wait-nav`, and a `--submit` click that redirects all report where they landed and
-that your refs are dead. A `--submit` click keeps its own `postState` as the headline
+whether your refs are dead. A `--submit` click keeps its own `postState` as the headline
 and carries the landing alongside it.
 
 `--wait-nav` is not permission to navigate — it makes the click *wait* for the

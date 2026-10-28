@@ -243,7 +243,6 @@ func printActionResult(kind string, result map[string]any) {
 		if actionResult["navigated"] == true {
 			landed, _ := actionResult["url"].(string)
 			output.Value("OK navigated " + landed)
-			printStaleRefsHint()
 			return
 		}
 	}
@@ -253,8 +252,12 @@ func printActionResult(kind string, result map[string]any) {
 
 // printNavigationOutcome reports the landing for an action whose headline is
 // something else. Every form that navigates says where it landed, including the
-// forms that declare the navigation — those are the ones whose next action depends
-// on the new page, so they are the ones that most need to hear their refs are dead.
+// forms that declare the navigation.
+//
+// Neither form adds a hint that the caller's refs are dead. It used to, after
+// every URL change, and on a single-page app that was nearly every click and
+// false each time; agents called it noise. A ref that did die is refused when it
+// is used, and that error says to re-snapshot.
 func printNavigationOutcome(actionResult map[string]any) {
 	if actionResult["navigated"] != true {
 		return
@@ -262,11 +265,6 @@ func printNavigationOutcome(actionResult map[string]any) {
 	if landed, _ := actionResult["url"].(string); landed != "" {
 		output.Value("navigated " + landed)
 	}
-	printStaleRefsHint()
-}
-
-func printStaleRefsHint() {
-	output.Hint("every ref from your last snapshot is dead — run `pinchtab snap -i` before the next action")
 }
 
 func setPointBody(body map[string]any, x, y float64) {

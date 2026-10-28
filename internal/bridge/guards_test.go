@@ -97,6 +97,48 @@ func TestEveryFormOfANavigatingActionReportsWhereItLanded(t *testing.T) {
 	}
 }
 
+// A pushState navigation changes the URL and keeps the document, and with it the
+// caller's refs; a navigation that loads a new document does not.
+func TestRefsAreStaleOnlyWhenTheDocumentChanged(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		documents []string
+		want      bool
+	}{
+		{"pushState", []string{"F/L1", "F/L1"}, false},
+		{"new document", []string{"F/L1", "F/L2"}, true},
+		{"document unknown", []string{"", ""}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			urls := []string{"https://a.example/", "https://a.example/search"}
+			urlCall, docCall := 0, 0
+			b := &Bridge{
+				Config: &config.RuntimeConfig{},
+				URLReader: func(context.Context) (string, error) {
+					urlCall++
+					return urls[min(urlCall, 2)-1], nil
+				},
+				DocumentReader: func(context.Context) string {
+					docCall++
+					return tc.documents[min(docCall, 2)-1]
+				},
+				Actions: map[string]ActionFunc{
+					ActionClick: func(context.Context, ActionRequest) (map[string]any, error) {
+						return map[string]any{"ok": true}, nil
+					},
+				},
+			}
+			res, err := b.ExecuteAction(context.Background(), ActionClick, ActionRequest{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res[ResultNavigated] != true || res[ResultRefsStale] != tc.want {
+				t.Errorf("navigated = %v, refsStale = %v; want true, %v", res[ResultNavigated], res[ResultRefsStale], tc.want)
+			}
+		})
+	}
+}
+
 func TestReadActionURL_NoChromeDPContext(t *testing.T) {
 	u, err := defaultActionURLReader(context.Background())
 	if err != nil {

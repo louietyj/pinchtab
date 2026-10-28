@@ -1038,9 +1038,10 @@ func TestPrintActionResultANavigatingClickReportsWhereItLanded(t *testing.T) {
 		t.Errorf("stdout = %q; the caller cannot see where the click landed", out)
 	}
 
-	hint := captureStderr(t, func() { printActionResult("click", navigated) })
-	if !strings.Contains(hint, "snap") {
-		t.Errorf("stderr = %q; nothing tells the caller its refs are dead", hint)
+	// No refs-are-dead hint: on a single-page app it fired on nearly every click
+	// and was false each time. A ref that did die is refused when used.
+	if hint := captureStderr(t, func() { printActionResult("click", navigated) }); hint != "" {
+		t.Errorf("stderr = %q; a navigating click printed a hint", hint)
 	}
 }
 
@@ -1082,8 +1083,7 @@ func TestPrintActionResultASubmitThatNavigatedKeepsItsPostStateAndSaysWhereItLan
 		t.Errorf("stdout = %q; the submit does not say where it landed", out)
 	}
 
-	hint := captureStderr(t, func() { printActionResult("click", navigatedSubmit) })
-	if !strings.Contains(hint, "snap") {
-		t.Errorf("stderr = %q; nothing tells the caller its refs are dead", hint)
+	if hint := captureStderr(t, func() { printActionResult("click", navigatedSubmit) }); hint != "" {
+		t.Errorf("stderr = %q; a navigating submit printed a hint", hint)
 	}
 }

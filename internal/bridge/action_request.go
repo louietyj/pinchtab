@@ -335,10 +335,15 @@ func (b *Bridge) ExecuteAction(ctx context.Context, kind string, req ActionReque
 		urlReader = defaultActionURLReader
 		slog.Debug("URLReader is nil, using default fallback (guard checks may be no-ops without chromedp context)")
 	}
+	documentReader := b.DocumentReader
+	if documentReader == nil {
+		documentReader = DocumentKey
+	}
 	var beforeURL string
 	if u, err := urlReader(ctx); err == nil {
 		beforeURL = u
 	}
+	beforeDocument := documentReader(ctx)
 
 	res, err := fn(ctx, req)
 	if err != nil {
@@ -347,7 +352,9 @@ func (b *Bridge) ExecuteAction(ctx context.Context, kind string, req ActionReque
 
 	if beforeURL != "" {
 		if afterURL, uErr := urlReader(ctx); uErr == nil && navigationChanged(beforeURL, afterURL) {
-			res = withNavigationOutcome(res, beforeURL, afterURL)
+			afterDocument := documentReader(ctx)
+			refsStale := beforeDocument == "" || afterDocument == "" || beforeDocument != afterDocument
+			res = withNavigationOutcome(res, beforeURL, afterURL, refsStale)
 		}
 	}
 
@@ -357,8 +364,10 @@ func (b *Bridge) ExecuteAction(ctx context.Context, kind string, req ActionReque
 // Navigated, LandedURL, PreviousURL and RefsStale are the keys a result grows
 // when the action moved the page. They ride on the SUCCESSFUL result — the
 // action ran, so the caller gets what it earned plus what it now needs to know:
-// where it landed, and that every ref from its last snapshot is dead, because
-// refs are minted per snapshot.
+// where it landed, and whether its refs died with the document. A pushState
+// navigation keeps the document and its refs, so RefsStale is false there; a
+// single-page app changes its URL on most clicks, and calling those refs dead
+// sent agents to re-snapshot after every one.
 const (
 	ResultNavigated   = "navigated"
 	ResultLandedURL   = "url"
@@ -368,14 +377,14 @@ const (
 
 // withNavigationOutcome never drops the action's own result: it is the value the
 // API used to discard, and delivering it is the whole point.
-func withNavigationOutcome(res map[string]any, before, after string) map[string]any {
+func withNavigationOutcome(res map[string]any, before, after string, refsStale bool) map[string]any {
 	if res == nil {
 		res = map[string]any{}
 	}
 	res[ResultNavigated] = true
 	res[ResultLandedURL] = after
 	res[ResultPreviousURL] = before
-	res[ResultRefsStale] = true
+	res[ResultRefsStale] = refsStale
 	return res
 }
 
