@@ -72,7 +72,7 @@ Unified selectors accepted by any element-targeting command:
 - Ref: `e5` — from snapshot cache (fastest).
 - CSS: `#login`, `.btn`, `[data-testid="x"]` — `document.querySelector`.
 - XPath: `xpath://button[@id="submit"]` — CDP search.
-- Text: `text:Sign In` — visible text match.
+- Text: `text:Sign In` — the control named that, else visible text.
 - Semantic: `find:login button` — natural language via `/find`.
 
 Auto-detection: bare `eN`→ref, `#`/`.`/`[...]`→CSS, `//`→XPath. Use explicit `css:`/`xpath:`/`text:`/`find:` prefixes when ambiguous. HTTP API uses the same syntax in the `selector` field (legacy `ref` still accepted).

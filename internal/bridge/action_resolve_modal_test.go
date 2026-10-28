@@ -62,18 +62,15 @@ func TestDialogScopeReproducesGlobalEscapeAndContainsActionsAndReads(t *testing.
 		t.Fatal(err)
 	}
 
-	// Verbatim PT-C018 failure boundary: the old global text resolver chooses
-	// the same-labeled background control that appears first in the document.
-	globalNodeID, err := ResolveTextToNodeIDInFrame(ctx, "", "Content contains")
+	// PT-C018's failure boundary: the old global text resolver chose the
+	// same-labeled background control that appears first in the document.
+	// Several controls share the name, so unscoped it is now refused instead.
+	if _, err := ResolveTextToNodeIDInFrame(ctx, "", "Content contains"); !errors.Is(err, ErrSelectorAmbiguous) {
+		t.Fatalf("unscoped text across three same-named buttons: err = %v, want ErrSelectorAmbiguous", err)
+	}
+	globalNodeID, err := ResolveCSSToNodeIDInFrame(ctx, "", "#background-action")
 	if err != nil {
 		t.Fatal(err)
-	}
-	var globalID string
-	if err := callFunctionOnNodeForTest(ctx, globalNodeID, `function() { return this.id; }`, &globalID); err != nil {
-		t.Fatal(err)
-	}
-	if globalID != "background-action" {
-		t.Fatalf("unscoped reproduction resolved %q, want background-action", globalID)
 	}
 
 	frameTree, err := FetchFrameTree(ctx)

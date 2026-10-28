@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -170,9 +171,8 @@ func TestTextSelectorNeverResolvesNonRenderedSourceText(t *testing.T) {
 func TestTextSelectorPrefersControlOverPlainElementOfEqualSize(t *testing.T) {
 	ctx := newSelectorFixture(t)
 
-	// The first: row is gone on purpose, not adjusted: positional wrappers index
-	// the document now, so first:text: is #decoy. The control preference this test
-	// is named for lives on the BARE text: selector, which is the row that stays.
+	// text: names a control, and #inner is the only control named Archive record;
+	// TestPositionalWrappersOverTextIndexTheNamedControls covers the wrappers.
 	want := resolve(t, ctx, "css:#inner")
 	if got := resolve(t, ctx, "text:Archive record"); got != want {
 		t.Errorf("text:Archive record resolved to %s, want button#inner (%s)",
@@ -185,53 +185,23 @@ func TestTextSelectorPrefersControlOverPlainElementOfEqualSize(t *testing.T) {
 	}
 }
 
-// The deadline used to live in the deleted text resolver, so the wrapped forms
-// never had one. resolveSelectorAt is now the only way any css/xpath/text
-// selector is resolved — plain or wrapped, frame-scoped or dialog-scoped — so
-// bounding it here bounds every text path.
-func TestResolveSelectorAtBoundsTextLookupsOnly(t *testing.T) {
-	for _, tc := range []struct {
-		kind    selector.Kind
-		bounded bool
-	}{
-		{selector.KindText, true},
-		{selector.KindCSS, false},
-		{selector.KindXPath, false},
-	} {
-		var deadline time.Time
-		var hasDeadline bool
-		_, err := resolveSelectorAt(context.Background(), selector.Selector{Kind: tc.kind, Value: "x"}, 0, false, false, "",
-			func(ctx context.Context, _ []map[string]any) (int64, error) {
-				deadline, hasDeadline = ctx.Deadline()
-				return 7, nil
-			})
-		if err != nil {
-			t.Fatalf("%s: %v", tc.kind, err)
-		}
-		if hasDeadline != tc.bounded {
-			t.Errorf("%s selector: deadline present = %v, want %v", tc.kind, hasDeadline, tc.bounded)
-			continue
-		}
-		if tc.bounded && time.Until(deadline) > textLookupDeadline {
-			t.Errorf("%s selector: deadline is %s away, want at most %s", tc.kind, time.Until(deadline), textLookupDeadline)
-		}
-	}
-}
-
 // Kinds resolved elsewhere must still be rejected rather than reaching the
-// browser with a kind the resolver's switch does not implement.
+// browser with a kind the resolver's switch does not implement. text: is one:
+// it is resolved from the accessibility tree (resolveTextAt).
 func TestResolveSelectorAtRejectsUnwrappableKinds(t *testing.T) {
-	called := false
-	_, err := resolveSelectorAt(context.Background(), selector.Selector{Kind: selector.KindSemantic, Value: "Save"}, 0, false, false, "",
-		func(context.Context, []map[string]any) (int64, error) {
-			called = true
-			return 0, nil
-		})
-	if err == nil {
-		t.Fatal("semantic selector should not be resolvable through the unified resolver")
-	}
-	if called {
-		t.Error("an unsupported kind must be rejected before the browser is asked")
+	for _, kind := range []selector.Kind{selector.KindSemantic, selector.KindText} {
+		called := false
+		_, err := resolveSelectorAt(context.Background(), selector.Selector{Kind: kind, Value: "Save"}, 0, false, "",
+			func(context.Context, []map[string]any) (int64, error) {
+				called = true
+				return 0, nil
+			})
+		if err == nil {
+			t.Fatalf("%s selector should not be resolvable through the DOM resolver", kind)
+		}
+		if called {
+			t.Errorf("%s: an unsupported kind must be rejected before the browser is asked", kind)
+		}
 	}
 }
 
@@ -255,49 +225,24 @@ func TestXPathDoesNotPierceShadowRoots(t *testing.T) {
 	}
 }
 
-// The decided grammar, on the fixture where the two orders disagree: #decoy is a
-// weight-0 div that PRECEDES the weight-0.25 #inner button, and the two tie on
-// subtree size. Before this, nth:1 resolved to an element earlier in the document
-// than nth:0, because pick() indexed a weight-sorted list.
-func TestPositionalWrappersOverTextIndexDocumentOrder(t *testing.T) {
+// The grammar on the fixture where a plain div (#decoy) precedes a button
+// (#inner) with the same text. text: and its positional wrappers share one
+// candidate set: the controls the text names, when any is named, in document
+// order. The div is plain text, so it is not a candidate while the button is,
+// and a wrapper never reaches an element the bare selector would not. Ordering
+// among several named controls is pinned in
+// TestTextSelectorRefusesSameNamedControlsAndWrappersIndexThem.
+func TestPositionalWrappersOverTextIndexTheNamedControls(t *testing.T) {
 	ctx := newSelectorFixture(t)
 
-	first := resolve(t, ctx, "css:#decoy")
-	last := resolve(t, ctx, "css:#inner")
-
-	for _, tc := range []struct {
-		raw  string
-		want int64
-		what string
-	}{
-		{"first:text:Archive record", first, "div#decoy, the document-first candidate"},
-		{"nth:0:text:Archive record", first, "div#decoy, the document-first candidate"},
-		{"nth:1:text:Archive record", last, "button#inner, the candidate AFTER nth:0"},
-		{"last:text:Archive record", last, "button#inner, the document-last candidate"},
-	} {
-		if got := resolve(t, ctx, tc.raw); got != tc.want {
-			t.Errorf("%s resolved to %s, want %s", tc.raw, describeNode(t, ctx, got), tc.what)
+	inner := resolve(t, ctx, "css:#inner")
+	for _, raw := range []string{"text:Archive record", "first:text:Archive record", "nth:0:text:Archive record", "last:text:Archive record"} {
+		if got := resolve(t, ctx, raw); got != inner {
+			t.Errorf("%s resolved to %s, want button#inner, the one control named Archive record", raw, describeNode(t, ctx, got))
 		}
 	}
-
-	// The defect stated as an ordering property rather than as two node ids: an
-	// index must never walk backwards through the document.
-	if resolve(t, ctx, "nth:0:text:Archive record") == resolve(t, ctx, "nth:1:text:Archive record") {
-		t.Fatal("nth:0 and nth:1 resolved to the same node; the fixture no longer has two candidates")
-	}
-	if resolve(t, ctx, "first:text:Archive record") != resolve(t, ctx, "nth:0:text:Archive record") {
-		t.Error("first:text: and nth:0:text: must be the same candidate")
-	}
-
-	// The decision itself: a bare text: may differ from all three, and here it
-	// does. Leaving this implicit is how option B ships by accident.
-	plain := resolve(t, ctx, "text:Archive record")
-	if plain == first {
-		t.Error("text:Archive record resolved to the document-first div; the control ranking on the bare selector is gone")
-	}
-	if plain != last {
-		t.Errorf("text:Archive record resolved to %s, want button#inner — the bare selector still ranks by control-likeness",
-			describeNode(t, ctx, plain))
+	if _, err := ResolveUnifiedSelector(ctx, selector.Parse("nth:1:text:Archive record"), nil); !errors.Is(err, ErrSelectorNoMatch) {
+		t.Errorf("nth:1:text:Archive record: err = %v, want ErrSelectorNoMatch: one control is named, and the div is not a candidate", err)
 	}
 }
 

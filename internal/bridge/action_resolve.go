@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/chromedp/chromedp"
 	bridgecdpops "github.com/pinchtab/pinchtab/internal/bridge/cdpops"
@@ -439,26 +438,17 @@ func resolveElementMetaInFrame(ctx context.Context, frameID, functionDeclaration
 	return meta, nil
 }
 
-// jsNormalizeHelper lowercases, collapses runs of whitespace to a single space,
-// and trims. Indentation here is cosmetic (JS ignores it); only the runtime
-// behavior matters.
-const jsNormalizeHelper = `const normalize = (value) => String(value || "")
-		.toLowerCase()
-		.replace(/\s+/g, " ")
-		.trim();`
-
 func ResolveTextToNodeID(ctx context.Context, text string) (int64, error) {
 	return ResolveTextToNodeIDInFrame(ctx, "", text)
 }
 
+// ResolveTextToNodeIDInFrame resolves a bare text: selector (resolveTextAt).
 func ResolveTextToNodeIDInFrame(ctx context.Context, frameID, text string) (int64, error) {
-	return resolveSelectorAtInFrame(ctx, frameID, selector.Selector{Kind: selector.KindText, Value: text}, 0, false, false)
+	return frameScope{frameID}.resolveAt(ctx, selector.Selector{Kind: selector.KindText, Value: text}, 0, false, false)
 }
 
-const resolveSelectorAtFn = `function(kind, value, index, fromEnd, positional) {
+const resolveSelectorAtFn = `function(kind, value, index, fromEnd) {
 	const root = this;
-	` + jsNormalizeHelper + `
-	const needle = normalize(value);
 	const unique = (items) => {
 		const seen = new Set();
 		const out = [];
@@ -488,98 +478,6 @@ const resolveSelectorAtFn = `function(kind, value, index, fromEnd, positional) {
 		visit(from || root);
 		return out;
 	};
-	// Source text is not rendered text: a CSS comment or a script string
-	// mentioning a label is nothing a user can see or click, so matching it
-	// hands back an element no action can operate on.
-	const nonRendered = new Set(["script", "style", "noscript", "template"]);
-	// At equal subtree size a control outranks a plain wrapper carrying the same
-	// label, so a bare text: lands on the <button> rather than the <div> beside it.
-	// This ranking is the BARE text: selector's rule only — a positional wrapper
-	// indexes the document, like css: and xpath:.
-	const semanticWeight = (el) => {
-		const tag = (el.tagName || "").toLowerCase();
-		if (tag === "button" || tag === "a" || tag === "input") return 0.25;
-		const role = normalize(el.getAttribute && el.getAttribute("role"));
-		if (role === "button" || role === "link" || role === "textbox") return 0.2;
-		return 0;
-	};
-	// Leaf-most wins: the fewest descendants is the most specific match. This
-	// REDUCES the match set, so it is shared by both paths — a wrapper chooses
-	// among matches and must never change which matches exist. What survives stays
-	// in document order, which is the order first:/last:/nth: index.
-	const smallestMatches = (matches) => {
-		const minSize = Math.min(...matches.map((item) => item.size));
-		return matches
-			.filter((item) => item.size === minSize)
-			.map((item) => item.el);
-	};
-	// The bare text: selector's own rule, applied to the document-ordered set. It
-	// has to pick the maximum weight EXPLICITLY: reading element zero of a
-	// weight-sorted list is what made nth:1 resolve earlier in the document than
-	// nth:0. Ties keep the first, so equal weights still mean document order.
-	// A label that IS the query breaks a tie between equally control-like matches
-	// — "Save" over "Save and exit" — but never outranks control-likeness: a
-	// heading reading "Sign in" must not take the click from a "Sign in with
-	// Google" button. A leaf inside a control weighs as that control, so the
-	// <span>Save</span> of a button is not beaten by a bare "Save changes" button.
-	const exactBonus = 0.01;
-	const controlSelector = "button, a, input, [role=button], [role=link], [role=textbox]";
-	const textWeight = (el, query) => {
-		const control = (el.closest && el.closest(controlSelector)) || el;
-		return semanticWeight(control) + (normalize(el.textContent || "") === query ? exactBonus : 0);
-	};
-	const bestRanked = (items, query) => {
-		let best = items[0];
-		let bestWeight = textWeight(best, query);
-		for (const el of items) {
-			const weight = textWeight(el, query);
-			if (weight > bestWeight) {
-				best = el;
-				bestWeight = weight;
-			}
-		}
-		return best;
-	};
-	const textCandidates = (query, exactFirst) => {
-		if (!query) return [];
-		// textContent, not innerText: innerText forces a synchronous layout per
-		// element and is O(N^2) on large pages.
-		const elements = deepQueryAll("*", root.body || root)
-			.filter((el) => !nonRendered.has((el.tagName || "").toLowerCase()));
-		const measured = elements.map((el) => ({ el, text: normalize(el.textContent || ""), size: el.getElementsByTagName("*").length }));
-		// An element whose label IS the query beats one that merely contains it.
-		// Without this rung the two were one filter — named exact, testing
-		// includes — so "Save" and "Save and exit" were equally good answers to
-		// text:Save, both leaf-most, both weighted as buttons, and the tie fell to
-		// document order. A page listing the longer label first therefore sent
-		// text:Delete to "Delete all" and reported OK.
-		//
-		// Containment still answers when nothing matches outright, so the
-		// shorthand that reaches "Sign in" by text:Sign is untouched. This is the
-		// ladder the select-option matcher already documents in
-		// docs/reference/select.md: exact visible text, then substring.
-		//
-		// The rung applies to the positional wrappers, which index what it
-		// returns. The bare selector takes every containing match and lets
-		// bestRanked weigh exactness below control-likeness.
-		if (exactFirst) {
-			const equals = measured.filter((item) => item.text === query);
-			if (equals.length) return smallestMatches(equals);
-		}
-		const contains = measured.filter((item) => item.text && item.text.includes(query));
-		if (contains.length) return smallestMatches(contains);
-		const tokens = query.split(" ").filter(Boolean);
-		if (!tokens.length) return [];
-		const fuzzy = measured.filter((item) => {
-			if (!item.text) return false;
-			let hits = 0;
-			for (const token of tokens) if (item.text.includes(token)) hits++;
-			return hits / tokens.length >= 0.7;
-		});
-		if (!fuzzy.length) return [];
-		return smallestMatches(fuzzy);
-	};
-
 	try {
 		switch (kind) {
 		case "css":
@@ -594,11 +492,6 @@ const resolveSelectorAtFn = `function(kind, value, index, fromEnd, positional) {
 			}
 			return pick(items);
 		}
-		case "text": {
-			const items = unique(textCandidates(needle, positional));
-			if (!items.length) return null;
-			return positional ? pick(items) : bestRanked(items, needle);
-		}
 		default:
 			return null;
 		}
@@ -607,50 +500,31 @@ const resolveSelectorAtFn = `function(kind, value, index, fromEnd, positional) {
 	}
 }`
 
-// textLookupDeadline bounds the text scan so a slow resolution cannot eat the
-// whole action timeout. It applies wherever text is matched, wrapped or not —
-// first:/last:/nth: reach the same scan.
-const textLookupDeadline = 3 * time.Second
-
-// resolveSelectorAt is the single entry point for every css/xpath/text
-// resolution. scopeLabel names the scope in errors; call runs the resolver
-// against whichever root the caller resolved.
-// positional says a first:/last:/nth: wrapper asked for this resolution. Plain
-// text: and first:text: arrive with the same index and direction — 0 and forward —
-// so the two cannot be told apart from the pair alone, and they must be: a bare
-// text: ranks by control-likeness while a wrapper indexes the document.
-func resolveSelectorAt(ctx context.Context, sel selector.Selector, index int, fromEnd bool, positional bool, scopeLabel string, call func(context.Context, []map[string]any) (int64, error)) (int64, error) {
+// resolveSelectorAt is the single entry point for every css/xpath resolution
+// (text: is resolved from the accessibility tree, by resolveTextAt). scopeLabel
+// names the scope in errors; call runs the resolver against whichever root the
+// caller resolved.
+func resolveSelectorAt(ctx context.Context, sel selector.Selector, index int, fromEnd bool, scopeLabel string, call func(context.Context, []map[string]any) (int64, error)) (int64, error) {
 	switch sel.Kind {
-	case selector.KindCSS, selector.KindXPath, selector.KindText:
+	case selector.KindCSS, selector.KindXPath:
 	default:
 		return 0, fmt.Errorf("%s selector cannot be used with first/last/nth", sel.Kind)
 	}
 
-	lookupCtx := ctx
-	if sel.Kind == selector.KindText {
-		var cancel context.CancelFunc
-		lookupCtx, cancel = context.WithTimeout(ctx, textLookupDeadline)
-		defer cancel()
-	}
-
-	nid, err := call(lookupCtx, []map[string]any{
+	nid, err := call(ctx, []map[string]any{
 		{"value": string(sel.Kind)},
 		{"value": sel.Value},
 		{"value": index},
 		{"value": fromEnd},
-		{"value": positional},
 	})
 	if err != nil {
-		if lookupCtx.Err() != nil && ctx.Err() == nil {
-			return 0, fmt.Errorf("%s %q%s lookup timed out after %s (page may be large or unresponsive): %w", sel.Kind, sel.Value, scopeLabel, textLookupDeadline, err)
-		}
 		return 0, fmt.Errorf("%s %q%s: %w", sel.Kind, sel.Value, scopeLabel, err)
 	}
 	return nid, nil
 }
 
-func resolveSelectorAtInFrame(ctx context.Context, frameID string, sel selector.Selector, index int, fromEnd bool, positional bool) (int64, error) {
-	return resolveSelectorAt(ctx, sel, index, fromEnd, positional, "", func(ctx context.Context, args []map[string]any) (int64, error) {
+func resolveSelectorAtInFrame(ctx context.Context, frameID string, sel selector.Selector, index int, fromEnd bool) (int64, error) {
+	return resolveSelectorAt(ctx, sel, index, fromEnd, "", func(ctx context.Context, args []map[string]any) (int64, error) {
 		var backendNodeID int64
 		err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 			nid, err := resolveNodeInFrame(ctx, frameID, resolveSelectorAtFn, args)
@@ -664,8 +538,8 @@ func resolveSelectorAtInFrame(ctx context.Context, frameID string, sel selector.
 	})
 }
 
-func resolveSelectorAtWithinNode(ctx context.Context, scopeBackendNodeID int64, sel selector.Selector, index int, fromEnd bool, positional bool) (int64, error) {
-	return resolveSelectorAt(ctx, sel, index, fromEnd, positional, " inside topmost dialog", func(ctx context.Context, args []map[string]any) (int64, error) {
+func resolveSelectorAtWithinNode(ctx context.Context, scopeBackendNodeID int64, sel selector.Selector, index int, fromEnd bool) (int64, error) {
+	return resolveSelectorAt(ctx, sel, index, fromEnd, " inside topmost dialog", func(ctx context.Context, args []map[string]any) (int64, error) {
 		return resolveNodeWithinBackendNode(ctx, scopeBackendNodeID, resolveSelectorAtFn, args)
 	})
 }
@@ -681,7 +555,10 @@ type resolveScope interface {
 type frameScope struct{ frameID string }
 
 func (s frameScope) resolveAt(ctx context.Context, sel selector.Selector, index int, fromEnd bool, positional bool) (int64, error) {
-	return resolveSelectorAtInFrame(ctx, s.frameID, sel, index, fromEnd, positional)
+	if sel.Kind == selector.KindText {
+		return resolveTextAt(ctx, s.frameID, 0, sel.Value, index, fromEnd, positional)
+	}
+	return resolveSelectorAtInFrame(ctx, s.frameID, sel, index, fromEnd)
 }
 
 func (s frameScope) resolveRef(_ context.Context, sel selector.Selector, refCache *RefCache) (int64, error) {
@@ -696,7 +573,10 @@ func (s frameScope) resolveRef(_ context.Context, sel selector.Selector, refCach
 type nodeScope struct{ backendNodeID int64 }
 
 func (s nodeScope) resolveAt(ctx context.Context, sel selector.Selector, index int, fromEnd bool, positional bool) (int64, error) {
-	return resolveSelectorAtWithinNode(ctx, s.backendNodeID, sel, index, fromEnd, positional)
+	if sel.Kind == selector.KindText {
+		return resolveTextAt(ctx, "", s.backendNodeID, sel.Value, index, fromEnd, positional)
+	}
+	return resolveSelectorAtWithinNode(ctx, s.backendNodeID, sel, index, fromEnd)
 }
 
 // resolveRef differs from the frame scope only in containment. A cached ref still exists
@@ -784,14 +664,14 @@ func ResolveCSSToNodeIDInFrame(ctx context.Context, frameID, css string) (int64,
 	// shadow root, not just the light DOM (issue #591). For light-DOM pages this
 	// returns the same first match as document.querySelector, and it works for both
 	// the main frame (frameID == "") and sub-frames.
-	return resolveSelectorAtInFrame(ctx, frameID, selector.Selector{Kind: selector.KindCSS, Value: css}, 0, false, false)
+	return resolveSelectorAtInFrame(ctx, frameID, selector.Selector{Kind: selector.KindCSS, Value: css}, 0, false)
 }
 
 // XPath does not pierce shadow roots: document.evaluate cannot cross a shadow
 // boundary. It resolves through the shared walker for consistency and
 // isolated-world execution, not for shadow support.
 func ResolveXPathToNodeIDInFrame(ctx context.Context, frameID, xpath string) (int64, error) {
-	return resolveSelectorAtInFrame(ctx, frameID, selector.Selector{Kind: selector.KindXPath, Value: xpath}, 0, false, false)
+	return resolveSelectorAtInFrame(ctx, frameID, selector.Selector{Kind: selector.KindXPath, Value: xpath}, 0, false)
 }
 
 func ResolveFrameElementMetaInFrame(ctx context.Context, sel selector.Selector, frameID string) (FrameElementMeta, error) {

@@ -208,37 +208,6 @@ func TestHandleCount_XPathHonorsFrameScope(t *testing.T) {
 	}
 }
 
-func TestHandleCount_TextUsesLeafMostCandidateCount(t *testing.T) {
-	h, lastExpr := newCountHarness(t, 3)
-	req := httptest.NewRequest("GET", "/count?selector="+url.QueryEscape("text:Sign In"), nil)
-	w := httptest.NewRecorder()
-	h.HandleCount(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-	// The text count reuses the leaf-most candidate logic: it should normalize,
-	// collect candidates, and return their length (not call querySelectorAll
-	// with the raw "text:..." string).
-	for _, want := range []string{"normalize", "getElementsByTagName", "minSize", `"Sign In"`} {
-		if !strings.Contains(*lastExpr, want) {
-			t.Fatalf("expected text count expression to contain %q, got %s", want, *lastExpr)
-		}
-	}
-	if strings.Contains(*lastExpr, "querySelectorAll(\"text:") || strings.Contains(*lastExpr, "text:Sign In") {
-		t.Fatalf("expected text: prefix stripped and no raw querySelectorAll, got %s", *lastExpr)
-	}
-	var resp countResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if resp.Count != 3 {
-		t.Fatalf("expected count 3, got %d", resp.Count)
-	}
-	if resp.Selector != "text:Sign In" {
-		t.Fatalf("expected response selector to echo input, got %s", resp.Selector)
-	}
-}
-
 func TestHandleCount_RefSingleNodeNotFoundIsZero(t *testing.T) {
 	// mockBridge.GetRefCache returns nil, so a ref never resolves: count is 0,
 	// not an error and not a 404.
@@ -281,7 +250,8 @@ func TestCountElements_DispatchByKind(t *testing.T) {
 		{"css explicit", "css:button.submit", []string{"document.querySelectorAll(", "button.submit"}},
 		{"css auto", ".item", []string{"document.querySelectorAll(", ".item"}},
 		{"xpath", "xpath://li", []string{"document.evaluate(", "snapshotLength"}},
-		{"text", "text:Go", []string{"normalize", "minSize"}},
+		// text: counts from the accessibility tree (bridge.CountText), which
+		// TestTextSelectorRefusesSameNamedControlsAndWrappersIndexThem covers.
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

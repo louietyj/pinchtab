@@ -120,8 +120,9 @@ func TestExactPreferenceAppliesUnderPositionalWrappers(t *testing.T) {
 // contains it: a dialog heading over its sign-in button, a column header over a
 // bulk action, a section title over its save button. The exact label must not
 // outrank the control — clicking the heading does nothing and reports OK, the
-// same silent miss the exact rule exists to prevent. Where the exact label is
-// itself inside a control, it still wins over a longer control label.
+// same silent miss the exact rule exists to prevent. A control named exactly
+// the query wins over one whose name is longer; it resolves to the control
+// itself, not the label span inside it.
 const textControlFixtureHTML = `<!doctype html>
 <html><body>
 <h2 id="signinheading">Sign in</h2>
@@ -144,7 +145,7 @@ func TestTextSelectorPrefersAControlOverPlainTextThatIsTheQuery(t *testing.T) {
 		{query: "text:Sign in", wantX: "css:#signin"},
 		{query: "text:Delete", wantX: "css:#deleteselected"},
 		{query: "text:Save", wantX: "css:#savechanges"},
-		{query: "text:Publish", wantX: "css:#publishlabel"},
+		{query: "text:Publish", wantX: "css:#publish"},
 	} {
 		t.Run(tc.query, func(t *testing.T) {
 			want := resolve(t, ctx, tc.wantX)

@@ -81,7 +81,7 @@ func (h *Handlers) countElements(ctx context.Context, tabID, raw string) (int, e
 		return h.countViaJS(ctx, tabID, expr)
 
 	case selector.KindText:
-		return h.countViaJS(ctx, tabID, textCountExpr(sel.Value))
+		return bridge.CountText(ctx, h.selectorFrameID(tabID), sel.Value)
 
 	case selector.KindSemantic, selector.KindRole, selector.KindLabel,
 		selector.KindPlaceholder, selector.KindAlt, selector.KindTitle, selector.KindTestID:
@@ -149,44 +149,6 @@ func (h *Handlers) countSemantic(ctx context.Context, tabID string, sel selector
 func jsString(value string) string {
 	encoded, _ := json.Marshal(value)
 	return string(encoded)
-}
-
-// textCountExpr builds a self-contained JS expression that counts the distinct
-// leaf-most elements whose text matches the needle, using the same
-// normalize/leaf-most/fuzzy logic as the text: single-node resolver (see
-// resolveSelectorAtFn.textCandidates in internal/bridge/action_resolve.go) — it
-// returns that candidate set's length instead of picking one element.
-func textCountExpr(value string) string {
-	return fmt.Sprintf(`(function(needle){
-  const root = document;
-  const normalize = (v) => String(v || "").toLowerCase().replace(/\s+/g, " ").trim();
-  const query = normalize(needle);
-  if (!query) return 0;
-  const elements = Array.from((root.body || root.documentElement || root).querySelectorAll("*"));
-  const exact = [];
-  for (const el of elements) {
-    const text = normalize(el.textContent || "");
-    if (!text || !(text === query || text.includes(query))) continue;
-    exact.push({ el, size: el.getElementsByTagName("*").length });
-  }
-  if (exact.length) {
-    const minSize = Math.min(...exact.map((i) => i.size));
-    return exact.filter((i) => i.size === minSize).length;
-  }
-  const tokens = query.split(" ").filter(Boolean);
-  if (!tokens.length) return 0;
-  const fuzzy = [];
-  for (const el of elements) {
-    const text = normalize(el.textContent || "");
-    if (!text) continue;
-    let hits = 0;
-    for (const token of tokens) if (text.includes(token)) hits++;
-    if (hits / tokens.length >= 0.7) fuzzy.push({ el, size: el.getElementsByTagName("*").length });
-  }
-  if (!fuzzy.length) return 0;
-  const minSize = Math.min(...fuzzy.map((i) => i.size));
-  return fuzzy.filter((i) => i.size === minSize).length;
-})(%s)`, jsString(value))
 }
 
 // countViaJS evaluates a count-producing JS expression, honoring the active
