@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -173,5 +175,61 @@ func TestPointerPointOcclusionUnchanged(t *testing.T) {
 	}
 	if _, _, err := cdpops.PointerPointForNode(ctx, nodeID, true); err != nil {
 		t.Errorf("uncovered element: err = %v, want a clickable point", err)
+	}
+}
+
+// Airbnb's listing card and Google Flights' Material radio in miniature. The card
+// link spans the card under a photo covering its top half, so its centre hits the
+// photo. The radio's native input sits at opacity 0 over the ring it paints; the
+// checkbox's is moved out of the way behind its label.
+const pointerCardHTML = `<!doctype html><body style="margin:0">
+<div style="position:relative;width:300px;height:300px">
+  <a id="target" href="#x" style="position:absolute;inset:0"></a>
+  <img id="photo" style="position:absolute;left:0;top:0;width:300px;height:200px;background:#888">
+</div>
+<span style="position:relative;display:inline-block;width:48px;height:48px">
+  <span style="position:absolute;inset:12px;border:2px solid #000;border-radius:50%"></span>
+  <input id="radio" type="radio" style="position:absolute;inset:0;margin:0;width:48px;height:48px;opacity:0">
+</span>
+<input id="check" type="checkbox" style="position:absolute;left:-9999px;opacity:0"><label id="checklabel" for="check">Nonstop only</label>
+<button id="covered" style="position:absolute;left:400px;top:0;width:100px;height:40px">Buy</button>
+<div style="position:absolute;left:390px;top:0;width:130px;height:60px;background:#000"></div>
+</body>`
+
+func TestPointerPointFindsAnAnsweringPointAndAToggleBehindItsStyling(t *testing.T) {
+	ctx := newPointerFixture(t, pointerCardHTML)
+
+	// The point found must be one the element itself answers.
+	for _, tc := range []struct{ selector, wantAt string }{
+		{"#target", "target"},
+		{"#radio", "radio"},
+		{"#check", "checklabel"},
+	} {
+		nodeID, err := ResolveCSSToNodeID(ctx, tc.selector)
+		if err != nil {
+			t.Fatal(err)
+		}
+		x, y, err := cdpops.PointerPointForNode(ctx, nodeID, true)
+		if err != nil {
+			t.Errorf("%s: err = %v, want a clickable point", tc.selector, err)
+			continue
+		}
+		var at string
+		if err := chromedp.Run(ctx, chromedp.Evaluate(fmt.Sprintf(`document.elementFromPoint(%f, %f).id`, x, y), &at)); err != nil {
+			t.Fatal(err)
+		}
+		if at != tc.wantAt {
+			t.Errorf("%s: point (%.0f,%.0f) hits #%s, want #%s", tc.selector, x, y, at, tc.wantAt)
+		}
+	}
+
+	// Covered everywhere is still refused, and the error says what to click instead.
+	nodeID, err := ResolveCSSToNodeID(ctx, "#covered")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = cdpops.PointerPointForNode(ctx, nodeID, true)
+	if !errors.Is(err, cdpops.ErrElementOccluded) || !strings.Contains(err.Error(), "click --x 450 --y 20") {
+		t.Errorf("covered button: err = %v, want ErrElementOccluded naming click --x 450 --y 20", err)
 	}
 }
