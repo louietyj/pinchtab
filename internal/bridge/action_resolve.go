@@ -20,6 +20,10 @@ import (
 // error — which must surface as 5xx, not 404. Callers classify with errors.Is.
 var ErrSelectorNoMatch = errors.New("selector matched no element")
 
+// ErrSelectorAmbiguous marks a text selector that matched several elements, none
+// of them a control, so no one of them is the obvious target.
+var ErrSelectorAmbiguous = errors.New("selector is ambiguous")
+
 // ErrSelectorOutsideScope marks a cached ref that still exists but belongs to
 // the background document rather than the active modal subtree. Callers must
 // not treat this as a stale ref or invoke global semantic recovery.
@@ -183,10 +187,15 @@ func resolveNodeInFrame(ctx context.Context, frameID, functionDeclaration string
 			Type     string `json:"type"`
 			Subtype  string `json:"subtype"`
 			ObjectID string `json:"objectId"`
+			Value    any    `json:"value"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal(callResult, &call); err != nil {
 		return 0, err
+	}
+	// A resolver answers a refusal with a string naming why, instead of a node.
+	if reason, ok := call.Result.Value.(string); ok && call.Result.Type == "string" {
+		return 0, fmt.Errorf("%w: %s", ErrSelectorAmbiguous, strings.TrimPrefix(reason, "ambiguous: "))
 	}
 	if call.Result.ObjectID == "" || call.Result.Subtype == "null" || call.Result.Type == "undefined" {
 		return 0, fmt.Errorf("%w", ErrSelectorNoMatch)
@@ -541,6 +550,10 @@ const resolveSelectorAtFn = `function(kind, value, index, fromEnd, positional) {
 		return best;
 	};
 	const textCandidates = (query, exactFirst) => {
+		const matches = textMatches(query, exactFirst);
+		return matches.length ? smallestMatches(matches) : [];
+	};
+	const textMatches = (query, exactFirst) => {
 		if (!query) return [];
 		// textContent, not innerText: innerText forces a synchronous layout per
 		// element and is O(N^2) on large pages.
@@ -564,20 +577,38 @@ const resolveSelectorAtFn = `function(kind, value, index, fromEnd, positional) {
 		// bestRanked weigh exactness below control-likeness.
 		if (exactFirst) {
 			const equals = measured.filter((item) => item.text === query);
-			if (equals.length) return smallestMatches(equals);
+			if (equals.length) return equals;
 		}
 		const contains = measured.filter((item) => item.text && item.text.includes(query));
-		if (contains.length) return smallestMatches(contains);
+		if (contains.length) return contains;
 		const tokens = query.split(" ").filter(Boolean);
 		if (!tokens.length) return [];
-		const fuzzy = measured.filter((item) => {
+		return measured.filter((item) => {
 			if (!item.text) return false;
 			let hits = 0;
 			for (const token of tokens) if (item.text.includes(token)) hits++;
 			return hits / tokens.length >= 0.7;
 		});
-		if (!fuzzy.length) return [];
-		return smallestMatches(fuzzy);
+	};
+	// The bare text: selector's rule. Control-likeness is decided first, over
+	// every element containing the query, and leaf-most only chooses among the
+	// survivors. The other order let prose that mentions the word outrank the
+	// control labelled with it: on quotes.toscrape.com/page/4/, text:Next took
+	// the quote "...death is but the next great adventure" (a leaf <span>) over
+	// the "Next →" link (an <a> with a child span), and the click scrolled
+	// instead of navigating, reporting OK. When nothing control-like matches and
+	// several leaves do, it refuses rather than guess: acting on prose does
+	// nothing and still reports OK.
+	const bareTextMatch = (query) => {
+		const matches = textMatches(query, false);
+		if (!matches.length) return null;
+		const weight = (el) => semanticWeight((el.closest && el.closest(controlSelector)) || el);
+		const top = Math.max(...matches.map((item) => weight(item.el)));
+		const leaves = unique(smallestMatches(matches.filter((item) => weight(item.el) === top)));
+		if (top > 0 || leaves.length === 1) return bestRanked(leaves, query);
+		const pointer = leaves.filter((el) => getComputedStyle(el).cursor === "pointer");
+		if (pointer.length === 1) return pointer[0];
+		return "ambiguous: " + leaves.length + " elements contain this text and none is a button, link or field; use a ref from snap, or first:/nth:text:";
 	};
 
 	try {
@@ -594,11 +625,8 @@ const resolveSelectorAtFn = `function(kind, value, index, fromEnd, positional) {
 			}
 			return pick(items);
 		}
-		case "text": {
-			const items = unique(textCandidates(needle, positional));
-			if (!items.length) return null;
-			return positional ? pick(items) : bestRanked(items, needle);
-		}
+		case "text":
+			return positional ? pick(textCandidates(needle, true)) : bareTextMatch(needle);
 		default:
 			return null;
 		}

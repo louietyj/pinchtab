@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"testing"
 	"time"
 
@@ -133,6 +134,40 @@ const textControlFixtureHTML = `<!doctype html>
 <button id="publishall">Publish all</button>
 <button id="publish"><span id="publishlabel">Publish</span></button>
 </body></html>`
+
+// quotes.toscrape.com/page/4/ in miniature: a quote mentions "next" in a leaf
+// span, and the pager link carries a child span for its arrow. Leaf-most used to
+// be decided before control-likeness, so the quote won and the click scrolled.
+const textProseFixtureHTML = `<!doctype html>
+<html><body>
+<div class="quote"><span id="quote">death is but the next great adventure</span></div>
+<p id="p1">A note on the weather</p>
+<p id="p2">More about the weather</p>
+<ul><li class="next"><a id="next" href="#p2">Next <span aria-hidden="true">→</span></a></li></ul>
+</body></html>`
+
+func TestTextSelectorPrefersALinkOverProseThatIsALeaf(t *testing.T) {
+	ctx := newTextFixture(t, textProseFixtureHTML, "#next")
+	want := resolve(t, ctx, "css:#next")
+	if got := resolve(t, ctx, "text:Next"); got != want {
+		t.Errorf("text:Next resolved to %s, want a#next (%s)", describeNode(t, ctx, got), describeNode(t, ctx, want))
+	}
+}
+
+// Several prose leaves match and none is a control: there is no obvious target,
+// so the selector is refused rather than clicking the first.
+func TestTextSelectorRefusesAmbiguousProse(t *testing.T) {
+	ctx := newTextFixture(t, textProseFixtureHTML, "#next")
+	_, err := ResolveTextToNodeID(ctx, "weather")
+	if !errors.Is(err, ErrSelectorAmbiguous) {
+		t.Fatalf("text:weather err = %v, want ErrSelectorAmbiguous", err)
+	}
+	// One prose leaf is still an answer.
+	want := resolve(t, ctx, "css:#quote")
+	if got := resolve(t, ctx, "text:great adventure"); got != want {
+		t.Errorf("text:great adventure resolved to %s, want span#quote", describeNode(t, ctx, got))
+	}
+}
 
 func TestTextSelectorPrefersAControlOverPlainTextThatIsTheQuery(t *testing.T) {
 	ctx := newTextFixture(t, textControlFixtureHTML, "#publish")

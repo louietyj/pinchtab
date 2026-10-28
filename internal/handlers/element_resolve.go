@@ -62,7 +62,7 @@ func selectorFailureStatus(err error) int {
 		return http.StatusNotImplemented
 	case errors.Is(err, ErrElementNotFound), errors.Is(err, bridge.ErrSelectorNoMatch):
 		return http.StatusNotFound
-	case errors.Is(err, bridge.ErrSelectorOutsideScope):
+	case errors.Is(err, bridge.ErrSelectorOutsideScope), errors.Is(err, bridge.ErrSelectorAmbiguous):
 		return http.StatusBadRequest
 	case errors.Is(err, context.DeadlineExceeded):
 		return http.StatusGatewayTimeout
