@@ -125,8 +125,9 @@ func (as *AutoSolver) Solve(ctx context.Context, page Page, executor ActionExecu
 		}
 
 		// v3 is invisible: there is nothing on the page for the semantic stage to
-		// click, and its clicks land on the page's own controls.
-		if intent.ChallengeType != "recaptcha-v3" {
+		// click, and its clicks land on the page's own controls. A gated widget
+		// is in the vendor's frame, which the stage cannot see into either.
+		if intent.ChallengeType != "recaptcha-v3" && intent.Widget == nil {
 			solved, entry := as.trySemantic(ctx, page, executor, intent)
 			appendAttempt(result, entry)
 			if solved {
@@ -575,7 +576,15 @@ func (as *AutoSolver) executeSemanticStep(ctx context.Context, page Page, execut
 // land outside the challenge (see challengeClickRefusalJS).
 func challengeClickAllowed(ctx context.Context, executor ActionExecutor, intent *Intent, action *SuggestedAction) error {
 	t := intentTypeOf(intent)
-	if (t != IntentCaptcha && t != IntentBlocked) || action == nil || action.Action != ActionClick || action.Selector == "" {
+	if (t != IntentCaptcha && t != IntentBlocked) || action == nil || action.Action != ActionClick {
+		return nil
+	}
+	// The matcher reads the top document; a gated widget's checkbox is in the
+	// vendor's frame, so whatever it matched is something else.
+	if intent.Widget != nil {
+		return fmt.Errorf("no challenge control to click: the %s widget is in the vendor's frame, out of the matcher's reach", intent.ChallengeType)
+	}
+	if action.Selector == "" {
 		return nil
 	}
 	sel, _ := json.Marshal(action.Selector)

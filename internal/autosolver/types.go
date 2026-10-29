@@ -104,6 +104,10 @@ type Intent struct {
 	// ChallengeType provides extra detail for captcha/blocked intents
 	// (e.g., "turnstile", "recaptcha-v2", "hcaptcha", "interstitial").
 	ChallengeType string `json:"challengeType,omitempty"`
+
+	// Widget is the vendor frame the widget gate confirmed the detection with,
+	// for the vendors it gates.
+	Widget *WidgetFrame `json:"widget,omitempty"`
 }
 
 // ElementMatch represents a matched UI element on the page.

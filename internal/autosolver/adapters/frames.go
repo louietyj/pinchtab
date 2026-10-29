@@ -168,6 +168,10 @@ func evaluateInProcessFrame(ctx context.Context, frameID cdp.FrameID, expr strin
 
 // evaluateInFrameTarget attaches to a cross-site frame's own target.
 func evaluateInFrameTarget(ctx context.Context, id target.ID, expr string, result any, awaitPromise bool) error {
+	return onFrameTarget(ctx, id, chromedp.Evaluate(expr, result, awaitOpt(awaitPromise)))
+}
+
+func onFrameTarget(ctx context.Context, id target.ID, actions ...chromedp.Action) error {
 	fctx, cancel := chromedp.NewContext(ctx, chromedp.WithTargetID(id))
 	defer func() {
 		// Cancelling closes the target chromedp was attached to, and closing an
@@ -177,7 +181,77 @@ func evaluateInFrameTarget(ctx context.Context, id target.ID, expr string, resul
 		}
 		cancel()
 	}()
-	return chromedp.Run(fctx, chromedp.Evaluate(expr, result, awaitOpt(awaitPromise)))
+	return chromedp.Run(fctx, actions...)
+}
+
+func (p *PinchtabPage) FrameBox(ctx context.Context, frameID string) (autosolver.FrameBox, error) {
+	ctx, cancel := onTab(p.ctx, ctx)
+	defer cancel()
+	return TabFrameBox(ctx, frameID)
+}
+
+// TabFrameBox measures the element that owns a frame. The owner lives in the
+// parent's document, so it is asked of the tab's own session first, which
+// holds every frame in the tab's process, and then of the parent frame's
+// target when the parent is a cross-site frame itself. Owner lookup goes
+// through the protocol, so a frame in a closed shadow root is found too.
+func TabFrameBox(ctx context.Context, frameID string) (autosolver.FrameBox, error) {
+	var box autosolver.FrameBox
+	measure := chromedp.ActionFunc(func(ctx context.Context) error {
+		var err error
+		box, err = frameOwnerBox(ctx, cdp.FrameID(frameID))
+		return err
+	})
+	err := chromedp.Run(ctx, measure)
+	if err == nil {
+		return box, nil
+	}
+	infos, terr := chromedp.Targets(ctx)
+	if terr != nil {
+		return box, err
+	}
+	for _, info := range infos {
+		if string(info.TargetID) == frameID && info.ParentFrameID != "" {
+			if perr := onFrameTarget(ctx, target.ID(info.ParentFrameID), measure); perr == nil {
+				return box, nil
+			}
+		}
+	}
+	return box, err
+}
+
+const frameBoxJS = `function() {
+  const r = this.getBoundingClientRect();
+  const visible = typeof this.checkVisibility === 'function'
+    ? this.checkVisibility({checkOpacity: true, checkVisibilityCSS: true})
+    : true;
+  return {w: r.width, h: r.height, visible};
+}`
+
+func frameOwnerBox(ctx context.Context, frameID cdp.FrameID) (autosolver.FrameBox, error) {
+	owner, _, err := dom.GetFrameOwner(frameID).Do(ctx)
+	if err != nil {
+		return autosolver.FrameBox{}, err
+	}
+	obj, err := dom.ResolveNode().WithBackendNodeID(owner).Do(ctx)
+	if err != nil {
+		return autosolver.FrameBox{}, err
+	}
+	res, exc, err := cdpruntime.CallFunctionOn(frameBoxJS).WithObjectID(obj.ObjectID).WithReturnByValue(true).Do(ctx)
+	if err != nil {
+		return autosolver.FrameBox{}, err
+	}
+	if exc != nil {
+		return autosolver.FrameBox{}, fmt.Errorf("frame owner script: %s", exc.Text)
+	}
+	var v struct {
+		W, H    float64
+		Visible bool
+	}
+	if err := json.Unmarshal(res.Value, &v); err != nil {
+		return autosolver.FrameBox{}, err
+	}
+	return autosolver.FrameBox{Width: v.W, Height: v.H, Visible: v.Visible}, nil
 }
 
 func awaitOpt(await bool) chromedp.EvaluateOption {

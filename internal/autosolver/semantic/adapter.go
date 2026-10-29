@@ -47,7 +47,7 @@ func (a *Adapter) DetectIntent(ctx context.Context, page autosolver.Page) (*auto
 	title := strings.ToLower(page.Title())
 	url := page.URL()
 	html, _ := page.HTML()
-	if challenge := autosolver.DetectChallengeIntent(title, url, html); challenge != nil {
+	if challenge := autosolver.DetectPageChallenge(ctx, page, html); challenge != nil {
 		return challenge, nil
 	}
 

@@ -3,7 +3,6 @@ package autosolver
 import (
 	"context"
 	"regexp"
-	"strings"
 	"time"
 )
 
@@ -49,11 +48,6 @@ func ChildFrameWidget(frames []FrameRef) (host FrameRef, vendor string, ok bool)
 	}
 	top := frames[0].ID
 	for _, f := range frames {
-		// An invisible reCAPTCHA has no checkbox and runs only when its form is
-		// submitted. Carfax keeps one in a hidden frame on every page.
-		if strings.Contains(strings.ToLower(f.URL), "size=invisible") {
-			continue
-		}
 		for _, v := range vendorFrames {
 			if !v.re.MatchString(f.URL) || f.ParentID == "" || f.ParentID == top {
 				continue
@@ -70,23 +64,34 @@ func ChildFrameWidget(frames []FrameRef) (host FrameRef, vendor string, ok bool)
 const frameDetectTimeout = 2 * time.Second
 
 // DetectPageChallenge is DetectChallengeIntent plus captcha widgets hosted in
-// a child frame, when the page can list its frames.
+// a child frame, when the page can list its frames, each confirmed by the
+// widget gate.
 func DetectPageChallenge(ctx context.Context, page Page, html string) *Intent {
-	if intent := DetectChallengeIntent(page.Title(), page.URL(), html); intent != nil {
-		return intent
+	title, url := page.Title(), page.URL()
+	if intent := DetectChallengeIntent(title, url, html); intent != nil {
+		if intent = gate(ctx, page, intent, title, url, html); intent != nil {
+			return intent
+		}
 	}
 	fe, ok := page.(FrameEvaluator)
 	if !ok {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(ctx, frameDetectTimeout)
+	fctx, cancel := context.WithTimeout(ctx, frameDetectTimeout)
 	defer cancel()
-	frames, err := fe.Frames(ctx)
+	frames, err := fe.Frames(fctx)
 	if err != nil {
 		return nil
 	}
 	if _, vendor, ok := ChildFrameWidget(frames); ok {
-		return childFrameIntent(vendor)
+		return gate(ctx, page, childFrameIntent(vendor), title, url, html)
 	}
 	return nil
+}
+
+func gate(ctx context.Context, page Page, intent *Intent, title, url, html string) *Intent {
+	if vendor := gatedVendor(intent, title, url, html); vendor != "" {
+		return confirmWidget(ctx, page, intent, vendor)
+	}
+	return intent
 }

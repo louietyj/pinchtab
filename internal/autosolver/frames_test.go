@@ -20,8 +20,4 @@ func TestChildFrameWidgetFindsTheFrameHostingAWidget(t *testing.T) {
 	if _, _, ok := ChildFrameWidget(topWidget); ok {
 		t.Error("claimed a widget on the top document")
 	}
-	invisible := []FrameRef{frames[0], frames[1], {ID: "anchor", ParentID: "form", URL: "https://www.google.com/recaptcha/api2/anchor?ar=1&k=6LfMqSEUAAAAAIsy3sFv7uhmtGvsCqFy47OzBlHD&size=invisible&badge=inline&anchor"}}
-	if _, _, ok := ChildFrameWidget(invisible); ok {
-		t.Error("claimed an invisible reCAPTCHA, which has nothing to solve")
-	}
 }

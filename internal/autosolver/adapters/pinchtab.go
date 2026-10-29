@@ -19,6 +19,7 @@ var (
 	_ autosolver.Dragger        = (*PinchtabExecutor)(nil)
 	_ autosolver.FrameEvaluator = (*PinchtabExecutor)(nil)
 	_ autosolver.FrameEvaluator = (*PinchtabPage)(nil)
+	_ autosolver.FrameInspector = (*PinchtabPage)(nil)
 )
 
 // PinchtabPage implements autosolver.Page by wrapping a chromedp tab context.
