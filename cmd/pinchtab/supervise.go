@@ -94,8 +94,8 @@ func (p shotPaths) count() int {
 }
 
 // superviseCommand handles execute-batch and shots, and runs a browser command
-// under supervision when a setting or --unscale calls for it. handled=false
-// means the command runs in this process as usual.
+// under supervision when a setting, --unscale or --grep calls for it.
+// handled=false means the command runs in this process as usual.
 func superviseCommand(args []string) (code int, handled bool) {
 	if os.Getenv(supervisedEnv) == "1" {
 		return 0, false
@@ -461,7 +461,7 @@ func appendLine(path, line string) {
 func listShots(p shotPaths, w io.Writer) int {
 	data, _ := os.ReadFile(p.ledger)
 	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
-	if len(data) == 0 || len(lines) == 0 || lines[0] == "" {
+	if lines[0] == "" {
 		fmt.Fprintf(w, "screenshots: none since the last `%s shots`\n", p.name)
 		return 0
 	}
@@ -648,7 +648,6 @@ func runBatch(globals, flags []string, in *os.File, w io.Writer) int {
 	return rc
 }
 
-// runStep runs one batch line and returns what it printed and its exit code.
 func runStep(globals []string, line, name string, env []string) ([]byte, int) {
 	words, redirect, err := splitStep(line, os.Getenv)
 	if err != nil {
