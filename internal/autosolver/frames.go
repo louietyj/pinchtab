@@ -3,6 +3,7 @@ package autosolver
 import (
 	"context"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -48,6 +49,11 @@ func ChildFrameWidget(frames []FrameRef) (host FrameRef, vendor string, ok bool)
 	}
 	top := frames[0].ID
 	for _, f := range frames {
+		// An invisible reCAPTCHA has no checkbox and runs only when its form is
+		// submitted. Carfax keeps one in a hidden frame on every page.
+		if strings.Contains(strings.ToLower(f.URL), "size=invisible") {
+			continue
+		}
 		for _, v := range vendorFrames {
 			if !v.re.MatchString(f.URL) || f.ParentID == "" || f.ParentID == top {
 				continue

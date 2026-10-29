@@ -27,9 +27,10 @@ func DetectChallengeIntent(title, url, html string) *Intent {
 	lowerTitle := strings.ToLower(title)
 	lowerURL := strings.ToLower(url)
 	lowerHTML := strings.ToLower(html)
-	v3 := isRecaptchaV3Challenge(lowerURL, lowerHTML)
+	markup := withoutScriptBodies(lowerHTML)
+	v3 := isRecaptchaV3Challenge(lowerHTML, markup)
 
-	if isTurnstileChallenge(lowerTitle, lowerURL, lowerHTML) {
+	if isTurnstileChallenge(lowerTitle, lowerURL, lowerHTML, markup) {
 		return &Intent{
 			Type:          IntentCaptcha,
 			Confidence:    0.95,
@@ -92,7 +93,7 @@ func DetectChallengeIntent(title, url, html string) *Intent {
 		}
 	}
 
-	if isFunCaptchaChallenge(lowerHTML) {
+	if isFunCaptchaChallenge(markup) {
 		return &Intent{
 			Type:          IntentCaptcha,
 			Confidence:    0.9,
@@ -206,13 +207,24 @@ func isGenericCaptcha(title, url, html string) bool {
 
 var captchaWordRe = regexp.MustCompile(`\bcaptcha\b`)
 
-func isTurnstileChallenge(title, url, html string) bool {
+// withoutScriptBodies empties inline scripts, keeping their tags. A vendor URL in
+// script text is not a resource the page loaded: Auth0's login bundle names the
+// api.js of Turnstile, Arkose and reCAPTCHA and loads none unless the tenant
+// enables one. The HTML is the live DOM, so an injected script has its own tag.
+func withoutScriptBodies(html string) string {
+	return scriptBodyRe.ReplaceAllString(html, "$1</script>")
+}
+
+var scriptBodyRe = regexp.MustCompile(`(?is)(<script\b[^>]*>).*?</script>`)
+
+func isTurnstileChallenge(title, url, html, markup string) bool {
 	if containsAny(url,
 		"cdn-cgi/challenge-platform",
 		"/cdn-cgi/challenge",
-	) || containsAny(html,
+	) || containsAny(markup,
 		"challenges.cloudflare.com/turnstile",
 		"cf-turnstile",
+	) || containsAny(html,
 		"turnstile.render(",
 		// An interstitial is served AT the address that was asked for, so the
 		// challenge-platform script shows up in the markup while the URL still
@@ -248,14 +260,16 @@ func isTurnstileChallenge(title, url, html string) bool {
 	return false
 }
 
-func isRecaptchaV3Challenge(url, html string) bool {
+func isRecaptchaV3Challenge(html, markup string) bool {
 	return containsAny(html,
 		"grecaptcha.execute(",
 		"grecaptcha.enterprise.execute(",
-		"recaptcha/api.js?render=",
-		"recaptcha/enterprise.js?render=",
-	)
+	) || recaptchaV3ScriptRe.MatchString(markup)
 }
+
+// v3 loads api.js with its site key as render=; render=explicit is v2 drawing
+// its checkbox on demand.
+var recaptchaV3ScriptRe = regexp.MustCompile(`recaptcha/(?:api|enterprise)\.js\?render=[^&"'\s]{20,}`)
 
 // challengePageMaxText separates a challenge page from an ordinary one that
 // merely talks about captchas: a challenge is a widget and a sentence or two.

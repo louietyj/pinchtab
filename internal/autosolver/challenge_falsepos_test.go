@@ -21,6 +21,8 @@ func TestOrdinaryPagesAreNotChallenges(t *testing.T) {
 		{"code sample in an article", "reCAPTCHA - Wikipedia", "https://en.wikipedia.org/wiki/ReCAPTCHA", `<pre>&lt;div class=&quot;g-recaptcha&quot; data-sitekey=&quot;your_site_key&quot;&gt;&lt;/div&gt; loads https://www.google.com/recaptcha/api.js and renders api2/anchor</pre>` + article},
 		{"noscript boilerplate", "Roblox", "https://www.roblox.com/login", `<noscript>Please enable JavaScript to use this site.</noscript><script>if(navigator.webdriver){report('anti-bot')}</script><form><button type="submit">Log In</button></form>`},
 		{"cloudflare bot-management beacon", "Discord - Group Chat That's All Fun & Games", "https://discord.com/", `<script>var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';</script>`},
+		{"vendor urls in a bundle", "", "https://auth.site.example/u/login", `<script>case I:return"https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";case D:return"https://"+n+".arkoselabs.com/v2/"+r+"/api.js";case P:return"https://www.recaptcha.net/recaptcha/api.js?render=explicit&hl="+e</script><form><button>Continue</button></form>`},
+		{"recaptcha v2 rendered explicitly", "Sign up", "https://site.example/signup", `<script src="https://www.google.com/recaptcha/api.js?render=explicit&onload=cb"></script>`},
 	} {
 		if intent := DetectChallengeIntent(tc.title, tc.url, tc.html); intent != nil {
 			t.Errorf("%s: read as %s (%s)", tc.name, intent.ChallengeType, intent.Details)
@@ -80,6 +82,9 @@ func TestRealChallengePagesAreStillDetected(t *testing.T) {
 		{"recaptcha widget", "Sign up", "https://site.example/signup", `<div class="g-recaptcha" data-sitekey="6Le-wvkSAAAAAPBMRTvw0Q4Muexq9bi0DJwx_mJ-"></div>`, "recaptcha-v2"},
 		{"rendered recaptcha frame", "Sign up", "https://site.example/signup", `<div id="w"><iframe title="reCAPTCHA" src="https://www.google.com/recaptcha/api2/anchor?ar=1&k=6Le-wvkSAAAAAPBMRTvw0Q4Muexq9bi0DJwx_mJ-"></iframe></div>`, "recaptcha-v2"},
 		{"hcaptcha frame", "Sign up", "https://site.example/signup", `<iframe src="https://newassets.hcaptcha.com/captcha/v1/abc/static/hcaptcha.html#frame=checkbox"></iframe>`, "hcaptcha"},
+		{"injected turnstile script", "Log in", "https://auth.site.example/u/login", `<script>var s=document.createElement("script")</script><script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=cb"></script>`, "turnstile"},
+		{"recaptcha v3 script", "Sign up", "https://site.example/signup", `<script src="https://www.google.com/recaptcha/api.js?render=6Le-wvkSAAAAAPBMRTvw0Q4Muexq9bi0DJwx_mJ-"></script>`, "recaptcha-v3"},
+		{"arkose script", "Sign up", "https://site.example/signup", `<script src="https://client-api.arkoselabs.com/v2/11111111-1111-1111-1111-111111111111/api.js" data-callback="cb"></script>`, "funcaptcha"},
 	} {
 		intent := DetectChallengeIntent(tc.title, tc.url, tc.html)
 		if intent == nil || intent.ChallengeType != tc.want {
