@@ -59,6 +59,9 @@ func maybeRunWizard() {
 
 func Execute() {
 	safelog.InstallDefault()
+	if code, handled := superviseCommand(os.Args[1:]); handled {
+		os.Exit(code)
+	}
 	installUnknownSubcommandGuard(rootCmd)
 	rootCmd.SetArgs(rewriteNegativeNumberArgs(rootCmd, os.Args[1:]))
 	cmd, err := rootCmd.ExecuteC()

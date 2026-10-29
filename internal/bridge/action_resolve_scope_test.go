@@ -385,6 +385,65 @@ func TestFrameScopedWrapperFormsSeeTheWholeFrame(t *testing.T) {
 	}
 }
 
+// A calendar names its month in a heading beside the day grid, so `within` must
+// widen from the heading to the month that holds both, and no further: the
+// other month's "4" stays out, and a day that is in neither month is not found
+// by widening to the page.
+func TestWithinWidensFromTheAnchorToTheNearestContainerHoldingTheTarget(t *testing.T) {
+	ctx := newDataURLFixture(t, `
+	<section><h2>November 2026</h2><div><button id="nov4">4</button></div></section>
+	<section><h2>December 2026</h2><div><button id="dec4">4</button><button id="dec31">31</button></div></section>
+	<button id="outside">Outside</button>`)
+
+	anchor, err := ResolveUnifiedSelectorInFrame(ctx, selector.Parse("text:December 2026"), nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ selector, wantID string }{
+		{"text:4", "dec4"},
+		{"text:31", "dec31"},
+	} {
+		nodeID, err := ResolveWithinContainer(ctx, selector.Parse(tc.selector), nil, anchor, 0)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.selector, err)
+		}
+		var gotID string
+		if err := callFunctionOnNodeForTest(ctx, nodeID, `function() { return this.id; }`, &gotID); err != nil {
+			t.Fatal(err)
+		}
+		if gotID != tc.wantID {
+			t.Errorf("%s within December resolved %q, want %q", tc.selector, gotID, tc.wantID)
+		}
+	}
+	if _, err := ResolveWithinContainer(ctx, selector.Parse("text:Outside"), nil, anchor, 0); !errors.Is(err, ErrSelectorNoMatch) {
+		t.Errorf("a target outside every container of the anchor must not be found, got %v", err)
+	}
+}
+
+func newDataURLFixture(t *testing.T, html string) context.Context {
+	t.Helper()
+	chromePath := testbrowser.Path(t)
+	alloc, cancelAlloc := chromedp.NewExecAllocator(context.Background(), append(
+		chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.ExecPath(chromePath),
+		chromedp.UserDataDir(testbrowser.ProfileDir(t)),
+		chromedp.Flag("headless", true),
+		chromedp.Flag("no-sandbox", true),
+	)...)
+	ctx, cancelBrowser := chromedp.NewContext(alloc)
+	ctx, cancelTimeout := context.WithTimeout(ctx, 20*time.Second)
+	t.Cleanup(func() {
+		cancelTimeout()
+		cancelBrowser()
+		cancelAlloc()
+	})
+	dataURL := "data:text/html;base64," + base64.StdEncoding.EncodeToString([]byte(html))
+	if err := chromedp.Run(ctx, chromedp.Navigate(dataURL), chromedp.WaitReady("body")); err != nil {
+		t.Fatal(err)
+	}
+	return ctx
+}
+
 // Background twins bracket the dialog so that first: and last: each discriminate:
 // a frame-rooted first: returns background-first and a frame-rooted last: returns
 // background-last, while both correct answers are inside the dialog.

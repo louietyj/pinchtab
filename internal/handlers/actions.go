@@ -397,6 +397,7 @@ func decodeActionRequest(w http.ResponseWriter, r *http.Request) (bridge.ActionR
 		req.Owner = q.Get("owner")
 		req.Ref = q.Get("ref")
 		req.Selector = q.Get("selector")
+		req.Within = q.Get("within")
 		req.Text = q.Get("text")
 		req.Value = q.Get("value")
 		req.HasText = d.present("text") || d.present("value")

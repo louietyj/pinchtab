@@ -312,6 +312,17 @@ var waitCmd = &cobra.Command{
 	},
 }
 
+var expectCmd = &cobra.Command{
+	Use:   "expect [selector]",
+	Short: "Check the page shows an element, text or URL within 3s, failing (and stopping a batch) if not",
+	Args:  cobra.MaximumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		runCLI(func(rt cliRuntime) {
+			browseractions.Expect(rt.client, rt.base, rt.token, args, cmd)
+		})
+	},
+}
+
 var networkCmd = &cobra.Command{
 	Use:   "network [requestId]",
 	Short: "List or inspect network requests",

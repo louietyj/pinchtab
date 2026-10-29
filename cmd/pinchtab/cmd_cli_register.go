@@ -24,7 +24,7 @@ func browserRootCommands() []*cobra.Command {
 		dblclickCmd, dragCmd, typeCmd, screenshotCmd, annotateCmd, captureCmd, tabsCmd, pressCmd, fillCmd,
 		hoverCmd, mouseCmd, focusCmd, scrollCmd, evalCmd, pdfCmd, textCmd, titleCmd, urlCmd,
 		htmlCmd, stylesCmd, valueCmd, attrCmd, countCmd, boxCmd, visibleCmd, enabledCmd, checkedCmd,
-		downloadCmd, uploadCmd, findCmd, extractCmd, selectCmd, checkCmd, uncheckCmd, networkCmd, waitCmd,
+		downloadCmd, uploadCmd, findCmd, extractCmd, selectCmd, checkCmd, uncheckCmd, networkCmd, waitCmd, expectCmd,
 		keyboardCmd, keydownCmd, keyupCmd, scrollintoviewCmd, dialogCmd, consoleCmd, errorsCmd,
 		clipboardCmd, cacheCmd, cookiesCmd, setCmd, storageCmd, stateCmd, closeCmd, handoffCmd,
 		resumeCmd, handoffStatusCmd, recordCmd, auditCmd, compareCmd, scrapeCmd, a11yCmd, memoryCmd,
@@ -112,6 +112,10 @@ func configureBrowserFlags() {
 	dragCmd.Flags().Bool("humanize", false, "Drag along an eased, slightly drifting path with an overshoot, as slider captchas expect")
 
 	focusCmd.Flags().String("css", "", "CSS selector instead of ref")
+
+	for _, c := range []*cobra.Command{clickCmd, dblclickCmd, hoverCmd, typeCmd, fillCmd, pressCmd, selectCmd, checkCmd, uncheckCmd, focusCmd, scrollintoviewCmd} {
+		c.Flags().String("within", "", "Look for the target inside the nearest container of what this selector matches (e.g. a calendar month's heading)")
+	}
 
 	snapCmd.Flags().BoolP("interactive", "i", true, "Filter interactive elements + headings (default true, use --interactive=false for all)")
 	snapCmd.Flags().BoolP("compact", "c", true, "Compact output format (default true, use --compact=false for JSON)")
@@ -302,6 +306,7 @@ func configureBrowserFlags() {
 		scrollintoviewCmd,
 		networkCmd,
 		waitCmd,
+		expectCmd,
 		dialogAcceptCmd,
 		dialogDismissCmd,
 		setViewportCmd,
@@ -409,6 +414,13 @@ func configureBrowserFlags() {
 	// (still ms); cobra prints its deprecation note pointing at --timeout-ms on use.
 	waitCmd.Flags().Int("timeout", 0, "Deprecated: use --timeout-ms")
 	_ = waitCmd.Flags().MarkDeprecated("timeout", "use --timeout-ms (this flag is milliseconds; bare --timeout means seconds on nav and scrape)")
+
+	expectCmd.Flags().String("text", "", "Expect this text on the page")
+	expectCmd.Flags().String("not-text", "", "Expect this text gone from the page")
+	expectCmd.Flags().String("url", "", "Expect the URL to match this glob")
+	expectCmd.Flags().String("fn", "", "Expect this JS expression to be truthy")
+	expectCmd.Flags().String("state", "", "Element state: visible (default) or hidden")
+	expectCmd.Flags().Int("timeout-ms", 0, "How long to give it (default 3000)")
 
 	consoleCmd.Flags().Bool("clear", false, "Clear console logs")
 	consoleCmd.Flags().String("limit", "", "Maximum entries to return")

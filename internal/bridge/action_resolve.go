@@ -347,6 +347,43 @@ func resolveNodeWithinBackendNode(ctx context.Context, scopeBackendNodeID int64,
 	return backendNodeIDFromObjectID(ctx, call.Result.ObjectID)
 }
 
+// withinMaxClimb bounds how far ResolveWithinContainer widens past its anchor.
+const withinMaxClimb = 6
+
+// ResolveWithinContainer finds sel inside the nearest container of anchor that
+// holds it: `within "text:December 2026"` usually matches the month's heading,
+// whose days sit in the element around it. It widens one parent at a time,
+// never past stopAt (an open dialog; 0 for none) or up to <body>, and an
+// ambiguous match stops it rather than widening into a choice.
+func ResolveWithinContainer(ctx context.Context, sel selector.Selector, refCache *RefCache, anchor, stopAt int64) (int64, error) {
+	scope := anchor
+	for climb := 0; ; climb++ {
+		nid, err := ResolveUnifiedSelectorWithinNode(ctx, sel, refCache, scope)
+		if err == nil || !errors.Is(err, ErrSelectorNoMatch) || climb >= withinMaxClimb || scope == stopAt {
+			return nid, err
+		}
+		parent, perr := parentContainerBackendNode(ctx, scope)
+		if perr != nil || parent == 0 {
+			return 0, err
+		}
+		scope = parent
+	}
+}
+
+// parentContainerBackendNode returns the element enclosing nodeID, crossing a
+// shadow root, or 0 once the next step up would be <body> or <html>.
+func parentContainerBackendNode(ctx context.Context, nodeID int64) (int64, error) {
+	nid, err := resolveNodeWithinBackendNode(ctx, nodeID, `function() {
+		const p = this.parentElement || (this.parentNode && this.parentNode.host) || null;
+		if (!p || p.tagName === "BODY" || p.tagName === "HTML") return null;
+		return p;
+	}`, nil)
+	if errors.Is(err, ErrSelectorNoMatch) {
+		return 0, nil
+	}
+	return nid, err
+}
+
 // BackendNodeWithinScope reports whether target is the scope node or one of
 // its DOM descendants. It is used to reject stale/background snapshot refs
 // while a modal dialog owns the interaction surface.

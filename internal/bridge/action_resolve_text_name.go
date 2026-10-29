@@ -188,7 +188,7 @@ func ambiguousCandidates(query string, candidates []A11yNode) error {
 	if len(candidates) > 3 {
 		more = fmt.Sprintf(" and %d more", len(candidates)-3)
 	}
-	return fmt.Errorf("%w: %d elements match %q (%s%s); use a ref from snap, or nth:N:text:",
+	return fmt.Errorf("%w: %d elements match %q (%s%s); use a ref from snap, --within <the container>, or nth:N:text:",
 		ErrSelectorAmbiguous, len(candidates), query, strings.Join(named, ", "), more)
 }
 

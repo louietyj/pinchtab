@@ -36,6 +36,9 @@ type ActionRequest struct {
 	Kind     string `json:"kind"`
 	Ref      string `json:"ref,omitempty"`
 	Selector string `json:"selector,omitempty"`
+	// Within confines the selector to the nearest container of what it matches,
+	// so `text:4` can mean the day in one calendar month.
+	Within string `json:"within,omitempty"`
 
 	// Text/Value use omitempty, and HasText records that one of them was
 	// SUPPLIED, for the same reason X/Y do below: an empty fill is a

@@ -11,6 +11,16 @@ import (
 )
 
 func Wait(client *http.Client, base, token string, args []string, cmd *cobra.Command) {
+	waitFor(client, base, token, args, cmd, "wait", 0)
+}
+
+// Expect is wait as a check: a short default timeout, and a failure that names
+// what was not met, so a batch stops on a wrong state instead of acting past it.
+func Expect(client *http.Client, base, token string, args []string, cmd *cobra.Command) {
+	waitFor(client, base, token, args, cmd, "expect", 3000)
+}
+
+func waitFor(client *http.Client, base, token string, args []string, cmd *cobra.Command, verb string, defaultTimeoutMs int) {
 	body := map[string]any{}
 
 	textFlag, _ := cmd.Flags().GetString("text")
@@ -59,10 +69,17 @@ func Wait(client *http.Client, base, token string, args []string, cmd *cobra.Com
 			}
 		}
 	default:
+		if verb == "expect" {
+			output.Error("expect", "give a selector, --text, --not-text, --url or --fn", 2)
+			return
+		}
 		fmt.Println("Usage: pinchtab wait <selector|ms> [--text|--not-text|--url|--load|--fn] [--timeout-ms ms] [--tab id]")
 		return
 	}
 
+	if timeoutMs == 0 {
+		timeoutMs = defaultTimeoutMs
+	}
 	if timeoutMs > 0 {
 		body["timeout"] = timeoutMs
 	}
@@ -80,10 +97,23 @@ func Wait(client *http.Client, base, token string, args []string, cmd *cobra.Com
 	}
 
 	if waited, ok := result["waited"].(bool); ok && !waited {
+		if verb == "expect" {
+			output.Error("expect", fmt.Sprintf("%s not met within %dms", expectation(body), timeoutMs), output.ExitTimeout)
+			return
+		}
 		output.Error("wait", "timeout", output.ExitTimeout)
 		return
 	}
 	if !jsonOutput {
 		output.Success()
 	}
+}
+
+func expectation(body map[string]any) string {
+	for _, k := range []string{"text", "notText", "url", "fn", "selector"} {
+		if v, ok := body[k]; ok {
+			return fmt.Sprintf("%s %q", k, v)
+		}
+	}
+	return "expectation"
 }

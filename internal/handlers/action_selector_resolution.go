@@ -130,6 +130,23 @@ func (h *Handlers) resolveActionRequestSelectorInScope(
 		}
 		return bridge.ResolveUnifiedSelectorInFrame(ctx, sel, h.Bridge.GetRefCache(tabID), frameID)
 	}
+	if req.Within != "" {
+		anchorNodeID, err := resolve(selector.Parse(req.Within))
+		if err != nil {
+			return actionSelectorResolution{status: selectorFailureStatus(err)}, fmt.Errorf("within %q: %w", req.Within, err)
+		}
+		stopAt := int64(0)
+		if modalOpen {
+			stopAt = modalNodeID
+		}
+		resolve = func(sel selector.Selector) (int64, error) {
+			nid, err := bridge.ResolveWithinContainer(ctx, sel, h.Bridge.GetRefCache(tabID), anchorNodeID, stopAt)
+			if err != nil {
+				return 0, fmt.Errorf("within %q: %w", req.Within, err)
+			}
+			return nid, nil
+		}
+	}
 
 	switch sel.Kind {
 	case selector.KindRef:

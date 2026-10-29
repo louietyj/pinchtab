@@ -125,6 +125,9 @@ func postActionWithHeaders(client *http.Client, base, token string, cmd *cobra.C
 		path = "/tabs/" + tabID + "/action"
 	}
 
+	if f := cmd.Flags().Lookup("within"); f != nil && f.Value.String() != "" {
+		body["within"] = f.Value.String()
+	}
 	if _, ok := body["vocab"]; !ok {
 		if vocabTab, tok := apiclient.VocabForAction(base, tabID); tok != "" {
 			body["vocab"] = tok

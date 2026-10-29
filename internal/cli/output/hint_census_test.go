@@ -40,7 +40,7 @@ var hintSites = map[string]struct {
 	"../actions/actions_element.go:postActionWithHeaders":               {occurrence, 1, "this action hit a captcha"},
 	"../actions/actions_element.go:printActionResult":                   {occurrence, 3, "this action's refs went stale, this submit is still pending, or this click went unacknowledged"},
 	"../actions/actions_element.go:printRecoveryHint":                   {occurrence, 1, "this action's ref had gone stale and went to its closest match"},
-	"../actions/actions_wait.go:Wait":                                   {occurrence, 1, "this page was still changing when the DOM-quiet wait gave up"},
+	"../actions/actions_wait.go:waitFor":                                {occurrence, 1, "this page was still changing when the DOM-quiet wait gave up"},
 	"../actions/actions_capture.go:Capture":                             {occurrence, 1, "this page tripped the IDPI guard"},
 	"../actions/actions_text.go:Text":                                   {occurrence, 1, "readability collapsed on this page"},
 	"../actions/actions_evaluate.go:Evaluate":                           {occurrence, 1, "this eval returned a Promise without --await-promise"},
