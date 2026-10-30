@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chromedp/cdproto"
 	"github.com/chromedp/cdproto/input"
 	"github.com/chromedp/chromedp"
 )
@@ -368,18 +367,16 @@ func ClickByNodeID(ctx context.Context, nodeID int64) error {
 	if err := dispatchMouseEvent(ctx, map[string]any{"type": "mouseMoved", "x": x, "y": y}); err != nil {
 		return err
 	}
-	// CDP mouse events don't trigger default browser navigation on <a>
-	// elements. For links, fire a JS-level .click() so the browser
-	// follows the href.
-	return pressAndRelease(ctx, x, y, 1, chromedp.ActionFunc(func(ctx context.Context) error {
-		return jsClickIfLink(ctx, nodeID)
-	}))
+	// The trusted press follows a link by itself. A JS .click() after it, as
+	// this used to send, fired the link a second time: two downloads, or two
+	// submits from an href="#" link with an onclick.
+	return pressAndRelease(ctx, x, y, 1)
 }
 
 // pressAndRelease is a node click's point of no return: every failure after the
 // press is sent is ErrClickUnconfirmed, not a cue for a fallback click. A press
 // that ran out of time still gets its release, so the button is not left held.
-func pressAndRelease(ctx context.Context, x, y float64, clickCount int, after ...chromedp.Action) error {
+func pressAndRelease(ctx context.Context, x, y float64, clickCount int) error {
 	pair := mousePressReleaseActions(x, y, clickCount)
 	press, release := pair[0], pair[1]
 	if err := chromedp.Run(ctx, press); err != nil {
@@ -391,56 +388,10 @@ func pressAndRelease(ctx context.Context, x, y float64, clickCount int, after ..
 		_ = chromedp.Run(releaseCtx, release)
 		return fmt.Errorf("%w: %v", ErrClickUnconfirmed, err)
 	}
-	if err := chromedp.Run(ctx, append([]chromedp.Action{release}, after...)...); err != nil {
+	if err := chromedp.Run(ctx, release); err != nil {
 		return fmt.Errorf("%w: %v", ErrClickUnconfirmed, err)
 	}
 	return nil
-}
-
-func jsClickIfLink(ctx context.Context, nodeID int64) error {
-	var resolved json.RawMessage
-	if err := chromedp.FromContext(ctx).Target.Execute(ctx, "DOM.resolveNode", map[string]any{
-		"backendNodeId": nodeID,
-	}, &resolved); err != nil {
-		return nil
-	}
-	var obj struct {
-		Object struct {
-			ObjectID string `json:"objectId"`
-		} `json:"object"`
-	}
-	if json.Unmarshal(resolved, &obj) != nil || obj.Object.ObjectID == "" {
-		return nil
-	}
-
-	const js = `function() {
-		var el = this;
-		while (el && el.nodeType === 1) {
-			if (el.tagName === 'A' && el.hasAttribute('href')) {
-				el.click();
-				return;
-			}
-			el = el.parentElement;
-		}
-	}`
-	err := chromedp.FromContext(ctx).Target.Execute(ctx,
-		"Runtime.callFunctionOn", map[string]any{
-			"functionDeclaration": js,
-			"objectId":            obj.Object.ObjectID,
-		}, nil)
-	if linkContextGone(err) {
-		// The trusted press already followed the link and the old document's
-		// context is gone: the click landed, so there is nothing left to do.
-		return nil
-	}
-	return err
-}
-
-func linkContextGone(err error) bool {
-	var protocolErr *cdproto.Error
-	return errors.As(err, &protocolErr) && protocolErr.Code == -32000 &&
-		(protocolErr.Message == "Cannot find context with specified id" ||
-			protocolErr.Message == "Execution context was destroyed.")
 }
 
 func DoubleClickByCoordinate(ctx context.Context, x, y float64) error {
