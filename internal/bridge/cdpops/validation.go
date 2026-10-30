@@ -61,12 +61,30 @@ func PointerPointForNode(ctx context.Context, backendNodeID int64, requireTopMos
 	const probeJS = `function() {
 		const view = (this.ownerDocument && this.ownerDocument.defaultView) || window;
 		const doc = this.ownerDocument || document;
-		const related = (el, hit) => !!hit && (hit === el || el.contains(hit) || hit.contains(el));
+		// Shadow DOM: elementFromPoint stops at a web component's host, and
+		// contains() stops at a shadow root, so a button inside <leaf-button>
+		// (Cigna) read as covered by its own host. Hit-test down through open
+		// shadow roots, and compare across them.
+		const parentAcrossShadow = (n) => n.parentElement || (n.getRootNode && n.getRootNode().host) || null;
+		const holds = (outer, inner) => {
+			for (let n = inner; n; n = parentAcrossShadow(n)) if (n === outer) return true;
+			return false;
+		};
+		const related = (el, hit) => !!hit && (holds(el, hit) || holds(hit, el));
+		const hitAt = (x, y) => {
+			let hit = doc.elementFromPoint(x, y);
+			while (hit && hit.shadowRoot) {
+				const inner = hit.shadowRoot.elementFromPoint(x, y);
+				if (!inner || inner === hit) break;
+				hit = inner;
+			}
+			return hit;
+		};
 		const innerControlSelector = 'a, button, input, select, textarea, summary, [role=button], [role=link], [role=tab], ' +
 			'[role=checkbox], [role=radio], [role=switch], [role=menuitem], [role=option], [role=combobox]';
 		const hitAtCentre = (el) => {
 			const b = el.getBoundingClientRect();
-			return b.width > 0 && b.height > 0 && related(el, doc.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2));
+			return b.width > 0 && b.height > 0 && related(el, hitAt(b.left + b.width / 2, b.top + b.height / 2));
 		};
 		// A custom-styled radio or checkbox keeps its native input at opacity 0,
 		// either on top of the ring it paints (Material: Google Flights' "Nonstop
@@ -119,11 +137,7 @@ func PointerPointForNode(ctx context.Context, backendNodeID int64, requireTopMos
 		// opacity:0 IFRAME hiding its contents is not covered here, because
 		// reaching the frame owner can throw on a cross-origin ancestor and the
 		// coordinate walk above already treats that as a case higher layers decide.
-		const parentAcrossShadow = (n) => {
-			if (n.parentElement) return n.parentElement;
-			const root = n.getRootNode && n.getRootNode();
-			return root && root.host ? root.host : null;
-		};
+		//
 		// The toggle itself is exempt: its opacity 0 is the styling above, and
 		// it was only kept as the target because it is hit-testable at its centre.
 		const nativeToggle = target === this && toggleType !== '';
@@ -142,7 +156,7 @@ func PointerPointForNode(ctx context.Context, backendNodeID int64, requireTopMos
 		let occluded = false;
 		let topTag = '';
 		if (localX >= 0 && localY >= 0 && localX <= view.innerWidth && localY <= view.innerHeight) {
-			const top = doc.elementFromPoint(localX, localY);
+			const top = hitAt(localX, localY);
 			if (top) {
 				topTag = String(top.tagName || '').toLowerCase();
 				occluded = !related(target, top);
@@ -163,7 +177,7 @@ func PointerPointForNode(ctx context.Context, backendNodeID int64, requireTopMos
 			const inner = hit.closest && hit.closest(innerControlSelector);
 			return !inner || inner === target || inner.contains(target);
 		};
-		const ownCentre = !occluded && ownPoint(doc.elementFromPoint(localX, localY));
+		const ownCentre = !occluded && ownPoint(hitAt(localX, localY));
 		if (!ownCentre) {
 			const fractions = [0.5, 0.25, 0.75, 0.1, 0.9];
 			search: for (const accept of occluded ? [ownPoint, (hit) => related(target, hit)] : [ownPoint]) {
@@ -172,7 +186,7 @@ func PointerPointForNode(ctx context.Context, backendNodeID int64, requireTopMos
 						const px = r.left + r.width * fx;
 						const py = r.top + r.height * fy;
 						if (px < 0 || py < 0 || px > view.innerWidth || py > view.innerHeight) continue;
-						if (accept(doc.elementFromPoint(px, py))) {
+						if (accept(hitAt(px, py))) {
 							x += px - localX;
 							y += py - localY;
 							occluded = false;
