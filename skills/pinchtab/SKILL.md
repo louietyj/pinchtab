@@ -216,6 +216,11 @@ Every step takes `--help`. Unified selectors work wherever a step takes one.
 (autocomplete that ignores `fill`). Submit forms by clicking their button, not
 `press Enter`.
 
+A click that loads a page prints `OK navigated <url>`; with `--json` it also
+carries `previousUrl` and `refsStale` (a new document loaded: snap again).
+`--wait-nav` is not permission to navigate: it waits for the navigation the
+click causes, for when the next step needs the new page loaded.
+
 ## Reading a page
 
 - `text` is Readability-filtered prose. It drops controls and anything that

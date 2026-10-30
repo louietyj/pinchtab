@@ -146,7 +146,8 @@ func TestTheFallbackClosureDeliversTheWholeRequest(t *testing.T) {
 // field now has to be classified before it can land.
 var notCarriedToTheStaticRequest = map[string]string{
 	"Selector":                  reasonRefOnly,
-	"Key":                       reasonChromeOnly,
+	"Within":                    reasonHandlerOnly,
+	"Key":                    reasonChromeOnly,
 	"NodeID":                    reasonChromeOnly,
 	"X":                         reasonChromeOnly,
 	"Y":                         reasonChromeOnly,
