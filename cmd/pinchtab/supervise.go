@@ -640,9 +640,10 @@ func runBatch(globals, flags []string, in *os.File, w io.Writer) int {
 		fmt.Fprintf(w, "shot %04d in %s/, also latest-small.jpg\n", first, p.dir)
 	}
 	// Where the batch ended. --grep was written for the page the batch expected,
-	// so a failed batch gets the head of each output instead, and the rest in a
-	// file of the page as it was when the step failed; the screenshot is what
-	// shows what went wrong.
+	// so a failed batch never applies it: a short output prints whole, a long one
+	// only goes to a file of the page as it was when the step failed. No
+	// snapshot misleads less than part of one; the screenshot shows what went
+	// wrong.
 	for _, end := range []struct {
 		want bool
 		name string
@@ -654,7 +655,7 @@ func runBatch(globals, flags []string, in *os.File, w io.Writer) int {
 		out, errOut, _ := runSupervised(append(append([]string{}, globals...), end.args...), env)
 		switch {
 		case rc != 0:
-			out = headWithRest(out, filepath.Join(p.dir, fmt.Sprintf("%04d-failed-%s.txt", p.count(), end.name)))
+			out = wholeOrFile(out, filepath.Join(p.dir, fmt.Sprintf("%04d-failed-%s.txt", p.count(), end.name)))
 		case grep != nil:
 			out = grepLines(out, grep)
 		}
@@ -664,20 +665,20 @@ func runBatch(globals, flags []string, in *os.File, w io.Writer) int {
 	return rc
 }
 
-// failedOutputLines is how much of an end-state output a failed batch prints.
-const failedOutputLines = 40
+// failedOutputLines is the longest end-state output a failed batch prints:
+// about what a typical page's whole snapshot is, ~500 tokens.
+const failedOutputLines = 50
 
-// headWithRest keeps the first failedOutputLines lines of out and saves all of
-// it to path, naming the file in place of what was cut.
-func headWithRest(out []byte, path string) []byte {
-	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
-	if len(lines) <= failedOutputLines {
+// wholeOrFile returns out if it is short, and otherwise saves it to path and
+// returns only a line naming the file.
+func wholeOrFile(out []byte, path string) []byte {
+	n := strings.Count(strings.TrimRight(string(out), "\n"), "\n") + 1
+	if n <= failedOutputLines {
 		return out
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err == nil {
 		if err := os.WriteFile(path, out, 0o644); err == nil {
-			return []byte(strings.Join(lines[:failedOutputLines], "\n") +
-				fmt.Sprintf("\n... %d more lines in %s\n", len(lines)-failedOutputLines, path))
+			return []byte(fmt.Sprintf("%d lines, not grepped, saved to %s; grep that file for what you need\n", n, path))
 		}
 	}
 	return out

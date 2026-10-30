@@ -188,19 +188,19 @@ func TestGrepFiltersOutputButKeepsTheSnapHeader(t *testing.T) {
 	}
 }
 
-func TestHeadWithRestCutsLongOutputToAFile(t *testing.T) {
+func TestWholeOrFilePrintsShortOutputAndFilesLongOutputWhole(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "failed-snap.txt")
 	short := []byte("# Page | https://x | 2 nodes\ne1:button \"Go\"\n")
-	if got := headWithRest(short, path); !bytes.Equal(got, short) {
+	if got := wholeOrFile(short, path); !bytes.Equal(got, short) {
 		t.Fatalf("short output must pass through, got %q", got)
 	}
 	var long bytes.Buffer
-	for i := 0; i < 100; i++ {
+	for i := 0; i < failedOutputLines+1; i++ {
 		long.WriteString("line\n")
 	}
-	got := string(headWithRest(long.Bytes(), path))
-	if strings.Count(got, "line\n") != failedOutputLines || !strings.Contains(got, "60 more lines in "+path) {
-		t.Fatalf("got %q", got)
+	got := string(wholeOrFile(long.Bytes(), path))
+	if strings.Contains(got, "line\n") || !strings.Contains(got, path) {
+		t.Fatalf("a long output must print none of itself, only the file: got %q", got)
 	}
 	if saved, _ := os.ReadFile(path); !bytes.Equal(saved, long.Bytes()) {
 		t.Fatal("the whole output must be saved")

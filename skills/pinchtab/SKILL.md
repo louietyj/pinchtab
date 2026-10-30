@@ -80,10 +80,13 @@ the next batch.
   `eval`, ...) prints its output under it, indented.
 - `--snap`, `--snap-diff` or `--text` on `execute-batch` describe where it
   ended, stopped or not: `pinchtab execute-batch --snap-diff <<'EOF'`. Add
-  `--grep <regex>` to keep only what you expect to need next. If the batch
-  fails, the grep is skipped and you get the first 40 lines plus a file with
-  the rest; the screenshot is what shows what went wrong, and a ref that
-  didn't make the cut is a coordinate click away.
+  `--grep <regex>` to keep only what you expect to need next. **If the batch
+  fails, `--grep` is never applied**: it was written for the page you
+  expected. Up to 50 lines print whole; longer output prints nothing but the
+  file it was saved to, as the page was when the step failed. Read the
+  screenshot first; it is what shows what went wrong. Then, if you want a
+  ref, grep that file for what the failure makes you look for, or click by
+  coordinates.
 - Earlier steps' shots are kept, numbered; the batch prints their range, and
   `shots` lists the newest ten, so after a failure you can see what step 3
   saw.
