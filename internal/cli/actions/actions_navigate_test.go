@@ -37,9 +37,7 @@ func TestAutoSolveHint(t *testing.T) {
 		want    string
 	}{
 		{"no challenge", "", nil, ""},
-		{"pending with a title", "Just a moment...", pending, "Do NOT click the captcha widget or navigate away. Run `pinchtab wait --fn 'document.title !== \"Just a moment...\"' --timeout 30000; pinchtab snap`"},
-		{"pending without a title", "", pending, "Run `sleep 15; pinchtab snap`"},
-		{"pending with a quote in the title", "Don't panic", pending, "Run `sleep 15; pinchtab snap`"},
+		{"pending", "Just a moment...", pending, "Do NOT click the captcha widget or navigate away. `pinchtab wait --captcha` waits for the solve"},
 		{"solved", "", map[string]any{"solved": true}, "a captcha challenge on this page was already solved for you"},
 		{"solved by a named solver", "", map[string]any{"solved": true, "challengeType": "nocaptcha", "solver": "nocaptcha"}, "a nocaptcha challenge on this page was already solved by nocaptcha"},
 		{"cleared with no solver", "", map[string]any{"solved": true, "challengeType": "turnstile", "solver": "cleared"}, "a turnstile challenge on this page cleared on its own"},

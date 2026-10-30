@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/pinchtab/pinchtab/internal/cli/apiclient"
 	"github.com/pinchtab/pinchtab/internal/cli/output"
@@ -18,6 +19,33 @@ func Wait(client *http.Client, base, token string, args []string, cmd *cobra.Com
 // what was not met, so a batch stops on a wrong state instead of acting past it.
 func Expect(client *http.Client, base, token string, args []string, cmd *cobra.Command) {
 	waitFor(client, base, token, args, cmd, "expect", 3000)
+}
+
+// captchaWaitDefault is how long `wait --captcha` waits when not told: most
+// solves are over in a minute, and a person solving hCaptcha takes up to three.
+const captchaWaitDefault = 3 * time.Minute
+
+// waitCaptcha waits for the captcha solve under way on the tab, past the two
+// minutes a step waits on its own.
+func waitCaptcha(client *http.Client, base, token, tabID string, timeoutMs int) {
+	timeout := captchaWaitDefault
+	if timeoutMs > 0 {
+		timeout = time.Duration(timeoutMs) * time.Millisecond
+	}
+	outcome := apiclient.WaitForCaptcha(client, base, token, tabID, timeout)
+	if outcome == nil {
+		fmt.Println("no captcha is being solved on this tab")
+		return
+	}
+	if pending, _ := outcome["pending"].(bool); pending {
+		output.Error("wait", fmt.Sprintf("pinchtab is still solving a %v challenge after %s; wait again, or go on without it",
+			outcome["challengeType"], timeout.Round(time.Second)), 1)
+		return
+	}
+	if hint := autoSolveHint(map[string]any{"autoSolve": outcome}); hint != "" {
+		output.Hint(hint)
+	}
+	output.Success()
 }
 
 func waitFor(client *http.Client, base, token string, args []string, cmd *cobra.Command, verb string, defaultTimeoutMs int) {
@@ -45,6 +73,11 @@ func waitFor(client *http.Client, base, token string, args []string, cmd *cobra.
 	timeoutMs, _ := cmd.Flags().GetInt("timeout-ms")
 	if timeoutMs == 0 {
 		timeoutMs, _ = cmd.Flags().GetInt("timeout")
+	}
+
+	if captcha, _ := cmd.Flags().GetBool("captcha"); captcha {
+		waitCaptcha(client, base, token, tabID, timeoutMs)
+		return
 	}
 
 	switch {

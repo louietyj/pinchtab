@@ -409,6 +409,7 @@ func configureBrowserFlags() {
 	waitCmd.Flags().Bool("dom-quiet", false, "Wait until the DOM goes 300ms unchanged and unscrolled, with no spinner or finite animation running (at most 2s); unlike networkidle, analytics don't hold it up")
 	waitCmd.Flags().String("fn", "", "Wait for JS expression to be truthy")
 	waitCmd.Flags().String("state", "", "Element state: visible (default) or hidden")
+	waitCmd.Flags().Bool("captcha", false, "Wait for the captcha solve under way on the tab (default timeout 3m, no max)")
 	waitCmd.Flags().Int("timeout-ms", 0, "Timeout in milliseconds (default 10000, max 30000)")
 	// --timeout on wait is milliseconds, but the same bare flag is SECONDS on
 	// nav/scrape — a 1000x footgun. Keep it for back-compat as a deprecated alias

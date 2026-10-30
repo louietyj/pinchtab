@@ -96,7 +96,7 @@ func doRequest(client *http.Client, token string, r request) (int, []byte, error
 		if !ok {
 			break
 		}
-		if waitForSolve(client, token, r.base, tab, 0, deadline) == nil {
+		if waitForSolve(client, token, r.base, tab, 0, deadline, false) == nil {
 			break
 		}
 		if status, body, err = sendOnce(client, token, r); err != nil {

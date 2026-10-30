@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"maps"
 	"net/http"
@@ -121,15 +122,14 @@ func (h *Handlers) solveBeforeStep(ctx context.Context, w http.ResponseWriter, t
 	if run == nil && h.autoSolve.isWatching(tabID) {
 		run = h.solveShowingPuzzle(ctx, tabID, time.Now().Add(stepSolveWait))
 	}
-	if run != nil {
-		select {
-		case <-run.done:
-		case <-time.After(stepSolveWait):
-			httpx.ErrorCode(w, http.StatusConflict, "solve_in_progress",
-				"pinchtab is solving a "+challengeName(run.challengeType)+" challenge on this tab; the step waits for it",
-				true, map[string]any{"tabId": tabID, "elapsedMs": time.Since(run.started).Milliseconds()})
-			return nil, false
-		}
+	if run != nil && !h.waitStep(run, stepSolveWait) {
+		left := h.autoSolve.stepWaitLeft(run)
+		httpx.ErrorCode(w, http.StatusConflict, "solve_in_progress",
+			fmt.Sprintf("pinchtab is still solving a %s challenge on this tab (%ds so far), so this step was not run. "+
+				"`pinchtab wait --captcha` waits for the solve; run the step again after it, or do something else meanwhile",
+				challengeName(run.challengeType), int(time.Since(run.started).Seconds())),
+			true, map[string]any{"tabId": tabID, "elapsedMs": time.Since(run.started).Milliseconds(), "waitedOut": left == 0})
+		return nil, false
 	}
 	fin := h.autoSolve.takeFinished(tabID)
 	if fin == nil {
@@ -144,6 +144,24 @@ func (h *Handlers) solveBeforeStep(ctx context.Context, w http.ResponseWriter, t
 		return nil, false
 	}
 	return report, true
+}
+
+// waitStep waits up to most for run to finish, out of its step wait budget,
+// reporting whether it did.
+func (h *Handlers) waitStep(run *solveRun, most time.Duration) bool {
+	start := time.Now()
+	defer func() { h.autoSolve.addStepWait(run, time.Since(start)) }()
+	select {
+	case <-run.done:
+		return true
+	case <-time.After(min(most, h.autoSolve.stepWaitLeft(run))):
+	}
+	select {
+	case <-run.done:
+		return true
+	default:
+		return false
+	}
 }
 
 func challengeName(t string) string {
@@ -195,6 +213,7 @@ func withoutFragment(u string) string {
 // @Param tabId    string query Tab ID (optional — uses the current tab)
 // @Param waitMs   int    query How long to wait for a solve under way (optional, default and max 40000)
 // @Param lingerMs int    query How long to watch for a puzzle to open (optional, default 0)
+// @Param explicit string query "1" when the agent asked to wait: not held to the 2-minute budget steps share (optional)
 //
 // @Response 200 application/json Returns {tabId, state: idle|solving|done, autoSolve?, pageChanged?, elapsedMs?}
 func (h *Handlers) HandleAutoSolveWait(w http.ResponseWriter, r *http.Request) {
@@ -213,18 +232,26 @@ func (h *Handlers) HandleAutoSolveWait(w http.ResponseWriter, r *http.Request) {
 	if run == nil && linger > 0 && h.autoSolve.isWatching(tabID) {
 		run = h.lingerForPuzzle(ctx, tabID, linger, deadline)
 	}
-	if run != nil {
+	// explicit is `pinchtab wait --captcha`: the agent chose to wait, so it is
+	// not held to the budget a step waits on its own.
+	explicit := q.Get("explicit") == "1"
+	switch {
+	case run == nil:
+	case explicit:
 		select {
 		case <-run.done:
 		case <-time.After(time.Until(deadline)):
 		case <-ctx.Done():
 		}
+	default:
+		h.waitStep(run, time.Until(deadline))
 	}
 	resp := map[string]any{"tabId": tabID, "state": "idle"}
 	if run := h.autoSolve.running(tabID); run != nil {
 		resp["state"] = "solving"
 		resp["challengeType"] = run.challengeType
 		resp["elapsedMs"] = time.Since(run.started).Milliseconds()
+		resp["waitedOut"] = h.autoSolve.stepWaitLeft(run) == 0
 	} else if fin := h.autoSolve.takeFinished(tabID); fin != nil {
 		resp["state"] = "done"
 		resp["autoSolve"] = fin.outcome

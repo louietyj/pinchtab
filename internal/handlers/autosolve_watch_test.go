@@ -90,6 +90,54 @@ func TestStepAnswersSolveInProgressRatherThanOutwaitTheCLI(t *testing.T) {
 	}
 }
 
+// A solve that never finishes stalls steps once, for the budget, not on every
+// step; the agent's own `wait --captcha` is not held to it.
+func TestStepsStopWaitingOnASolveOnceTheBudgetIsSpent(t *testing.T) {
+	shortStepSolveWait(t, time.Second)
+	old := stepWaitBudget
+	stepWaitBudget = 60 * time.Millisecond
+	t.Cleanup(func() { stepWaitBudget = old })
+
+	h := &Handlers{Bridge: &urlBridge{url: "https://a.test/form"}}
+	run, _ := h.autoSolve.begin("tab1", "https://a.test/form", "hcaptcha")
+
+	start := time.Now()
+	w := httptest.NewRecorder()
+	if _, ok := h.solveBeforeStep(context.Background(), w, "tab1", true); ok {
+		t.Fatal("step ran during the solve")
+	}
+	if d := time.Since(start); d < 50*time.Millisecond || d > 500*time.Millisecond {
+		t.Errorf("first step waited %v, want about the budget", d)
+	}
+	var body struct {
+		Details map[string]any `json:"details"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &body)
+	if body.Details["waitedOut"] != true {
+		t.Errorf("budget not reported spent: %s", w.Body)
+	}
+
+	start = time.Now()
+	if _, ok := h.solveBeforeStep(context.Background(), httptest.NewRecorder(), "tab1", true); ok {
+		t.Fatal("step ran during the solve")
+	}
+	if d := time.Since(start); d > 20*time.Millisecond {
+		t.Errorf("a step waited %v again after the budget was spent", d)
+	}
+
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		h.autoSolve.end("tab1", run, autoSolveOutcome{"solved": true})
+	}()
+	rec := httptest.NewRecorder()
+	h.HandleAutoSolveWait(rec, httptest.NewRequest(http.MethodGet, "/autosolve?tabId=tab1&waitMs=2000&explicit=1", nil))
+	var resp map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp["state"] != "done" {
+		t.Errorf("explicit wait gave up with the budget: %v", resp)
+	}
+}
+
 func TestAutoSolveWaitReportsTheSolve(t *testing.T) {
 	h := &Handlers{Bridge: &urlBridge{url: "https://a.test/form"}}
 	get := func() map[string]any {

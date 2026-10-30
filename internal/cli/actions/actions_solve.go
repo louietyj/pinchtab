@@ -27,7 +27,9 @@ func Solve(client *http.Client, base, token string, cmd *cobra.Command, args []s
 func AwaitCaptcha(client *http.Client, base, token string, cmd *cobra.Command) {
 	linger, _ := cmd.Flags().GetInt("linger-ms")
 	outcome := apiclient.AwaitCaptcha(client, base, token, time.Duration(linger)*time.Millisecond)
-	if outcome == nil {
+	// Still solving here means the solve's step budget is spent, which the
+	// step that met it has already said.
+	if pending, _ := outcome["pending"].(bool); outcome == nil || pending {
 		return
 	}
 	if hint := autoSolveHint(map[string]any{"autoSolve": outcome}); hint != "" {

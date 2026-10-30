@@ -58,6 +58,27 @@ type solveRun struct {
 	started       time.Time
 	done          chan struct{}
 	outcome       autoSolveOutcome
+	// stepWaited is how long steps have waited on this solve in all.
+	stepWaited time.Duration
+}
+
+// stepWaitBudget is how long steps wait on one solve in all. Past it, a step
+// that meets the solve is refused at once rather than stalled again: a solve
+// that never finishes must not cost minutes per step. `pinchtab wait
+// --captcha` waits on longer when the agent chooses to.
+var stepWaitBudget = 2 * time.Minute
+
+// stepWaitLeft is what is left of run's step wait budget.
+func (t *autoSolveTabs) stepWaitLeft(run *solveRun) time.Duration {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return max(stepWaitBudget-run.stepWaited, 0)
+}
+
+func (t *autoSolveTabs) addStepWait(run *solveRun, d time.Duration) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	run.stepWaited += d
 }
 
 // begin claims tabID for a solve of the challenge at url, reporting false when

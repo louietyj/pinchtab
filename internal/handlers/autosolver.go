@@ -78,6 +78,7 @@ func (h *Handlers) maybeAutoSolve(ctx context.Context, tabID, trigger string) au
 			done <- outcome
 		}()
 
+		start := time.Now()
 		select {
 		case outcome := <-done:
 			// This caller reports it; no later step needs to.
@@ -87,13 +88,19 @@ func (h *Handlers) maybeAutoSolve(ctx context.Context, tabID, trigger string) au
 			return outcome
 		case <-autoSolveReplyCutoff(ctx):
 		}
+		// The wait so far counts toward the step wait budget, like any other.
+		pending := autoSolveOutcome{"solved": false, "pending": true, "tabId": tabID}
+		if run := h.autoSolve.running(tabID); run != nil {
+			h.autoSolve.addStepWait(run, time.Since(start))
+			pending["challengeType"] = run.challengeType
+		}
 		// A solve can outlast the request. It keeps running; the caller learns one is
 		// under way instead of timing out with nothing, and the CLI waits it out
 		// on GET /autosolve.
 		slog.Info("autosolver auto-trigger still running at reply cutoff",
 			"trigger", trigger,
 			"tab_id", tabID)
-		return autoSolveOutcome{"solved": false, "pending": true, "tabId": tabID}
+		return pending
 	}
 
 	go func() {

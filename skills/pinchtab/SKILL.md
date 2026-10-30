@@ -148,8 +148,9 @@ EOF
 
 `expect <selector>` (visible; `--state hidden`), `--text`, `--not-text`,
 `--url "**/results*"`, `--fn "<js>"`. `wait` takes the same checks with a 10 s
-default, plus `wait --dom-quiet` (the page stopped changing) and
-`wait --load ready-state`. Use these, never `sleep`.
+default, plus `wait --dom-quiet` (the page stopped changing),
+`wait --load ready-state` and `wait --captcha` (a solve under way). Use these,
+never `sleep`.
 
 ## More examples
 
@@ -243,14 +244,15 @@ click causes, for when the next step needs the new page loaded.
 Nothing to call: pinchtab solves a challenge when one shows (~$0.001, 20-60 s;
 hCaptcha one to three minutes) and says nothing on ordinary pages. An invisible
 widget is left alone until its puzzle opens, usually on submit. The step that
-set the puzzle off waits for the solve, and so does any step sent while one
-runs, so a step can take minutes: give the Bash call a `timeout` of 600000 on
-pages that may challenge (sign-ups, logins, checkouts). When there is one, a
-HINT puts it in one of these states. Do what it says:
+set the puzzle off waits for the solve, and so does a step sent while one runs,
+for up to two minutes per solve in all; after that, steps on the tab return at
+once with the still-solving HINT and do not run. When there is one, a HINT puts
+it in one of these states. Do what it says:
 
-- **Still pinchtab's**: to be retried at a stated time. Don't touch the page or
-  navigate away (a new navigation loads a fresh challenge). Run the check the
-  HINT gives, when it says.
+- **Still pinchtab's**: being solved, or to be retried at a stated time. Don't
+  touch the page or navigate away (a new navigation loads a fresh challenge).
+  `wait --captcha` waits for the solve (3 minutes; `--timeout-ms` for more), or
+  do something else meanwhile.
 - **Solved**: proceed. A token solve doesn't tick the box, so a solved page
   can still show an unchecked "I'm not a robot". Leave it alone; clicking it
   discards the solve.
