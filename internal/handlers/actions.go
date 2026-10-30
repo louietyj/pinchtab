@@ -579,6 +579,11 @@ func (h *Handlers) HandleAction(w http.ResponseWriter, r *http.Request) {
 	h.recordResolvedTab(r, resolvedTabID)
 	w.Header().Set(activity.HeaderPTTabID, resolvedTabID)
 
+	solvedBefore, ok := h.solveBeforeStep(ctx, w, resolvedTabID, true)
+	if !ok {
+		return
+	}
+
 	if req.Vocab == "" {
 		req.Vocab = r.Header.Get(vocabHeader)
 	}
@@ -767,6 +772,9 @@ func (h *Handlers) HandleAction(w http.ResponseWriter, r *http.Request) {
 	// An action that lands on a challenge is the common shape -- submitting a
 	// form and being handed a captcha. Reporting it only on navigate left that
 	// path as silent as everything was before.
+	if autoSolve == nil {
+		autoSolve = solvedBefore
+	}
 	if autoSolve != nil {
 		resp["autoSolve"] = autoSolve
 	}

@@ -611,6 +611,7 @@ func runBatch(globals, flags []string, in *os.File, w io.Writer) int {
 
 	steps := 0
 	rc := 0
+	acted := false
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 1024*1024), 16*1024*1024)
 	for scanner.Scan() {
@@ -619,6 +620,12 @@ func runBatch(globals, flags []string, in *os.File, w io.Writer) int {
 			continue
 		}
 		steps++
+		if f := strings.Fields(line); len(f) > 0 {
+			if f[0] == p.name || f[0] == "pinchtab" {
+				f = f[1:]
+			}
+			acted = acted || (len(f) > 0 && shouldShoot(f[0], f[1:]))
+		}
 		out, failed := runStep(globals, line, p.name, env)
 		if failed != 0 {
 			fmt.Fprintf(w, "%d FAILED %s\n", steps, truncate(line, 70))
@@ -633,6 +640,17 @@ func runBatch(globals, flags []string, in *os.File, w io.Writer) int {
 	if steps == 0 {
 		fmt.Fprintln(os.Stderr, "execute-batch: no steps on stdin; give one command per line, e.g. in a <<'EOF' heredoc")
 		return 2
+	}
+	// An invisible widget opens its puzzle a moment after the step that set it
+	// off, usually a submit. Waiting here a few seconds, when the page carries
+	// one, makes this batch the one that blocks on the solve, not whatever runs
+	// next. Pages without one answer at once.
+	if rc == 0 && acted {
+		out, errOut, _ := runSupervised(append(append([]string{}, globals...), "await-captcha"), env)
+		if solved := bytes.TrimSpace(append(out, errOut...)); len(solved) > 0 {
+			writeIndented(w, solved)
+			takeShot(p, "captcha", "", env)
+		}
 	}
 	if last := p.count(); last > first {
 		fmt.Fprintf(w, "shots %04d-%04d in %s/; the last is latest-small.jpg\n", first, last, p.dir)

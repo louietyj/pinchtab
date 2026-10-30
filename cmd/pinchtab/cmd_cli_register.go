@@ -28,7 +28,7 @@ func browserRootCommands() []*cobra.Command {
 		keyboardCmd, keydownCmd, keyupCmd, scrollintoviewCmd, dialogCmd, consoleCmd, errorsCmd,
 		clipboardCmd, cacheCmd, cookiesCmd, setCmd, storageCmd, stateCmd, closeCmd, handoffCmd,
 		resumeCmd, handoffStatusCmd, recordCmd, auditCmd, compareCmd, scrapeCmd, a11yCmd, memoryCmd,
-		visionCmd, solveCmd,
+		visionCmd, solveCmd, awaitCaptchaCmd,
 	}
 }
 
@@ -231,6 +231,7 @@ func configureBrowserFlags() {
 	visionCmd.Flags().String("track", "", "Track the rotate handle travels along (rotate)")
 	visionCmd.Flags().Float64("ratio", 0, "Handle movement per pixel of piece movement, when they differ (slider; default 1)")
 	visionCmd.Flags().Bool("click", false, "Click each matched region (select)")
+	awaitCaptchaCmd.Flags().Int("linger-ms", 3000, "How long to watch for a widget to open a puzzle")
 	visibleCmd.Flags().Bool("json", false, "Output full JSON response instead of just visibility")
 	enabledCmd.Flags().Bool("json", false, "Output full JSON response instead of just enabled state")
 	checkedCmd.Flags().Bool("json", false, "Output full JSON response instead of just checked state")

@@ -3,6 +3,7 @@ package actions
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"net/http"
 	"os"
@@ -101,6 +102,15 @@ func landedURL(result map[string]any) string {
 func autoSolveHint(result map[string]any) string {
 	raw, ok := result["autoSolve"].(map[string]any)
 	if !ok {
+		return ""
+	}
+	// Solved between steps, by the tab's watcher: this step waited for it.
+	if before, _ := raw["beforeStep"].(bool); before {
+		rest := maps.Clone(raw)
+		delete(rest, "beforeStep")
+		if hint := autoSolveHint(map[string]any{"autoSolve": rest}); hint != "" {
+			return "a captcha opened after your last step, and pinchtab dealt with it before running this one: " + hint
+		}
 		return ""
 	}
 

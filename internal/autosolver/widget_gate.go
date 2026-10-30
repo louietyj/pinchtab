@@ -13,10 +13,13 @@ import (
 // frame: reCAPTCHA, hCaptcha and an embedded Turnstile. Their markers turn up
 // on pages with no widget a visitor could meet (a login bundle naming every
 // vendor's api.js; Carfax's invisible reCAPTCHA in a 0x0 frame), so a
-// detection of one of them stands only once one of the vendor's frames sits in
-// a drawn document. The frame itself may be hidden: invisible modes, a badge
-// the site hides, a puzzle that opens on submit. Every other detection passes
-// through unchanged: the gate can drop a detection, never add one.
+// detection of one of them stands only while one of the vendor's frames shows
+// a visitor something to do: a checkbox, or a puzzle that has opened, drawn on
+// the page, in a drawn document. An invisible widget (Epic's account page
+// carries invisible hCaptcha on every visit) asks nothing until its puzzle
+// opens, and a token bought before then is money and injected JS for nothing;
+// the tab's watcher solves it when the puzzle opens. Every other detection
+// passes through unchanged: the gate can drop a detection, never add one.
 
 // WidgetFrame is the vendor frame that confirmed a detection.
 type WidgetFrame struct {
@@ -27,9 +30,17 @@ type WidgetFrame struct {
 // FrameBox is how a frame's owner element is drawn in its parent document.
 type FrameBox struct {
 	Width, Height float64
+	// Top and Left are the owner's offset in its document, scroll included.
+	// reCAPTCHA parks its closed puzzle at top:-10000px.
+	Top, Left float64
 	// Visible is the owner element's checkVisibility(): no display:none,
 	// visibility:hidden or zero opacity on it or an ancestor.
 	Visible bool
+}
+
+func (b FrameBox) drawn() bool {
+	return b.Visible && b.Width >= minHostSide && b.Height >= minHostSide &&
+		b.Top+b.Height > 0 && b.Left+b.Width > 0
 }
 
 // FrameInspector is implemented by a Page that can measure its frames' owner
@@ -64,6 +75,21 @@ func isWidgetFrame(vendor, url string) bool {
 	return re != nil && re.MatchString(url)
 }
 
+// asksSomething reports whether a vendor frame, once drawn, shows a visitor
+// something to do. An invisible widget's anchor never does: reCAPTCHA's
+// size=invisible badge, hCaptcha's #frame=checkbox-invisible.
+func asksSomething(vendor, url string) bool {
+	switch vendor {
+	case "recaptcha":
+		return !invisibleRecaptchaAnchorRe.MatchString(url)
+	case "hcaptcha":
+		return !strings.Contains(strings.ToLower(url), "#frame=checkbox-invisible")
+	}
+	return true
+}
+
+var invisibleRecaptchaAnchorRe = regexp.MustCompile(`(?i)/anchor\?.*\bsize=invisible\b`)
+
 // gatedVendor is the vendor whose widget must confirm intent, or "".
 func gatedVendor(intent *Intent, title, url, html string) string {
 	switch intent.ChallengeType {
@@ -92,8 +118,8 @@ func isCloudflareInterstitial(title, url, html string) bool {
 }
 
 // confirmWidget returns intent with its widget frame when one of the vendor's
-// frames sits in a drawn document, or nil when none does. It fails open: a page
-// that cannot be measured keeps its detection.
+// frames is showing, or nil when none is. It fails open: a page that cannot be
+// measured keeps its detection.
 func confirmWidget(ctx context.Context, page Page, intent *Intent, vendor string) *Intent {
 	fe, ok1 := page.(FrameEvaluator)
 	fi, ok2 := page.(FrameInspector)
@@ -122,7 +148,7 @@ func confirmWidget(ctx context.Context, page Page, intent *Intent, vendor string
 			return &confirmed
 		}
 		if found.candidates > 0 {
-			logOverride(intent, url, "its frames are only in documents that are not drawn")
+			logOverride(intent, url, "none of its frames is showing anything to solve")
 			return nil
 		}
 		if !time.Now().Before(deadline) {
@@ -154,7 +180,10 @@ func hostedWidget(ctx context.Context, fi FrameInspector, frames []FrameRef, ven
 			continue
 		}
 		s.candidates++
-		drawn, err := hostDrawn(ctx, fi, byID, f.ParentID)
+		if !asksSomething(vendor, f.URL) {
+			continue
+		}
+		drawn, err := chainDrawn(ctx, fi, byID, f.ID)
 		if err != nil {
 			return s, err
 		}
@@ -166,9 +195,8 @@ func hostedWidget(ctx context.Context, fi FrameInspector, frames []FrameRef, ven
 	return s, nil
 }
 
-// hostDrawn requires the document a widget is in, and every frame above it,
-// to be drawn.
-func hostDrawn(ctx context.Context, fi FrameInspector, byID map[string]FrameRef, id string) (bool, error) {
+// chainDrawn requires a frame, and every frame above it, to be drawn.
+func chainDrawn(ctx context.Context, fi FrameInspector, byID map[string]FrameRef, id string) (bool, error) {
 	for {
 		f, ok := byID[id]
 		if !ok || f.ParentID == "" {
@@ -178,12 +206,41 @@ func hostDrawn(ctx context.Context, fi FrameInspector, byID map[string]FrameRef,
 		if err != nil {
 			return false, err
 		}
-		if !box.Visible || box.Width < minHostSide || box.Height < minHostSide {
+		if !box.drawn() {
 			return false, nil
 		}
 		id = f.ParentID
 	}
 }
+
+// WidgetsOnPage looks over a tab's gated widgets: the vendor frame showing a
+// visitor something to do, if any, and how many vendor frames the tab carries
+// in all. Frames but nothing showing is an invisible widget, or a puzzle not
+// open yet: the tab's watcher keeps looking.
+func WidgetsOnPage(ctx context.Context, page Page) (showing *WidgetFrame, vendor string, frames int, err error) {
+	fe, ok1 := page.(FrameEvaluator)
+	fi, ok2 := page.(FrameInspector)
+	if !ok1 || !ok2 {
+		return nil, "", 0, nil
+	}
+	refs, err := fe.Frames(ctx)
+	if err != nil {
+		return nil, "", 0, err
+	}
+	for _, v := range gatedVendors {
+		found, err := hostedWidget(ctx, fi, refs, v)
+		if err != nil {
+			return nil, "", 0, err
+		}
+		frames += found.candidates
+		if found.frame != nil {
+			return found.frame, v, frames, nil
+		}
+	}
+	return nil, "", frames, nil
+}
+
+var gatedVendors = []string{"recaptcha", "hcaptcha", "turnstile"}
 
 func logOverride(intent *Intent, url, why string) {
 	slog.Info("autosolver_widget_gate_override",

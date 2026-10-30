@@ -187,6 +187,7 @@ var coreEndpoints = []Endpoint{
 	{"GET", "/config/autosolver", "Get autosolver runtime config", CapNone, false},
 	{"POST", "/solve", "Run default solver", CapNone, true},
 	{"POST", "/solve/{name}", "Run named solver", CapNone, true},
+	{"GET", "/autosolve", "Wait for a captcha solve on a tab", CapNone, true},
 	{"POST", "/vision", "Solve a visual puzzle with CapSolver Vision Engine", CapNone, true},
 
 	{"POST", "/emulation/viewport", "Set browser viewport dimensions", CapNone, true},

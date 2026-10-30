@@ -75,23 +75,59 @@ func TestWidgetGateKeepsADrawnCheckbox(t *testing.T) {
 	}
 }
 
-// The widget frame itself may be hidden: what a visitor meets on submit is still
-// a challenge, and the old detector pre-solved it.
-func TestWidgetGateKeepsAHiddenWidgetInADrawnDocument(t *testing.T) {
+// An invisible widget, or a puzzle that has not opened, asks a visitor nothing:
+// solving it then buys a token and injects it for no reason.
+func TestWidgetGateDropsAWidgetShowingNothing(t *testing.T) {
 	shortWidgetWait(t)
+	closedPuzzle := FrameBox{Width: 400, Height: 580, Top: -10000, Visible: true}
 	for _, tc := range []struct {
 		name   string
 		frames []FrameRef
 		boxes  map[string]FrameBox
 	}{
-		{"badge hidden by the site", []FrameRef{{ID: "a", ParentID: "top", URL: invisibleURL}, {ID: "b", ParentID: "top", URL: bframeURL}}, map[string]FrameBox{"a": hidden, "b": hidden}},
+		{"invisible badge and a closed puzzle", []FrameRef{{ID: "a", ParentID: "top", URL: invisibleURL}, {ID: "b", ParentID: "top", URL: bframeURL}}, map[string]FrameBox{"a": shown, "b": hidden}},
+		{"puzzle parked off the page", []FrameRef{{ID: "a", ParentID: "top", URL: invisibleURL}, {ID: "b", ParentID: "top", URL: bframeURL}}, map[string]FrameBox{"a": shown, "b": closedPuzzle}},
 		{"zero-size checkbox", []FrameRef{{ID: "a", ParentID: "top", URL: anchorURL}}, map[string]FrameBox{"a": empty}},
-		{"checkout form in a drawn frame", []FrameRef{{ID: "form", ParentID: "top", URL: "https://pay.example/form"}, {ID: "a", ParentID: "form", URL: invisibleURL}}, map[string]FrameBox{"form": {Width: 500, Height: 400, Visible: true}, "a": hidden}},
+		{"checkout form in a drawn frame", []FrameRef{{ID: "form", ParentID: "top", URL: "https://pay.example/form"}, {ID: "a", ParentID: "form", URL: invisibleURL}}, map[string]FrameBox{"form": {Width: 500, Height: 400, Visible: true}, "a": shown}},
 	} {
 		page := recaptchaPage("https://site.example/"+strings.ReplaceAll(tc.name, " ", "-"), tc.frames, tc.boxes)
-		if intent := DetectPageChallenge(context.Background(), page, page.html); intent == nil || intent.Widget == nil {
-			t.Errorf("%s: dropped (%+v)", tc.name, intent)
+		if intent := DetectPageChallenge(context.Background(), page, page.html); intent != nil {
+			t.Errorf("%s: kept as %+v", tc.name, intent)
 		}
+	}
+}
+
+// Epic's account page: invisible hCaptcha, frames present on every visit.
+func TestWidgetGateDropsInvisibleHCaptchaUntilItsPuzzleOpens(t *testing.T) {
+	shortWidgetWait(t)
+	const base = "https://newassets.hcaptcha.com/captcha/v1/317eeece/static/hcaptcha.html"
+	html := `<iframe src="` + base + `#frame=checkbox-invisible"></iframe><iframe src="` + base + `#frame=challenge"></iframe>`
+	frames := []FrameRef{{ID: "top"}, {ID: "c", ParentID: "top", URL: base + "#frame=checkbox-invisible"}, {ID: "p", ParentID: "top", URL: base + "#frame=challenge"}}
+	page := &framedPage{mockPage: mockPage{url: "https://accounts.example/account/personal", title: "Personal", html: html}, frames: frames,
+		boxes: map[string]FrameBox{"c": shown, "p": hidden}}
+	if intent := DetectPageChallenge(context.Background(), page, html); intent != nil {
+		t.Fatalf("invisible widget kept as %+v", intent)
+	}
+	if showing, _, n, err := WidgetsOnPage(context.Background(), page); err != nil || showing != nil || n != 2 {
+		t.Fatalf("WidgetsOnPage = %+v, %d, %v; want nothing showing among 2 frames", showing, n, err)
+	}
+
+	page.boxes["p"] = FrameBox{Width: 400, Height: 600, Top: 80, Visible: true}
+	intent := DetectPageChallenge(context.Background(), page, html)
+	if intent == nil || intent.Widget == nil || intent.Widget.FrameID != "p" {
+		t.Fatalf("opened puzzle dropped: %+v", intent)
+	}
+	if showing, vendor, _, _ := WidgetsOnPage(context.Background(), page); showing == nil || vendor != "hcaptcha" {
+		t.Fatalf("WidgetsOnPage missed the open puzzle: %+v %q", showing, vendor)
+	}
+}
+
+func TestWidgetGateKeepsAnOpenedRecaptchaPuzzle(t *testing.T) {
+	shortWidgetWait(t)
+	page := recaptchaPage("https://site.example/opened", []FrameRef{{ID: "a", ParentID: "top", URL: invisibleURL}, {ID: "b", ParentID: "top", URL: bframeURL}},
+		map[string]FrameBox{"a": shown, "b": {Width: 400, Height: 580, Top: 120, Visible: true}})
+	if intent := DetectPageChallenge(context.Background(), page, page.html); intent == nil || intent.Widget == nil || intent.Widget.FrameID != "b" {
+		t.Fatalf("got %+v", intent)
 	}
 }
 

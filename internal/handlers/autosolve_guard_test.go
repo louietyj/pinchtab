@@ -4,18 +4,47 @@ import "testing"
 
 func TestAutoSolveTabsRunsOneSolvePerTab(t *testing.T) {
 	var tabs autoSolveTabs
-	if !tabs.begin("t1") {
+	run, ok := tabs.begin("t1", "https://a.test/", "hcaptcha")
+	if !ok {
 		t.Fatal("first solve on a tab was refused")
 	}
-	if tabs.begin("t1") {
+	if _, ok := tabs.begin("t1", "https://a.test/", "hcaptcha"); ok {
 		t.Error("a second solve started while the first was running")
 	}
-	if !tabs.begin("t2") {
+	if _, ok := tabs.begin("t2", "https://a.test/", "hcaptcha"); !ok {
 		t.Error("another tab's solve was blocked")
 	}
-	tabs.end("t1")
-	if !tabs.begin("t1") {
+	tabs.end("t1", run, autoSolveOutcome{"solved": true})
+	if _, ok := tabs.begin("t1", "https://a.test/", "hcaptcha"); !ok {
 		t.Error("tab stayed claimed after its solve ended")
+	}
+}
+
+// A solve no caller was waiting on is reported once, by whoever asks first.
+func TestAutoSolveTabsHandsOverAFinishedSolveOnce(t *testing.T) {
+	var tabs autoSolveTabs
+	run, _ := tabs.begin("t1", "https://a.test/form", "hcaptcha")
+	if tabs.running("t1") != run {
+		t.Fatal("running solve not reported")
+	}
+	tabs.end("t1", run, autoSolveOutcome{"solved": true})
+	select {
+	case <-run.done:
+	default:
+		t.Fatal("done not closed")
+	}
+	if got := tabs.takeFinished("t1"); got != run || got.outcome["solved"] != true {
+		t.Fatalf("takeFinished = %+v", got)
+	}
+	if tabs.takeFinished("t1") != nil {
+		t.Error("a finished solve was handed over twice")
+	}
+
+	// A retry the solver scheduled reports itself when it runs.
+	run, _ = tabs.begin("t1", "https://a.test/form", "hcaptcha")
+	tabs.end("t1", run, autoSolveOutcome{"solved": false, "pending": true, "retryInSec": 60})
+	if tabs.takeFinished("t1") != nil {
+		t.Error("a pending outcome was recorded as finished")
 	}
 }
 

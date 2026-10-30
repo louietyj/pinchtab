@@ -2,8 +2,10 @@ package actions
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/pinchtab/pinchtab/internal/cli/apiclient"
+	"github.com/pinchtab/pinchtab/internal/cli/output"
 	"github.com/spf13/cobra"
 )
 
@@ -17,4 +19,18 @@ func Solve(client *http.Client, base, token string, cmd *cobra.Command, args []s
 		body["tabId"] = tab
 	}
 	apiclient.DoPost(client, base, token, "/solve", body)
+}
+
+// AwaitCaptcha watches the current tab for --linger-ms for a widget to open a
+// puzzle, waits out the solve, and prints a HINT about it; nothing when there
+// was none.
+func AwaitCaptcha(client *http.Client, base, token string, cmd *cobra.Command) {
+	linger, _ := cmd.Flags().GetInt("linger-ms")
+	outcome := apiclient.AwaitCaptcha(client, base, token, time.Duration(linger)*time.Millisecond)
+	if outcome == nil {
+		return
+	}
+	if hint := autoSolveHint(map[string]any{"autoSolve": outcome}); hint != "" {
+		output.Hint("a captcha opened after the last step, and the batch waited for pinchtab: " + hint)
+	}
 }

@@ -438,6 +438,11 @@ func (h *Handlers) executeNavigate(w http.ResponseWriter, r *http.Request, req n
 	if _, ok := h.applyTabGuards(w, r, ctx, resolvedTabID, guardDialogBlocked|guardHandoffPause); !ok {
 		return
 	}
+	// A nav leaves the page anyway, so a changed one is no reason to refuse it.
+	solvedBefore, ok := h.solveBeforeStep(ctx, w, resolvedTabID, false)
+	if !ok {
+		return
+	}
 	// Navigate signals fresh work on this tab — drop any pending auto-close
 	// timer; the next read/action will re-arm.
 	h.cancelIdleLifecycle(resolvedTabID)
@@ -460,6 +465,7 @@ func (h *Handlers) executeNavigate(w http.ResponseWriter, r *http.Request, req n
 		target:         targets.target,
 		trustedCIDRs:   targets.trustedCIDRs,
 		blockPatterns:  blockPatterns,
+		solvedBefore:   solvedBefore,
 	})
 }
 
@@ -484,6 +490,8 @@ type navExec struct {
 	trustedCIDRs   []*net.IPNet
 	blockPatterns  []string
 	isNewTab       bool
+	// solvedBefore is a solve that finished on the tab before this nav.
+	solvedBefore autoSolveOutcome
 }
 
 // runNavigate is the shared navigate flow for both the existing-tab and
@@ -607,6 +615,9 @@ func (h *Handlers) runNavigate(w http.ResponseWriter, r *http.Request, ex navExe
 	resp := navResponse(ex.tabID, navURL, title, route, !ex.isNewTab)
 	// Only present when a challenge was actually detected and solved (or not),
 	// so its absence means "nothing to report", not "solving is off".
+	if autoSolve == nil {
+		autoSolve = ex.solvedBefore
+	}
 	if autoSolve != nil {
 		resp["autoSolve"] = autoSolve
 	}

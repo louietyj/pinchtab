@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/pinchtab/pinchtab/internal/api/types"
 )
@@ -85,6 +86,30 @@ func buildURL(base, path string, params url.Values) string {
 // interpret the status code or print anything — callers apply their own
 // error/render policy.
 func doRequest(client *http.Client, token string, r request) (int, []byte, error) {
+	status, body, err := sendOnce(client, token, r)
+	if err != nil {
+		return status, body, err
+	}
+	deadline := time.Now().Add(solveWaitCeiling)
+	for status == http.StatusConflict && time.Now().Before(deadline) {
+		tab, ok := solveInProgressTab(body)
+		if !ok {
+			break
+		}
+		if waitForSolve(client, token, r.base, tab, 0, deadline) == nil {
+			break
+		}
+		if status, body, err = sendOnce(client, token, r); err != nil {
+			return status, body, err
+		}
+	}
+	if status < http.StatusBadRequest {
+		body = awaitPendingSolve(client, token, r.base, body, deadline)
+	}
+	return status, body, nil
+}
+
+func sendOnce(client *http.Client, token string, r request) (int, []byte, error) {
 	var bodyReader io.Reader
 	if r.body != nil {
 		data, err := json.Marshal(r.body)

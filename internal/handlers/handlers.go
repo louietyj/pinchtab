@@ -409,6 +409,7 @@ func (h *Handlers) bridgeBindings() []routeBinding {
 		{pattern: "POST /fingerprint/rotate", root: h.HandleFingerprintRotate, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
 		{pattern: "GET /solvers", root: h.HandleListSolvers, guards: guardNone},
 		{pattern: "GET /config/autosolver", root: h.HandleAutoSolverConfig, guards: guardNone},
+		{pattern: "GET /autosolve", root: h.HandleAutoSolveWait, tab: h.HandleTabAutoSolveWait, guards: guardNone}, // waits on a solve; touches no page
 		{pattern: "POST /solve", root: h.HandleSolve, tab: h.HandleTabSolve, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
 		{pattern: "POST /solve/{name}", root: h.HandleSolve, tab: h.HandleTabSolve, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
 		// No handoff pause: vision is the way on after an auto-solve parked the tab.

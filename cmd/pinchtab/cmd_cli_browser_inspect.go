@@ -197,6 +197,20 @@ Sites refuse some bought tokens too, so a second try may pass where the first di
 	},
 }
 
+// awaitCaptchaCmd is what execute-batch runs after its last step, so a puzzle
+// that step opened is solved inside the batch rather than ahead of the next one.
+var awaitCaptchaCmd = &cobra.Command{
+	Use:    "await-captcha",
+	Short:  "Wait for a captcha the last step opened, and for its solve",
+	Hidden: true,
+	Args:   cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		runCLI(func(rt cliRuntime) {
+			browseractions.AwaitCaptcha(rt.client, rt.base, rt.token, cmd)
+		})
+	},
+}
+
 var boxCmd = &cobra.Command{
 	Use:   "box <ref>",
 	Short: "Get the bounding box of an element by ref",

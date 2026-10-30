@@ -14,7 +14,12 @@ const solvedChallengeTTL = 2 * time.Minute
 // second one alongside it.
 type autoSolveTabs struct {
 	mu       sync.Mutex
-	inflight map[string]bool
+	inflight map[string]*solveRun
+	// finished is a tab's last solve that no caller has been told about yet:
+	// one the watcher started between steps, or one a request stopped waiting on.
+	finished map[string]*solveRun
+	// watching marks tabs whose watcher is running.
+	watching map[string]bool
 	solved   map[string]solvedChallenge
 	// retry is when a scheduled retry of a tab's challenge runs. Until then
 	// the challenge is still the solver's, and the tab reports it pending.
@@ -43,24 +48,91 @@ type solvedChallenge struct {
 	until              time.Time
 }
 
-// begin claims tabID for a solve, reporting false when one is already running.
-func (t *autoSolveTabs) begin(tabID string) bool {
+// solveRun is one solve on a tab. done closes once outcome is set.
+type solveRun struct {
+	url string
+	// doc is the document the solve started on (bridge.DocumentKey), set
+	// before done closes; "" when it could not be read.
+	doc           string
+	challengeType string
+	started       time.Time
+	done          chan struct{}
+	outcome       autoSolveOutcome
+}
+
+// begin claims tabID for a solve of the challenge at url, reporting false when
+// one is already running.
+func (t *autoSolveTabs) begin(tabID, url, challengeType string) (*solveRun, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.inflight[tabID] {
-		return false
+	if t.inflight[tabID] != nil {
+		return nil, false
 	}
 	if t.inflight == nil {
-		t.inflight = map[string]bool{}
+		t.inflight = map[string]*solveRun{}
 	}
-	t.inflight[tabID] = true
+	run := &solveRun{url: url, challengeType: challengeType, started: time.Now(), done: make(chan struct{})}
+	t.inflight[tabID] = run
+	return run, true
+}
+
+// end records run's outcome as tabID's unreported solve and releases the tab.
+func (t *autoSolveTabs) end(tabID string, run *solveRun, outcome autoSolveOutcome) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	run.outcome = outcome
+	close(run.done)
+	delete(t.inflight, tabID)
+	// A scheduled retry reports itself when it runs.
+	if pending, _ := outcome["pending"].(bool); outcome == nil || pending {
+		return
+	}
+	if t.finished == nil {
+		t.finished = map[string]*solveRun{}
+	}
+	t.finished[tabID] = run
+}
+
+// running is the solve under way on tabID, if any.
+func (t *autoSolveTabs) running(tabID string) *solveRun {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.inflight[tabID]
+}
+
+// takeFinished hands over tabID's unreported solve, once.
+func (t *autoSolveTabs) takeFinished(tabID string) *solveRun {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	run := t.finished[tabID]
+	delete(t.finished, tabID)
+	return run
+}
+
+// startWatching claims tabID for a watcher, reporting false when one runs.
+func (t *autoSolveTabs) startWatching(tabID string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.watching[tabID] {
+		return false
+	}
+	if t.watching == nil {
+		t.watching = map[string]bool{}
+	}
+	t.watching[tabID] = true
 	return true
 }
 
-func (t *autoSolveTabs) end(tabID string) {
+func (t *autoSolveTabs) stopWatching(tabID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	delete(t.inflight, tabID)
+	delete(t.watching, tabID)
+}
+
+func (t *autoSolveTabs) isWatching(tabID string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.watching[tabID]
 }
 
 func (t *autoSolveTabs) markSolved(tabID, url, challengeType string) {
@@ -88,6 +160,7 @@ func (t *autoSolveTabs) forget(tabID string) {
 	delete(t.retry, tabID)
 	delete(t.gaveUp, tabID)
 	delete(t.noted, tabID)
+	delete(t.finished, tabID)
 }
 
 // noteOnce reports whether tabID's page at url is being noted for the first time.

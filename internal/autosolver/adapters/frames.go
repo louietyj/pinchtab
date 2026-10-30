@@ -225,7 +225,8 @@ const frameBoxJS = `function() {
   const visible = typeof this.checkVisibility === 'function'
     ? this.checkVisibility({checkOpacity: true, checkVisibilityCSS: true})
     : true;
-  return {w: r.width, h: r.height, visible};
+  const win = this.ownerDocument.defaultView || {scrollX: 0, scrollY: 0};
+  return {w: r.width, h: r.height, top: r.top + win.scrollY, left: r.left + win.scrollX, visible};
 }`
 
 func frameOwnerBox(ctx context.Context, frameID cdp.FrameID) (autosolver.FrameBox, error) {
@@ -245,13 +246,13 @@ func frameOwnerBox(ctx context.Context, frameID cdp.FrameID) (autosolver.FrameBo
 		return autosolver.FrameBox{}, fmt.Errorf("frame owner script: %s", exc.Text)
 	}
 	var v struct {
-		W, H    float64
-		Visible bool
+		W, H, Top, Left float64
+		Visible         bool
 	}
 	if err := json.Unmarshal(res.Value, &v); err != nil {
 		return autosolver.FrameBox{}, err
 	}
-	return autosolver.FrameBox{Width: v.W, Height: v.H, Visible: v.Visible}, nil
+	return autosolver.FrameBox{Width: v.W, Height: v.H, Top: v.Top, Left: v.Left, Visible: v.Visible}, nil
 }
 
 func awaitOpt(await bool) chromedp.EvaluateOption {

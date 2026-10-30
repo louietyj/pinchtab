@@ -240,18 +240,24 @@ click causes, for when the next step needs the new page loaded.
 
 ## Captchas
 
-Nothing to call: `nav`, and any later action, solves a challenge on its own when
-it detects one and solver keys are configured (~$0.001, 20-60 s), and says
-nothing on ordinary pages. When there is one, a HINT puts it in one of these
-states. Do what it says:
+Nothing to call: pinchtab solves a challenge when one shows (~$0.001, 20-60 s;
+hCaptcha one to three minutes) and says nothing on ordinary pages. An invisible
+widget is left alone until its puzzle opens, usually on submit. The step that
+set the puzzle off waits for the solve, and so does any step sent while one
+runs, so a step can take minutes: give the Bash call a `timeout` of 600000 on
+pages that may challenge (sign-ups, logins, checkouts). When there is one, a
+HINT puts it in one of these states. Do what it says:
 
-- **Still pinchtab's**: being solved, or to be retried at a stated time. Don't
-  touch the page or navigate away (a new navigation loads a fresh challenge).
-  Run the check the HINT gives, when it says.
+- **Still pinchtab's**: to be retried at a stated time. Don't touch the page or
+  navigate away (a new navigation loads a fresh challenge). Run the check the
+  HINT gives, when it says.
 - **Solved**: proceed. A token solve doesn't tick the box, so a solved page
   can still show an unchecked "I'm not a robot". Leave it alone; clicking it
   discards the solve.
 - **Given up**: it is yours to try, with `vision` below.
+- **Page changed during the solve** (`page_changed_during_solve`): the site
+  moved on once it had the token, often submitting the form itself. The step
+  did not run; look at the page before doing anything else.
 - **Blocked outright** (a blank page, "Sorry, there was a problem accessing
   the page"): no solver passes it. Restart the browser once
   (`pinchtab server restart`) and nav again; if it's still blocked, go on

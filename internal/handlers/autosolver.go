@@ -80,15 +80,20 @@ func (h *Handlers) maybeAutoSolve(ctx context.Context, tabID, trigger string) au
 
 		select {
 		case outcome := <-done:
+			// This caller reports it; no later step needs to.
+			if outcome != nil {
+				h.autoSolve.takeFinished(tabID)
+			}
 			return outcome
 		case <-autoSolveReplyCutoff(ctx):
 		}
 		// A solve can outlast the request. It keeps running; the caller learns one is
-		// under way instead of timing out with nothing.
+		// under way instead of timing out with nothing, and the CLI waits it out
+		// on GET /autosolve.
 		slog.Info("autosolver auto-trigger still running at reply cutoff",
 			"trigger", trigger,
 			"tab_id", tabID)
-		return autoSolveOutcome{"solved": false, "pending": true}
+		return autoSolveOutcome{"solved": false, "pending": true, "tabId": tabID}
 	}
 
 	go func() {
@@ -151,7 +156,7 @@ func (h *Handlers) shouldAutoSolve(trigger string) bool {
 	}
 }
 
-func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) (autoSolveOutcome, error) {
+func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) (final autoSolveOutcome, err error) {
 	if h == nil || h.Config == nil || h.Bridge == nil {
 		return nil, nil
 	}
@@ -160,6 +165,9 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) (autoSolveOu
 	if err != nil {
 		return nil, err
 	}
+	// A page carrying a widget that asks nothing yet is watched, so the puzzle
+	// it opens later is solved too.
+	defer h.watchDormantWidgets(tabID)
 
 	// Detection is the cheap path that runs on every nav/action — bound the HTML
 	// fetch so a stuck CDP call is cancelled (no leaked worker), keeping normal
@@ -188,10 +196,12 @@ func (h *Handlers) runAutoSolver(ctx context.Context, tabID string) (autoSolveOu
 	if left, ok := h.autoSolve.retryPending(tabID); ok {
 		return autoSolveOutcome{"solved": false, "pending": true, "challengeType": challenge.ChallengeType, "retryInSec": int(left.Seconds()) + 1}, nil
 	}
-	if !h.autoSolve.begin(tabID) {
-		return autoSolveOutcome{"solved": false, "pending": true}, nil
+	run, ok := h.autoSolve.begin(tabID, challengeURL, challenge.ChallengeType)
+	if !ok {
+		return autoSolveOutcome{"solved": false, "pending": true, "tabId": tabID}, nil
 	}
-	defer h.autoSolve.end(tabID)
+	defer func() { h.autoSolve.end(tabID, run, final) }()
+	run.doc = h.tabDocumentKey(tabID)
 
 	// A puzzle only Vision can solve goes straight to it: the token solvers
 	// would refuse it, and the semantic stage clicks around the page meanwhile.
