@@ -94,12 +94,27 @@ func textCandidates(ctx context.Context, frameID string, scopeBackendNodeID int6
 		}
 		raw = scoped
 	}
+	// No frame chosen means the top document, and then any frame: a page that is
+	// one same-origin iframe (Cigna's Find Care) lists its buttons in snap, and
+	// text: has to reach them too. A match in more than one frame is ambiguous.
+	anyFrame := false
 	if frameID == "" {
 		if tree, err := FetchFrameTree(ctx); err == nil {
 			frameID = tree.Frame.ID
 		}
+		anyFrame = scopeBackendNodeID == 0
 	}
 	nodes, _ := BuildSnapshot(raw, "", -1)
+	found, err := textCandidatesIn(ctx, nodes, want, frameID)
+	if err != nil || len(found) > 0 || !anyFrame {
+		return found, err
+	}
+	return textCandidatesIn(ctx, nodes, want, "")
+}
+
+// textCandidatesIn is textCandidates over one frame's nodes, or every frame's
+// when frameID is empty.
+func textCandidatesIn(ctx context.Context, nodes []A11yNode, want, frameID string) ([]A11yNode, error) {
 	usable := func(n A11yNode) bool {
 		return n.NodeID != 0 && !n.Hidden && (frameID == "" || n.FrameID == "" || n.FrameID == frameID)
 	}

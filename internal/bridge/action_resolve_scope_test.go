@@ -420,6 +420,38 @@ func TestWithinWidensFromTheAnchorToTheNearestContainerHoldingTheTarget(t *testi
 	}
 }
 
+// Cigna's Find Care page is one same-origin iframe: snap lists its buttons, so
+// text: has to find them from the top document, and still refuse a name that
+// matches in two frames.
+func TestTextFindsAControlInsideAnIframeWhenTheTopDocumentHasNone(t *testing.T) {
+	ctx := newDataURLFixture(t, `
+	<button id="top">Top only</button>
+	<iframe srcdoc="<button id=inner>Dismiss</button><button>Both</button>" style="width:400px;height:200px"></iframe>
+	<button>Both</button>`)
+	var loaded bool
+	for i := 0; i < 50 && !loaded; i++ {
+		_ = chromedp.Run(ctx, chromedp.Evaluate(`!!(document.querySelector('iframe').contentDocument||{}).querySelector && !!document.querySelector('iframe').contentDocument.querySelector('#inner')`, &loaded))
+		if !loaded {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+	nodeID, err := ResolveUnifiedSelectorInFrame(ctx, selector.Parse("text:Dismiss"), nil, "")
+	if err != nil {
+		t.Fatalf("text:Dismiss inside the iframe: %v", err)
+	}
+	var gotID string
+	if err := callFunctionOnNodeForTest(ctx, nodeID, `function() { return this.id; }`, &gotID); err != nil {
+		t.Fatal(err)
+	}
+	if gotID != "inner" {
+		t.Errorf("resolved %q, want the iframe's button", gotID)
+	}
+	if _, err := ResolveUnifiedSelectorInFrame(ctx, selector.Parse("text:Both"), nil, ""); err != nil {
+		t.Errorf("a top-document match must still win without looking in frames: %v", err)
+	}
+}
+
 func newDataURLFixture(t *testing.T, html string) context.Context {
 	t.Helper()
 	chromePath := testbrowser.Path(t)
