@@ -79,7 +79,11 @@ the next batch.
 - Each step prints one status line. A step that reads (`text`, `snap`, `url`,
   `eval`, ...) prints its output under it, indented.
 - `--snap`, `--snap-diff` or `--text` on `execute-batch` describe where it
-  ended, stopped or not: `pinchtab execute-batch --snap-diff <<'EOF'`.
+  ended, stopped or not: `pinchtab execute-batch --snap-diff <<'EOF'`. Add
+  `--grep <regex>` to keep only what you expect to need next. If the batch
+  fails, the grep is skipped and you get the first 40 lines plus a file with
+  the rest; the screenshot is what shows what went wrong, and a ref that
+  didn't make the cut is a coordinate click away.
 - Earlier steps' shots are kept, numbered; the batch prints their range, and
   `shots` lists the newest ten, so after a failure you can see what step 3
   saw.

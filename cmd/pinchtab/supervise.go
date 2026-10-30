@@ -578,6 +578,11 @@ func readString(path string) string {
 // step prints one status line instead of its usual output.
 func runBatch(globals, flags []string, in *os.File, w io.Writer) int {
 	var wantSnap, wantDiff, wantText bool
+	flags, grep, err := cutGrep(flags)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "execute-batch: %v\n", err)
+		return 2
+	}
 	for _, f := range flags {
 		switch f {
 		case "--snap":
@@ -587,7 +592,7 @@ func runBatch(globals, flags []string, in *os.File, w io.Writer) int {
 		case "--text":
 			wantText = true
 		default:
-			fmt.Fprintf(os.Stderr, "execute-batch: unknown flag %s (it takes --snap, --snap-diff and --text)\n", f)
+			fmt.Fprintf(os.Stderr, "execute-batch: unknown flag %s (it takes --snap, --snap-diff, --text and --grep)\n", f)
 			return 2
 		}
 	}
@@ -634,18 +639,48 @@ func runBatch(globals, flags []string, in *os.File, w io.Writer) int {
 	} else if last == first {
 		fmt.Fprintf(w, "shot %04d in %s/, also latest-small.jpg\n", first, p.dir)
 	}
-	// Where the batch ended, stopped or not.
+	// Where the batch ended. --grep was written for the page the batch expected,
+	// so a failed batch gets the head of each output instead, and the rest in a
+	// file of the page as it was when the step failed; the screenshot is what
+	// shows what went wrong.
 	for _, end := range []struct {
 		want bool
+		name string
 		args []string
-	}{{wantText, []string{"text"}}, {wantDiff, []string{"snap", "--diff"}}, {wantSnap, []string{"snap"}}} {
-		if end.want {
-			out, errOut, _ := runSupervised(append(append([]string{}, globals...), end.args...), env)
-			_, _ = w.Write(out)
-			_, _ = os.Stderr.Write(errOut)
+	}{{wantText, "text", []string{"text"}}, {wantDiff, "snap-diff", []string{"snap", "--diff"}}, {wantSnap, "snap", []string{"snap"}}} {
+		if !end.want {
+			continue
 		}
+		out, errOut, _ := runSupervised(append(append([]string{}, globals...), end.args...), env)
+		switch {
+		case rc != 0:
+			out = headWithRest(out, filepath.Join(p.dir, fmt.Sprintf("%04d-failed-%s.txt", p.count(), end.name)))
+		case grep != nil:
+			out = grepLines(out, grep)
+		}
+		_, _ = w.Write(out)
+		_, _ = os.Stderr.Write(errOut)
 	}
 	return rc
+}
+
+// failedOutputLines is how much of an end-state output a failed batch prints.
+const failedOutputLines = 40
+
+// headWithRest keeps the first failedOutputLines lines of out and saves all of
+// it to path, naming the file in place of what was cut.
+func headWithRest(out []byte, path string) []byte {
+	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
+	if len(lines) <= failedOutputLines {
+		return out
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err == nil {
+		if err := os.WriteFile(path, out, 0o644); err == nil {
+			return []byte(strings.Join(lines[:failedOutputLines], "\n") +
+				fmt.Sprintf("\n... %d more lines in %s\n", len(lines)-failedOutputLines, path))
+		}
+	}
+	return out
 }
 
 func runStep(globals []string, line, name string, env []string) ([]byte, int) {

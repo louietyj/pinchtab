@@ -188,6 +188,25 @@ func TestGrepFiltersOutputButKeepsTheSnapHeader(t *testing.T) {
 	}
 }
 
+func TestHeadWithRestCutsLongOutputToAFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "failed-snap.txt")
+	short := []byte("# Page | https://x | 2 nodes\ne1:button \"Go\"\n")
+	if got := headWithRest(short, path); !bytes.Equal(got, short) {
+		t.Fatalf("short output must pass through, got %q", got)
+	}
+	var long bytes.Buffer
+	for i := 0; i < 100; i++ {
+		long.WriteString("line\n")
+	}
+	got := string(headWithRest(long.Bytes(), path))
+	if strings.Count(got, "line\n") != failedOutputLines || !strings.Contains(got, "60 more lines in "+path) {
+		t.Fatalf("got %q", got)
+	}
+	if saved, _ := os.ReadFile(path); !bytes.Equal(saved, long.Bytes()) {
+		t.Fatal("the whole output must be saved")
+	}
+}
+
 func TestQuoteHintRebuildsTheStep(t *testing.T) {
 	if got := quoteHint([]string{"click", "text:Second", "section", "--snap"}); got != `quote a selector that has spaces: click "text:Second section" --snap` {
 		t.Fatalf("got %q", got)
