@@ -150,7 +150,13 @@ func autoSolveHint(result map[string]any) string {
 	}
 
 	// Final: nothing more is scheduled, so the challenge is the caller's now,
-	// unless nothing can pass it.
+	// unless nothing can pass it. Earlier types in "a, then b" were solved; only
+	// the last one was not.
+	lead := ""
+	if i := strings.LastIndex(challenge, ", then "); i >= 0 {
+		lead = fmt.Sprintf("pinchtab solved a %s challenge, then ", challenge[:i])
+		challenge = challenge[i+len(", then "):]
+	}
 	next := "pinchtab has given up on it; it is yours to try."
 	msg, _ := raw["error"].(string)
 	if strings.Contains(msg, "blocked outright") {
@@ -160,9 +166,9 @@ func autoSolveHint(result map[string]any) string {
 		next = "No solver gets past this block. Restart the browser once (`pinchtab server restart`), then nav to the page again; if it is still blocked, go on without it."
 	}
 	if msg != "" {
-		return fmt.Sprintf("a %s challenge on this page was NOT solved: %s. %s `nav --json` lists each solver's attempt.", challenge, msg, next)
+		return fmt.Sprintf("%sa %s challenge on this page was NOT solved: %s. %s `nav --json` lists each solver's attempt.", lead, challenge, msg, next)
 	}
-	return fmt.Sprintf("a %s challenge on this page was NOT solved. %s `nav --json` lists each solver's attempt.", challenge, next)
+	return fmt.Sprintf("%sa %s challenge on this page was NOT solved. %s `nav --json` lists each solver's attempt.", lead, challenge, next)
 }
 
 // fileHint reports a navigate that landed on a file shown in a viewer (a PDF, an

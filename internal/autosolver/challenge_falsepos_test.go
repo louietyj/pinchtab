@@ -23,6 +23,7 @@ func TestOrdinaryPagesAreNotChallenges(t *testing.T) {
 		{"cloudflare bot-management beacon", "Discord - Group Chat That's All Fun & Games", "https://discord.com/", `<script>var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';</script>`},
 		{"vendor urls in a bundle", "", "https://auth.site.example/u/login", `<script>case I:return"https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";case D:return"https://"+n+".arkoselabs.com/v2/"+r+"/api.js";case P:return"https://www.recaptcha.net/recaptcha/api.js?render=explicit&hl="+e</script><form><button>Continue</button></form>`},
 		{"recaptcha v2 rendered explicitly", "Sign up", "https://site.example/signup", `<script src="https://www.google.com/recaptcha/api.js?render=explicit&onload=cb"></script>`},
+		{"challenge token in a tracker's referrer", "Search result for 'rolling in the deep adele' | MuseScore.com", "https://musescore.com/sheetmusic?text=rolling%20in%20the%20deep%20adele", `<img src="https://px.example/p?dl=https%3A%2F%2Fmusescore.com%2Fsheetmusic&amp;ref=https%3A%2F%2Fmusescore.com%2Fsheetmusic%3Ftext%3Drolling%2Bin%2Bthe%2Bdeep%2Badele%26__cf_chl_tk%3DPBJCkuGEs5oh-1793353699-1.0.1.1"><script>var u='/cdn-cgi/challenge-platform/scripts/precursor/main.js?ray=a529816618d1d670'</script>`},
 	} {
 		if intent := DetectChallengeIntent(tc.title, tc.url, tc.html); intent != nil {
 			t.Errorf("%s: read as %s (%s)", tc.name, intent.ChallengeType, intent.Details)

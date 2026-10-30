@@ -217,6 +217,14 @@ func withoutScriptBodies(html string) string {
 
 var scriptBodyRe = regexp.MustCompile(`(?is)(<script\b[^>]*>).*?</script>`)
 
+// cfChallengeTokenRe finds a Cloudflare challenge token (__cf_chl_tk,
+// __cf_chl_f_tk, ...) in a query string of the page's own: the interstitial's
+// form action and the URL it restores. A page reached through a challenge
+// carries the same token percent-encoded in its trackers' referrer (musescore's
+// search results, right after the interstitial was solved), and that page is
+// not a challenge.
+var cfChallengeTokenRe = regexp.MustCompile(`[?&;]__cf_chl_`)
+
 func isTurnstileChallenge(title, url, html, markup string) bool {
 	if containsAny(url,
 		"cdn-cgi/challenge-platform",
@@ -232,9 +240,8 @@ func isTurnstileChallenge(title, url, html, markup string) bool {
 		// was recognised by its title and not by the thing running it.
 		// Only /h/: bot management puts .../scripts/jsd/main.js on every page.
 		"cdn-cgi/challenge-platform/h/",
-		"__cf_chl_",
 		"cf-browser-verification",
-	) {
+	) || cfChallengeTokenRe.MatchString(html) {
 		return true
 	}
 
@@ -332,8 +339,7 @@ func isCustomJSChallenge(title, url, html string) bool {
 		"verify",
 	)
 	// Cloudflare's own challenge markup is enough by itself.
-	if containsAny(html,
-		"__cf_chl",
+	if cfChallengeTokenRe.MatchString(html) || containsAny(html,
 		"window._cf_chl_opt",
 		"challenge-form",
 		"jschl",

@@ -147,7 +147,7 @@ func TestTheFallbackClosureDeliversTheWholeRequest(t *testing.T) {
 var notCarriedToTheStaticRequest = map[string]string{
 	"Selector":                  reasonRefOnly,
 	"Within":                    reasonHandlerOnly,
-	"Key":                    reasonChromeOnly,
+	"Key":                       reasonChromeOnly,
 	"NodeID":                    reasonChromeOnly,
 	"X":                         reasonChromeOnly,
 	"Y":                         reasonChromeOnly,

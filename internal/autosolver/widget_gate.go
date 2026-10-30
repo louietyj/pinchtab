@@ -87,7 +87,7 @@ func gatedVendor(intent *Intent, title, url, html string) string {
 // carry challenge-platform frames; only the interstitial carries its options.
 func isCloudflareInterstitial(title, url, html string) bool {
 	return containsAny(url, "/cdn-cgi/challenge") ||
-		containsAny(html, "__cf_chl_", "_cf_chl_opt", "cf-browser-verification") ||
+		cfChallengeTokenRe.MatchString(html) || containsAny(html, "_cf_chl_opt", "cf-browser-verification") ||
 		(html == "" && containsAny(title, "just a moment", "attention required", "checking your browser"))
 }
 
