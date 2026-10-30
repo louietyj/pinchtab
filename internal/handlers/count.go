@@ -153,12 +153,41 @@ func jsString(value string) string {
 
 // countViaJS evaluates a count-producing JS expression, honoring the active
 // frame scope. It is the shared bridge path for the css/xpath/text families.
+// With no frame chosen it counts across every frame, as the resolver searches
+// them, so count agrees with what a click can reach.
 func (h *Handlers) countViaJS(ctx context.Context, tabID, expr string) (int, error) {
+	if h.selectorFrameID(tabID) == "" {
+		if total, ok := h.countInEveryFrame(ctx, expr); ok {
+			return total, nil
+		}
+	}
 	var count int
 	if err := h.evaluateCount(ctx, tabID, expr, &count); err != nil {
 		return 0, err
 	}
 	return count, nil
+}
+
+// countInEveryFrame sums expr over the frames that can be evaluated in; ok is
+// false when none could, and the caller falls back to the top document.
+func (h *Handlers) countInEveryFrame(ctx context.Context, expr string) (int, bool) {
+	evaluator, ok := bridgeAs[frameCountEvaluator](h.Bridge)
+	if !ok {
+		return 0, false
+	}
+	tree, err := bridge.FetchFrameTree(ctx)
+	if err != nil {
+		return 0, false
+	}
+	total, counted := 0, false
+	for id := range bridge.FrameMap(tree) {
+		var n int
+		if evaluator.EvaluateInFrame(ctx, id, expr, &n, bridge.EvalOpts{}) == nil {
+			total += n
+			counted = true
+		}
+	}
+	return total, counted
 }
 
 func (h *Handlers) evaluateCount(ctx context.Context, tabID, expr string, out any) error {

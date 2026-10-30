@@ -190,7 +190,7 @@ func (h *Handlers) handleWaitCore(w http.ResponseWriter, r *http.Request, req wa
 
 	switch mode {
 	case "selector":
-		js, matchLabel = buildSelectorJS(req.Selector, req.State)
+		matchLabel = req.Selector
 	case "text":
 		js = fmt.Sprintf(`document.body && document.body.innerText.includes(%s)`, jsonStr(req.Text))
 		matchLabel = req.Text
@@ -220,7 +220,13 @@ func (h *Handlers) handleWaitCore(w http.ResponseWriter, r *http.Request, req wa
 		matchLabel = "fn"
 	}
 
+	// A semantic selector can refresh the tab's refs while it resolves.
+	vocabBefore := h.tabVocab(resolvedTabID)
 	err := pollUntil(tCtx, pollInterval, func() (bool, error) {
+		if mode == "selector" {
+			shown := h.selectorShown(tCtx, resolvedTabID, req.Selector)
+			return shown != (req.State == "hidden"), nil
+		}
 		if mode == "url" {
 			var href string
 			if evalErr := h.Bridge.Evaluate(tCtx, "window.location.href", &href, bridge.EvalOpts{}); evalErr != nil {
@@ -232,6 +238,7 @@ func (h *Handlers) handleWaitCore(w http.ResponseWriter, r *http.Request, req wa
 		evalErr := h.Bridge.Evaluate(tCtx, js, &result, bridge.EvalOpts{})
 		return evalErr == nil && result, nil
 	})
+	h.publishVocabIfReepoched(w, resolvedTabID, vocabBefore)
 	if err == nil {
 		httpx.JSON(w, 200, waitResponse{
 			Waited:  true,
@@ -304,48 +311,6 @@ func (h *Handlers) waitNetworkIdle(ctx context.Context, tabID string, idleFor ti
 	return true, inflight, nil
 }
 
-// buildSelectorJS builds a JS expression for selector wait.
-// Supports css:, xpath:, text: prefixes and bare CSS selectors.
-func buildSelectorJS(sel, state string) (string, string) {
-	hidden := state == "hidden"
-
-	var js string
-	switch {
-	case hasPrefix(sel, "xpath:"):
-		xpath := sel[len("xpath:"):]
-		if hidden {
-			js = fmt.Sprintf(`(function(){try{var r=document.evaluate(%s,document,null,XPathResult.FIRST_ORDERED_NODE_TYPE,null);return r.singleNodeValue===null}catch(e){return true}})()`, jsonStr(xpath))
-		} else {
-			js = fmt.Sprintf(`(function(){try{var r=document.evaluate(%s,document,null,XPathResult.FIRST_ORDERED_NODE_TYPE,null);return r.singleNodeValue!==null}catch(e){return false}})()`, jsonStr(xpath))
-		}
-	case hasPrefix(sel, "//") || hasPrefix(sel, "(//"):
-		if hidden {
-			js = fmt.Sprintf(`(function(){try{var r=document.evaluate(%s,document,null,XPathResult.FIRST_ORDERED_NODE_TYPE,null);return r.singleNodeValue===null}catch(e){return true}})()`, jsonStr(sel))
-		} else {
-			js = fmt.Sprintf(`(function(){try{var r=document.evaluate(%s,document,null,XPathResult.FIRST_ORDERED_NODE_TYPE,null);return r.singleNodeValue!==null}catch(e){return false}})()`, jsonStr(sel))
-		}
-	case hasPrefix(sel, "text:"):
-		text := sel[len("text:"):]
-		if hidden {
-			js = fmt.Sprintf(`(function(){var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);while(w.nextNode()){if(w.currentNode.textContent.includes(%s))return false}return true})()`, jsonStr(text))
-		} else {
-			js = fmt.Sprintf(`(function(){var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);while(w.nextNode()){if(w.currentNode.textContent.includes(%s))return true}return false})()`, jsonStr(text))
-		}
-	default:
-		css := sel
-		if hasPrefix(sel, "css:") {
-			css = sel[len("css:"):]
-		}
-		if hidden {
-			js = fmt.Sprintf(`document.querySelector(%s) === null`, jsonStr(css))
-		} else {
-			js = fmt.Sprintf(`document.querySelector(%s) !== null`, jsonStr(css))
-		}
-	}
-
-	return js, sel
-}
-
 func matchURLPattern(pattern, url string) bool {
 	var b strings.Builder
 	for i := 0; i < len(pattern); i++ {
@@ -379,6 +344,16 @@ func jsonStr(s string) string {
 	return string(b)
 }
 
-func hasPrefix(s, prefix string) bool {
-	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
+// selectorShown is whether sel resolves, the way an action resolves it (frames,
+// the topmost dialog, refs, semantic selectors), to an element that is
+// rendered. wait and expect answer from this, so they pass exactly when a click
+// on sel would have a visible target, and a hidden copy of the text or an
+// element in a frame cannot fool them.
+func (h *Handlers) selectorShown(ctx context.Context, tabID, sel string) bool {
+	req := bridge.ActionRequest{Selector: sel}
+	if _, err := h.resolveActionRequestSelectorOnce(ctx, tabID, &req); err != nil || req.NodeID == 0 {
+		return false
+	}
+	rendered, err := h.elementRendered(ctx, req.NodeID)
+	return err == nil && rendered
 }
