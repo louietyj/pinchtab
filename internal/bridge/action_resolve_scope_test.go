@@ -453,6 +453,20 @@ func TestTextSearchesEveryFrameAndRefusesANameInTwo(t *testing.T) {
 	if _, err := ResolveUnifiedSelectorInFrame(ctx, selector.Parse("text:Top only"), nil, ""); err != nil {
 		t.Errorf("a top-document control must still resolve: %v", err)
 	}
+	for _, raw := range []string{"#inner", "xpath://button[@id='inner']"} {
+		nodeID, err := ResolveUnifiedSelectorInFrame(ctx, selector.Parse(raw), nil, "")
+		if err != nil {
+			t.Errorf("%s inside the iframe: %v", raw, err)
+			continue
+		}
+		var id string
+		if err := callFunctionOnNodeForTest(ctx, nodeID, `function() { return this.id; }`, &id); err != nil || id != "inner" {
+			t.Errorf("%s resolved %q (%v), want the iframe's button", raw, id, err)
+		}
+	}
+	if _, err := ResolveUnifiedSelectorInFrame(ctx, selector.Parse("#nowhere"), nil, ""); !errors.Is(err, ErrSelectorNoMatch) {
+		t.Errorf("a selector in no frame must be a plain no-match, got %v", err)
+	}
 }
 
 func newDataURLFixture(t *testing.T, html string) context.Context {

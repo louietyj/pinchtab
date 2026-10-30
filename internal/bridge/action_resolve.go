@@ -595,7 +595,34 @@ func (s frameScope) resolveAt(ctx context.Context, sel selector.Selector, index 
 	if sel.Kind == selector.KindText {
 		return resolveTextAt(ctx, s.frameID, 0, sel.Value, index, fromEnd, positional)
 	}
+	if s.frameID == "" && !positional {
+		return resolveSelectorInAnyFrame(ctx, sel)
+	}
 	return resolveSelectorAtInFrame(ctx, s.frameID, sel, index, fromEnd)
+}
+
+// resolveSelectorInAnyFrame is css/xpath with no frame chosen: the first match
+// in document order across every frame snap shows, the top document first. A
+// frame that cannot be searched (cross-origin, mid-navigation) is skipped.
+func resolveSelectorInAnyFrame(ctx context.Context, sel selector.Selector) (int64, error) {
+	tree, err := FetchFrameTree(ctx)
+	if err != nil {
+		return resolveSelectorAtInFrame(ctx, "", sel, 0, false)
+	}
+	var firstErr error
+	for _, id := range frameIDs(tree) {
+		nid, err := resolveSelectorAtInFrame(ctx, id, sel, 0, false)
+		if err == nil {
+			return nid, nil
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+	if firstErr == nil {
+		firstErr = fmt.Errorf("%s %q: %w", sel.Kind, sel.Value, ErrSelectorNoMatch)
+	}
+	return 0, firstErr
 }
 
 func (s frameScope) resolveRef(_ context.Context, sel selector.Selector, refCache *RefCache) (int64, error) {
@@ -754,14 +781,8 @@ func ResolveUnifiedSelectorInFrame(ctx context.Context, sel selector.Selector, r
 	case selector.KindRef:
 		return frameScope{frameID}.resolveRef(ctx, sel, refCache)
 
-	case selector.KindCSS:
-		return ResolveCSSToNodeIDInFrame(ctx, frameID, sel.Value)
-
-	case selector.KindXPath:
-		return ResolveXPathToNodeIDInFrame(ctx, frameID, sel.Value)
-
-	case selector.KindText:
-		return ResolveTextToNodeIDInFrame(ctx, frameID, sel.Value)
+	case selector.KindCSS, selector.KindXPath, selector.KindText:
+		return frameScope{frameID}.resolveAt(ctx, sel, 0, false, false)
 
 	case selector.KindSemantic:
 		return 0, errSemanticAtResolver()
