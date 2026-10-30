@@ -421,9 +421,9 @@ func TestWithinWidensFromTheAnchorToTheNearestContainerHoldingTheTarget(t *testi
 }
 
 // Cigna's Find Care page is one same-origin iframe: snap lists its buttons, so
-// text: has to find them from the top document, and still refuse a name that
-// matches in two frames.
-func TestTextFindsAControlInsideAnIframeWhenTheTopDocumentHasNone(t *testing.T) {
+// text: has to find them from the top document, and refuse a name that matches
+// in two frames rather than quietly take the top one.
+func TestTextSearchesEveryFrameAndRefusesANameInTwo(t *testing.T) {
 	ctx := newDataURLFixture(t, `
 	<button id="top">Top only</button>
 	<iframe srcdoc="<button id=inner>Dismiss</button><button>Both</button>" style="width:400px;height:200px"></iframe>
@@ -447,8 +447,11 @@ func TestTextFindsAControlInsideAnIframeWhenTheTopDocumentHasNone(t *testing.T) 
 	if gotID != "inner" {
 		t.Errorf("resolved %q, want the iframe's button", gotID)
 	}
-	if _, err := ResolveUnifiedSelectorInFrame(ctx, selector.Parse("text:Both"), nil, ""); err != nil {
-		t.Errorf("a top-document match must still win without looking in frames: %v", err)
+	if _, err := ResolveUnifiedSelectorInFrame(ctx, selector.Parse("text:Both"), nil, ""); !errors.Is(err, ErrSelectorAmbiguous) {
+		t.Errorf("a name in the top document and in a frame must be ambiguous, got %v", err)
+	}
+	if _, err := ResolveUnifiedSelectorInFrame(ctx, selector.Parse("text:Top only"), nil, ""); err != nil {
+		t.Errorf("a top-document control must still resolve: %v", err)
 	}
 }
 
