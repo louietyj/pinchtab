@@ -122,6 +122,7 @@ var guardProbes = map[string]guardProbe{
 	"GET /enabled":                {query: "selector=%23probe"},
 	"GET /checked":                {query: "selector=%23probe"},
 	"GET /download":               {query: "url=http%3A%2F%2Fexample.com%2Ff.bin"},
+	"GET /download/content":       {query: "guid=probe"},
 	"GET /network/export/stream":  {query: "path=probe.har"},
 }
 
@@ -562,7 +563,7 @@ var mustDeclareDialogGuard = []string{
 	"GET /value", "GET /attr", "GET /count", "GET /box", "GET /visible", "GET /enabled", "GET /checked",
 	"GET /pdf", "POST /pdf", "GET /timing", "GET /a11y/audit", "GET /memory", "POST /memory/snapshot",
 	"POST /action", "POST /actions", "POST /macro", "POST /wait", "POST /find", "POST /extract", "POST /evaluate",
-	"POST /upload", "POST /solve", "POST /solve/{name}", "POST /vision", "GET /download",
+	"POST /upload", "POST /solve", "POST /solve/{name}", "POST /vision", "GET /download", "GET /download/content",
 	"POST /emulation/viewport", "POST /emulation/geolocation", "POST /emulation/offline",
 	"POST /emulation/headers", "POST /emulation/credentials", "POST /emulation/media",
 	"POST /fingerprint/rotate",
@@ -611,6 +612,7 @@ var dialogGuardAllowList = map[string]string{
 	"GET /solvers":                              "browser-side",
 	"GET /config/autosolver":                    "browser-side",
 	"GET /autosolve":                            "server-side",
+	"GET /download/wait":                        "browser-side",
 	"GET /screencast/tabs":                      "browser-side",
 	"GET /record/status":                        "browser-side",
 	"GET /state/list":                           "browser-side",

@@ -69,7 +69,8 @@
     "humanize": true,
     "stealthLevel": "max",
     "tabEvictionPolicy": "reject",
-    "dialogAutoAccept": true
+    "dialogAutoAccept": true,
+    "downloadFileMaxBytes": 1073741824
   },
   "security": {
     "allowEvaluate": true,

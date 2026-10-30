@@ -326,6 +326,19 @@ curl "/download?url=https://site.com/image.jpg&raw=true" -o image.jpg
 curl "/download?url=https://site.com/export.csv&output=file&path=exports/export.csv"
 ```
 
+`/download` fetches a URL with GET. A download the page starts itself (a form POST answered with an attachment, a blob, a `data:` link) goes to Chrome's download manager instead, which the bridge points at `instanceDefaults.downloadDir` and follows:
+
+```bash
+# Long-polls (waitMs, at most 50 s) for the tab's oldest uncollected download to finish.
+# state is "none", "inProgress", "completed" or "canceled"; a finished one is collected.
+curl "/download/wait?tabId=<id>&waitMs=45000"
+
+# The finished file's bytes, read off the browser's disk wherever it runs.
+curl "/download/content?tabId=<id>&guid=<guid>" -o filing.zip
+```
+
+An action that started a download within it reports `result.downloads`.
+
 ## Upload files
 
 Only upload a local file the user explicitly provided or approved for the named destination.

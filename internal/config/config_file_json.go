@@ -74,6 +74,9 @@ type instanceDefaultsConfigJSON struct {
 	TabEvictionPolicy      string             `json:"tabEvictionPolicy"`
 	TabPolicy              *TabPolicyDefaults `json:"tabPolicy,omitempty"`
 	DialogAutoAccept       *bool              `json:"dialogAutoAccept,omitempty"`
+	DownloadBehavior       string             `json:"downloadBehavior,omitempty"`
+	DownloadDir            string             `json:"downloadDir,omitempty"`
+	DownloadFileMaxBytes   *int               `json:"downloadFileMaxBytes,omitempty"`
 }
 
 type profilesConfigJSON struct {

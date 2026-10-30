@@ -134,6 +134,14 @@ type RuntimeConfig struct {
 
 	DialogAutoAccept bool
 
+	// Downloads the page starts itself (a clicked link, a form POST, a blob):
+	// how the bridge sets Chrome's download manager. Behavior is one of the
+	// Download* constants; "" picks managed for a launched browser and user for
+	// an attached one. Dir is a path on the browser's machine.
+	DownloadBehavior     string
+	DownloadDir          string
+	DownloadFileMaxBytes int
+
 	NetworkBufferSize         int  // Per-tab network buffer size (default 100)
 	RetainNetworkBodies       bool // When true, opportunistically retain response bodies in the per-tab network buffer
 	RetainNetworkBodyMaxBytes int  // Max retained response-body bytes per entry when RetainNetworkBodies is enabled
@@ -435,6 +443,9 @@ type InstanceDefaultsConfig struct {
 	TabEvictionPolicy      string             `json:"tabEvictionPolicy,omitempty"` // Deprecated: use TabPolicy.Eviction
 	TabPolicy              *TabPolicyDefaults `json:"tabPolicy,omitempty"`
 	DialogAutoAccept       *bool              `json:"dialogAutoAccept,omitempty"`
+	DownloadBehavior       string             `json:"downloadBehavior,omitempty"`
+	DownloadDir            string             `json:"downloadDir,omitempty"`
+	DownloadFileMaxBytes   *int               `json:"downloadFileMaxBytes,omitempty"`
 }
 
 // TabPolicyDefaults groups eviction (cap pressure) and lifecycle (idle) policies

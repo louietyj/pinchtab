@@ -174,6 +174,14 @@ func ValidateFileConfig(fc *FileConfig) []error {
 			Message: fmt.Sprintf("invalid value %q (must be headless or headed)", fc.InstanceDefaults.Mode),
 		})
 	}
+	switch fc.InstanceDefaults.DownloadBehavior {
+	case "", DownloadManaged, DownloadUser, DownloadOff:
+	default:
+		errs = append(errs, ValidationError{
+			Field:   "instanceDefaults.downloadBehavior",
+			Message: fmt.Sprintf("invalid value %q (must be managed, user, or off)", fc.InstanceDefaults.DownloadBehavior),
+		})
+	}
 	if fc.InstanceDefaults.StealthLevel != "" {
 		if !isValidStealthLevel(fc.InstanceDefaults.StealthLevel) {
 			errs = append(errs, ValidationError{

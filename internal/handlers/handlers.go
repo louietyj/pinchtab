@@ -435,6 +435,10 @@ func (h *Handlers) bridgeBindings() []routeBinding {
 		{pattern: "POST /evaluate", root: h.HandleEvaluate, tab: h.HandleTabEvaluate, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
 		{pattern: "POST /macro", root: h.HandleMacro, guards: guardDialogBlocked | guardDomainPolicy}, // handoff-pause enforced PER STEP inside the macro loop, not as a request gate
 		{pattern: "GET /download", root: h.HandleDownload, tab: h.HandleTabDownload, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
+		{pattern: "GET /download/wait", root: h.HandlePageDownloadWait, tab: h.HandleTabPageDownloadWait, guards: guardNone}, // waits on the download manager; touches no page
+		// No domain policy: the file came from a page the policy already let load.
+		// Dialog-blocked, since reading it back runs script in the tab.
+		{pattern: "GET /download/content", root: h.HandlePageDownloadContent, tab: h.HandleTabPageDownloadContent, guards: guardDialogBlocked},
 		{pattern: "POST /upload", root: h.HandleUpload, tab: h.HandleTabUpload, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
 		{pattern: "GET /screencast", root: h.HandleScreencast, guards: guardDomainPolicy},
 		{pattern: "GET /screencast/tabs", root: h.HandleScreencastAll, guards: guardNone},

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"time"
 
@@ -125,6 +126,12 @@ type BridgeAPI interface {
 	ResolveSelectorToNodeID(ctx context.Context, selector string, refCache *RefCache, frameID string) (int64, error)
 
 	DownloadURL(ctx context.Context, dlURL string, opts DownloadOpts) (*DownloadResult, error)
+
+	// Downloads the page starts itself (page_downloads.go).
+	PageDownloadMark() uint64
+	PageDownloadsSince(tabID string, mark uint64) []PageDownload
+	WaitPageDownload(ctx context.Context, tabID string) (*PageDownload, error)
+	CopyPageDownload(tabCtx context.Context, pd *PageDownload, w io.Writer) (int64, error)
 
 	EnableFetchWithAuth(ctx context.Context) error
 	DisableFetch(ctx context.Context) error

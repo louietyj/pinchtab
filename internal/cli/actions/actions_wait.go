@@ -79,6 +79,11 @@ func waitFor(client *http.Client, base, token string, args []string, cmd *cobra.
 		waitCaptcha(client, base, token, tabID, timeoutMs)
 		return
 	}
+	if download, _ := cmd.Flags().GetBool("download"); download {
+		dst, _ := cmd.Flags().GetString("output")
+		waitDownload(client, base, token, tabID, timeoutMs, dst)
+		return
+	}
 
 	switch {
 	case textFlag != "":

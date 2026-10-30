@@ -678,8 +678,14 @@ func (h *Handlers) HandleAction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	downloadMark := h.Bridge.PageDownloadMark()
 	result, actionBackend, recoveryResult, actionErr := h.executeActionResilient(tCtx, &req, effectiveCfg, resolvedTabID, refMissing)
 	h.publishVocabIfReepoched(w, resolvedTabID, vocabBefore)
+	result = h.noteActionDownloads(ctx, result, resolvedTabID, downloadMark)
+	if result["downloads"] != nil {
+		// A click that starts a download often never finishes as a click.
+		actionErr = nil
+	}
 	submitTimeoutWithDialog := submitClick && isTimeoutWithPendingDialog(actionErr, resolvedTabID, h.Bridge)
 	if submitClick && !submitTimeoutWithDialog && (actionErr == nil || errors.Is(actionErr, context.DeadlineExceeded)) {
 		actionTimedOut := errors.Is(actionErr, context.DeadlineExceeded)

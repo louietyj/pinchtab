@@ -731,6 +731,15 @@ func applyInstanceDefaultsConfig(cfg *RuntimeConfig, d *InstanceDefaultsConfig) 
 	if d.DialogAutoAccept != nil {
 		cfg.DialogAutoAccept = *d.DialogAutoAccept
 	}
+	if d.DownloadBehavior != "" {
+		cfg.DownloadBehavior = d.DownloadBehavior
+	}
+	if d.DownloadDir != "" {
+		cfg.DownloadDir = d.DownloadDir
+	}
+	if d.DownloadFileMaxBytes != nil {
+		cfg.DownloadFileMaxBytes = *d.DownloadFileMaxBytes
+	}
 }
 
 func applyProfilesConfig(cfg *RuntimeConfig, p ProfilesConfig) {

@@ -149,8 +149,8 @@ EOF
 `expect <selector>` (visible; `--state hidden`), `--text`, `--not-text`,
 `--url "**/results*"`, `--fn "<js>"`. `wait` takes the same checks with a 10 s
 default, plus `wait --dom-quiet` (the page stopped changing),
-`wait --load ready-state` and `wait --captcha` (a solve under way). Use these,
-never `sleep`.
+`wait --load ready-state`, `wait --captcha` (a solve under way) and
+`wait --download` (below). Use these, never `sleep`.
 
 ## More examples
 
@@ -209,7 +209,7 @@ Every step takes `--help`. Unified selectors work wherever a step takes one.
 | Act | `click <sel>` (`--wait-nav`, `--mode dom\|dispatch`, `--dialog-action accept\|dismiss`), `dblclick`, `hover`, `focus`, `fill <sel> <text>`, `type <sel> <text>`, `press [sel] <key\|chord>`, `keyboard type <text>`, `select <sel> <value\|label>`, `check`, `uncheck`, `scroll <px\|down\|sel>`, `scrollintoview <sel>`, `mouse down\|move\|up\|wheel`, `drag <from> <to>`, `dialog accept\|dismiss`, `upload <file> -s <sel>` |
 | Check | `expect ...`, `wait ...` (above) |
 | Read | `snap` (refs + headings; `-s <sel>` to scope, `--grep <regex>` to filter), `text` (`--full` for raw innerText, `--markdown`, `-s <sel>`), `url`, `title`, `value <sel>`, `attr <sel> <name>`, `count <sel>`, `box <sel>`, `visible <sel>`, `find <phrase>`, `html -s <sel>`, `eval '<js>'` (`--frame <url part>` for an iframe) |
-| Capture | `screenshot -o <file>` (`-s <sel>` crops; `--annotate` numbers refs), `pdf -o <file>`, `download <url> -o <file>`, `shots` |
+| Capture | `screenshot -o <file>` (`-s <sel>` crops; `--annotate` numbers refs), `pdf -o <file>`, `download <url> -o <file>` (a GET of a URL), `wait --download [-o <file>]` (a download the page started), `shots` |
 | Captcha | `solve`, `vision slider\|rotate\|select\|ocr ...` |
 | State | Sensitive; only in a diagnostics task the user approved: `cookies get [--name n]` (the `pinchtab cookies get` command reads cookies; `state` is the whole tab snapshot), `cookies clear` (every cookie, all origins), `storage get\|delete\|clear` |
 
@@ -236,6 +236,20 @@ click causes, for when the next step needs the new page loaded.
   `screenshot -s '<sel>' -o /tmp/crop.jpg`. A crop's pixels are not click
   coordinates; the full shot's, through `--unscale`, are.
 - A PDF or image URL is not a page: `download` it.
+- A button or link that downloads a file (a form that answers with a zip, a
+  link with no real URL, a file the page builds itself): click it, then
+  `wait --download`. The click prints `download started: <name>` when it
+  started one in time; `wait --download` waits for it to finish (2 minutes;
+  `--timeout-ms` for more) and saves it to `~/pinchtab-downloads/` or `-o`,
+  wherever the browser runs. Each download is collected once, oldest first.
+
+  ```bash
+  pinchtab execute-batch <<'EOF'
+  check "#attachment_183697743"
+  click "text:Download Zip File"
+  wait --download -o /tmp/filing.zip
+  EOF
+  ```
 - When a snapshot looks right but clicks do nothing, read `errors` and
   `console`: a script that threw on load leaves the DOM unwired.
 

@@ -236,9 +236,17 @@ func printActionResult(kind string, result map[string]any) {
 				return
 			}
 		}
+		if downloads, ok := actionResult["downloads"].([]any); ok && len(downloads) > 0 {
+			for _, d := range downloads {
+				dl, _ := d.(map[string]any)
+				output.Value(fmt.Sprintf("download started: %v", dl["filename"]))
+			}
+			output.Hint("`wait --download` saves it once it has finished")
+			return
+		}
 		if confirmed, ok := actionResult["confirmed"].(bool); ok && !confirmed {
 			output.Value("UNCONFIRMED")
-			output.Hint("the click reached the page but was not acknowledged in time; check the page before clicking again, since a second click undoes a toggle")
+			output.Hint("the click reached the page but was not acknowledged in time; check the page before clicking again, since a second click undoes a toggle. If it starts a download, `wait --download` saves it")
 			return
 		}
 		// A click that moved the page succeeded. It used to exit 1 with a 409, which

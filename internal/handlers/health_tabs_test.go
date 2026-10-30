@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -620,6 +621,15 @@ func (m *MockBridge) ResolveSelectorToNodeID(ctx context.Context, selector strin
 
 func (m *MockBridge) DownloadURL(ctx context.Context, dlURL string, opts bridge.DownloadOpts) (*bridge.DownloadResult, error) {
 	return nil, fmt.Errorf("not implemented")
+}
+
+func (m *MockBridge) PageDownloadMark() uint64                                           { return 0 }
+func (m *MockBridge) PageDownloadsSince(tabID string, mark uint64) []bridge.PageDownload { return nil }
+func (m *MockBridge) WaitPageDownload(ctx context.Context, tabID string) (*bridge.PageDownload, error) {
+	return nil, bridge.ErrNoPageDownload
+}
+func (m *MockBridge) CopyPageDownload(ctx context.Context, pd *bridge.PageDownload, w io.Writer) (int64, error) {
+	return 0, fmt.Errorf("not implemented")
 }
 
 func (m *MockBridge) EnableFetchWithAuth(ctx context.Context) error                          { return nil }

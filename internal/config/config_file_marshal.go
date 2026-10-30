@@ -216,6 +216,9 @@ func (fc FileConfig) MarshalJSON() ([]byte, error) {
 			TabEvictionPolicy:      fc.InstanceDefaults.TabEvictionPolicy,
 			TabPolicy:              fc.InstanceDefaults.TabPolicy,
 			DialogAutoAccept:       fc.InstanceDefaults.DialogAutoAccept,
+			DownloadBehavior:       fc.InstanceDefaults.DownloadBehavior,
+			DownloadDir:            fc.InstanceDefaults.DownloadDir,
+			DownloadFileMaxBytes:   fc.InstanceDefaults.DownloadFileMaxBytes,
 		},
 		Security: fc.Security.wire(),
 		Profiles: profilesConfigJSON{
@@ -463,6 +466,9 @@ func instanceDefaultsFromRuntime(cfg *RuntimeConfig) InstanceDefaultsConfig {
 		TabEvictionPolicy:      cfg.TabEvictionPolicy,
 		TabPolicy:              tabPolicyDefaultsFromRuntime(cfg),
 		DialogAutoAccept:       ptr(cfg.DialogAutoAccept),
+		DownloadBehavior:       cfg.DownloadBehavior,
+		DownloadDir:            cfg.DownloadDir,
+		DownloadFileMaxBytes:   ptr(cfg.EffectiveDownloadFileMaxBytes()),
 	}
 }
 

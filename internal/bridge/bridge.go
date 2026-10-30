@@ -71,6 +71,9 @@ type Bridge struct {
 
 	stealthLaunchMode stealth.LaunchMode
 
+	downloadsMu   sync.Mutex
+	pageDownloads *pageDownloads
+
 	captureFunc func(ctx context.Context, format string, quality int) ([]byte, error)
 }
 
@@ -243,6 +246,7 @@ func (b *Bridge) wireTabManager(browserCtx context.Context) {
 	for _, fn := range hooks {
 		b.TabManager.AddTabRemovedHook(fn)
 	}
+	b.enablePageDownloads(browserCtx)
 }
 
 func (b *Bridge) StartNetworkCapture(tabCtx context.Context, tabID string) error {

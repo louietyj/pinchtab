@@ -101,6 +101,8 @@ var blankIsTheAnswer = map[string]string{
 	"browser.proxy.geo.countryISO":            "no proxy geo override",
 	"browser.fallbackOrder":                   "no fallback configured; an implicit launch then tries the primary target only",
 	"instanceDefaults.timezone":               "unset means the host timezone",
+	"instanceDefaults.downloadBehavior":       "unset picks managed for a browser pinchtab launched and user for an attached one, which the config cannot know",
+	"instanceDefaults.downloadDir":            "unset means <stateDir>/downloads, or ~/Downloads under the user behavior",
 	"instanceDefaults.userAgent":              "unset means the browser's own user agent",
 	"security.allowedDomains":                 "empty list; an absent allowlist is not a restriction, so every host is permitted. A localhost-only default used to be printed here, and honouring it would have refused every external navigation",
 	"security.downloadAllowedDomains":         "empty list, downloads follow the main allowlist",

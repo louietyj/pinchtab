@@ -267,12 +267,16 @@ func sessionMediaGrantAllows(method, path string) bool {
 		switch {
 		case path == "/pdf",
 			path == "/download",
+			path == "/download/wait",
+			path == "/download/content",
 			path == "/screencast",
 			path == "/screencast/tabs",
 			path == "/record/status":
 			return true
 		case tabRouteHasSuffix(path, "/pdf"),
-			tabRouteHasSuffix(path, "/download"):
+			tabRouteHasSuffix(path, "/download"),
+			tabRouteHasSuffix(path, "/download/wait"),
+			tabRouteHasSuffix(path, "/download/content"):
 			return true
 		}
 	case http.MethodPost:

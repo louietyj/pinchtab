@@ -309,6 +309,12 @@ func getInstanceDefaultsField(c *InstanceDefaultsConfig, field string) (string, 
 		return c.TabEvictionPolicy, nil
 	case "dialogAutoAccept":
 		return formatBoolPtr(c.DialogAutoAccept), nil
+	case "downloadBehavior":
+		return c.DownloadBehavior, nil
+	case "downloadDir":
+		return c.DownloadDir, nil
+	case "downloadFileMaxBytes":
+		return formatIntPtr(c.DownloadFileMaxBytes), nil
 	default:
 		return "", fmt.Errorf("unknown field instanceDefaults.%s", field)
 	}

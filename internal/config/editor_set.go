@@ -465,6 +465,16 @@ func setInstanceDefaultsField(c *InstanceDefaultsConfig, field, value string) er
 			return fmt.Errorf("instanceDefaults.dialogAutoAccept: %w", err)
 		}
 		c.DialogAutoAccept = &b
+	case "downloadBehavior":
+		c.DownloadBehavior = value
+	case "downloadDir":
+		c.DownloadDir = value
+	case "downloadFileMaxBytes":
+		n, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("instanceDefaults.downloadFileMaxBytes must be a number: %w", err)
+		}
+		c.DownloadFileMaxBytes = &n
 	default:
 		return fmt.Errorf("unknown field instanceDefaults.%s", field)
 	}
