@@ -5,10 +5,10 @@ const (
 	// DownloadManaged saves every download under a guid name in a directory
 	// pinchtab owns, to be copied back to the caller.
 	DownloadManaged = "managed"
-	// DownloadUser saves under the real file name in the user's own Downloads
-	// folder: for an attached personal Chrome, whose downloads should land
-	// where the user expects them.
-	DownloadUser = "user"
+	// DownloadDefault leaves where and how a download is saved to the browser
+	// (its folder, renaming, save prompts) and only follows the events: for an
+	// attached personal Chrome. A headless browser cancels downloads this way.
+	DownloadDefault = "default"
 	// DownloadOff leaves the download manager alone; downloads are not tracked.
 	DownloadOff = "off"
 )
@@ -24,7 +24,7 @@ func (cfg *RuntimeConfig) EffectiveDownloadBehavior(attached bool) string {
 		return cfg.DownloadBehavior
 	}
 	if attached {
-		return DownloadUser
+		return DownloadDefault
 	}
 	return DownloadManaged
 }

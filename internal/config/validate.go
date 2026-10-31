@@ -175,11 +175,11 @@ func ValidateFileConfig(fc *FileConfig) []error {
 		})
 	}
 	switch fc.InstanceDefaults.DownloadBehavior {
-	case "", DownloadManaged, DownloadUser, DownloadOff:
+	case "", DownloadManaged, DownloadDefault, DownloadOff:
 	default:
 		errs = append(errs, ValidationError{
 			Field:   "instanceDefaults.downloadBehavior",
-			Message: fmt.Sprintf("invalid value %q (must be managed, user, or off)", fc.InstanceDefaults.DownloadBehavior),
+			Message: fmt.Sprintf("invalid value %q (must be managed, default, or off)", fc.InstanceDefaults.DownloadBehavior),
 		})
 	}
 	if fc.InstanceDefaults.StealthLevel != "" {

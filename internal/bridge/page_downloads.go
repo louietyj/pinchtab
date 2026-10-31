@@ -200,17 +200,20 @@ func (b *Bridge) enablePageDownloads(browserCtx context.Context) {
 	if behavior == config.DownloadOff {
 		return
 	}
-	dir, err := b.pageDownloadDir(behavior)
-	if err != nil {
-		slog.Warn("page downloads: no download directory", "err", err)
-		return
-	}
-	cdpBehavior := browser.SetDownloadBehaviorBehaviorAllowAndName
-	if behavior == config.DownloadUser {
-		cdpBehavior = browser.SetDownloadBehaviorBehaviorAllow
+	// "allow" modes take over naming and placement (no "(1)" renames, no save
+	// prompt), so a personal browser keeps its own handling and is only watched.
+	set := browser.SetDownloadBehavior(browser.SetDownloadBehaviorBehaviorDefault).WithEventsEnabled(true)
+	dir := ""
+	if behavior == config.DownloadManaged {
+		var err error
+		if dir, err = b.pageDownloadDir(); err != nil {
+			slog.Warn("page downloads: no download directory", "err", err)
+			return
+		}
+		set = browser.SetDownloadBehavior(browser.SetDownloadBehaviorBehaviorAllowAndName).WithDownloadPath(dir).WithEventsEnabled(true)
 	}
 	if err := runOnBrowser(browserCtx, func(ctx context.Context) error {
-		return browser.SetDownloadBehavior(cdpBehavior).WithDownloadPath(dir).WithEventsEnabled(true).Do(ctx)
+		return set.Do(ctx)
 	}); err != nil {
 		slog.Warn("page downloads: setDownloadBehavior failed", "err", err)
 		return
@@ -240,16 +243,9 @@ func (b *Bridge) enablePageDownloads(browserCtx context.Context) {
 	slog.Info("page downloads enabled", "behavior", behavior, "dir", dir)
 }
 
-func (b *Bridge) pageDownloadDir(behavior string) (string, error) {
+func (b *Bridge) pageDownloadDir() (string, error) {
 	if dir := b.Config.DownloadDir; dir != "" {
 		return dir, nil
-	}
-	if behavior == config.DownloadUser {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		return filepath.Join(home, "Downloads"), nil
 	}
 	if b.Config.StateDir == "" {
 		return "", errors.New("no state directory")

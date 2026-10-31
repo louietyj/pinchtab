@@ -410,12 +410,12 @@
         },
         "downloadBehavior": {
           "type": "string",
-          "enum": ["managed", "user", "off"],
-          "description": "How the bridge sets Chrome's download manager for downloads a page starts: managed saves them under a pinchtab directory, user saves them under their own names in ~/Downloads, off leaves the browser alone. Unset picks managed for a browser pinchtab launched and user for an attached one."
+          "enum": ["managed", "default", "off"],
+          "description": "How the bridge sets Chrome's download manager for downloads a page starts: managed saves them under guid names in downloadDir, default leaves saving to the browser and only follows the downloads, off leaves the browser alone. Unset picks managed for a browser pinchtab launched (headless Chrome cancels downloads by default) and default for an attached one."
         },
         "downloadDir": {
           "type": "string",
-          "description": "Directory, on the browser's machine, that page downloads are saved to. Unset means <stateDir>/downloads, or ~/Downloads under the user behavior."
+          "description": "Directory, on the browser's machine, that managed page downloads are saved to. Unset means <stateDir>/downloads."
         },
         "downloadFileMaxBytes": {
           "type": "integer",

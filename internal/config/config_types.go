@@ -136,8 +136,8 @@ type RuntimeConfig struct {
 
 	// Downloads the page starts itself (a clicked link, a form POST, a blob):
 	// how the bridge sets Chrome's download manager. Behavior is one of the
-	// Download* constants; "" picks managed for a launched browser and user for
-	// an attached one. Dir is a path on the browser's machine.
+	// Download* constants; "" picks managed for a launched browser and default
+	// for an attached one. Dir is a path on the browser's machine.
 	DownloadBehavior     string
 	DownloadDir          string
 	DownloadFileMaxBytes int
