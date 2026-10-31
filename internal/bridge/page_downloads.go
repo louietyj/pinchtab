@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -63,6 +64,11 @@ type pageDownloads struct {
 	seq      uint64
 	changed  chan struct{}
 	maxBytes int64
+	// stageDir and moveTo are set for a personal browser: a download saved in
+	// stageDir while pinchtab was quieting the save prompt is moved to moveTo
+	// under its own name, renamed rather than overwriting.
+	stageDir string
+	moveTo   string
 }
 
 func newPageDownloads() *pageDownloads {
@@ -116,6 +122,13 @@ func (d *pageDownloads) progress(ev *browser.EventDownloadProgress) (overCap boo
 	case browser.DownloadProgressStateCompleted:
 		pd.State = PageDownloadCompleted
 		pd.FilePath = ev.FilePath
+		if d.moveTo != "" && d.stageDir != "" && filepath.Dir(ev.FilePath) == filepath.Clean(d.stageDir) {
+			if moved, err := moveUnique(ev.FilePath, d.moveTo, pd.Filename); err == nil {
+				pd.FilePath = moved
+			} else {
+				slog.Warn("page downloads: could not move a download out of staging", "file", ev.FilePath, "err", err)
+			}
+		}
 	case browser.DownloadProgressStateCanceled:
 		pd.State = PageDownloadCanceled
 		if pd.Error == "" {
@@ -129,6 +142,32 @@ func (d *pageDownloads) progress(ev *browser.EventDownloadProgress) (overCap boo
 	}
 	d.notifyLocked()
 	return overCap
+}
+
+// moveUnique moves src into dir as name, or "name (1).ext", "name (2).ext", ...
+// when taken, as Chrome names a download whose name is already there.
+func moveUnique(src, dir, name string) (string, error) {
+	name = filepath.Base(name)
+	if name == "." || name == string(filepath.Separator) || name == "" {
+		name = "download"
+	}
+	ext := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	for i := 0; i < 1000; i++ {
+		candidate := name
+		if i > 0 {
+			candidate = fmt.Sprintf("%s (%d)%s", stem, i, ext)
+		}
+		dst := filepath.Join(dir, candidate)
+		// Link fails if dst exists, so a name taken between the check and the
+		// move is never overwritten.
+		if err := os.Link(src, dst); err == nil {
+			return dst, os.Remove(src)
+		} else if !os.IsExist(err) {
+			return "", err
+		}
+	}
+	return "", fmt.Errorf("no free name for %s in %s", name, dir)
 }
 
 // mark is the sequence number to pass to since: downloads that begin after it.
@@ -221,8 +260,16 @@ func (b *Bridge) enablePageDownloads(browserCtx context.Context) {
 
 	d := newPageDownloads()
 	d.maxBytes = int64(b.Config.EffectiveDownloadFileMaxBytes())
+	if behavior == config.DownloadDefault && b.Config.StateDir != "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			d.stageDir = filepath.Join(b.Config.StateDir, "downloads")
+			d.moveTo = filepath.Join(home, "Downloads")
+		}
+	}
 	b.downloadsMu.Lock()
 	b.pageDownloads = d
+	b.downloadsCtx = browserCtx
+	b.quietUntil = time.Time{}
 	b.downloadsMu.Unlock()
 
 	chromedp.ListenBrowser(browserCtx, func(ev any) {
@@ -241,6 +288,62 @@ func (b *Bridge) enablePageDownloads(browserCtx context.Context) {
 		}
 	})
 	slog.Info("page downloads enabled", "behavior", behavior, "dir", dir)
+}
+
+// quietTail is how long the save prompt stays off after pinchtab's last
+// action or download wait: a form can take a while to answer with its file.
+const quietTail = 20 * time.Second
+
+// QuietDownloads keeps a personal browser from asking where to save while
+// pinchtab is at work: downloads are staged under guid names, then moved to
+// ~/Downloads under their own. It lapses quietTail after the last call, and
+// the browser's own handling, save prompt included, comes back.
+func (b *Bridge) QuietDownloads() {
+	b.downloadsMu.Lock()
+	defer b.downloadsMu.Unlock()
+	d, ctx := b.pageDownloads, b.downloadsCtx
+	if d == nil || d.stageDir == "" || ctx == nil {
+		return
+	}
+	on := !b.quietUntil.IsZero()
+	b.quietUntil = time.Now().Add(quietTail)
+	if on {
+		return
+	}
+	if err := os.MkdirAll(d.stageDir, 0o750); err != nil {
+		b.quietUntil = time.Time{}
+		return
+	}
+	if err := runOnBrowser(ctx, func(ctx context.Context) error {
+		return browser.SetDownloadBehavior(browser.SetDownloadBehaviorBehaviorAllowAndName).
+			WithDownloadPath(d.stageDir).WithEventsEnabled(true).Do(ctx)
+	}); err != nil {
+		b.quietUntil = time.Time{}
+		return
+	}
+	go b.endQuietDownloads(d)
+}
+
+func (b *Bridge) endQuietDownloads(d *pageDownloads) {
+	for {
+		b.downloadsMu.Lock()
+		if b.pageDownloads != d {
+			b.downloadsMu.Unlock()
+			return
+		}
+		wait := time.Until(b.quietUntil)
+		if wait <= 0 {
+			b.quietUntil = time.Time{}
+			ctx := b.downloadsCtx
+			b.downloadsMu.Unlock()
+			_ = runOnBrowser(ctx, func(ctx context.Context) error {
+				return browser.SetDownloadBehavior(browser.SetDownloadBehaviorBehaviorDefault).WithEventsEnabled(true).Do(ctx)
+			})
+			return
+		}
+		b.downloadsMu.Unlock()
+		time.Sleep(wait)
+	}
 }
 
 func (b *Bridge) pageDownloadDir() (string, error) {

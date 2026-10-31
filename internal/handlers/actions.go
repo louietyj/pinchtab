@@ -678,6 +678,7 @@ func (h *Handlers) HandleAction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	h.Bridge.QuietDownloads()
 	downloadMark := h.Bridge.PageDownloadMark()
 	stopChooserWatch := h.Bridge.WatchFileChooser(ctx, resolvedTabID)
 	result, actionBackend, recoveryResult, actionErr := h.executeActionResilient(tCtx, &req, effectiveCfg, resolvedTabID, refMissing)

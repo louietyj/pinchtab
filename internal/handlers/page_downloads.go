@@ -35,6 +35,19 @@ func (h *Handlers) HandlePageDownloadWait(w http.ResponseWriter, r *http.Request
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), queryMillis(q.Get("waitMs"), pageDownloadWaitMax, pageDownloadWaitMax))
 	defer cancel()
+	// A wait that outlasts the quiet tail must not let the save prompt back.
+	stopQuiet := make(chan struct{})
+	defer close(stopQuiet)
+	go func() {
+		for {
+			h.Bridge.QuietDownloads()
+			select {
+			case <-stopQuiet:
+				return
+			case <-time.After(5 * time.Second):
+			}
+		}
+	}()
 	pd, err := h.Bridge.WaitPageDownload(ctx, tabID)
 	switch {
 	case errors.Is(err, bridge.ErrNoPageDownload):

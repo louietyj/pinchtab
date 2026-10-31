@@ -58,7 +58,12 @@ func waitDownload(client *http.Client, base, token, tabID string, timeoutMs int,
 		output.Error("wait", fmt.Sprintf("copy %s back: %v", name, err), 1)
 		return
 	}
-	output.Value(fmt.Sprintf("download: %s (%s) -> %s", name, byteSize(float64(n)), dst))
+	line := fmt.Sprintf("download: %s (%s) -> %s", name, byteSize(float64(n)), dst)
+	// In a personal browser the file also stays where the browser saved it.
+	if saved, _ := dl["filePath"].(string); saved != "" {
+		line += " (saved by the browser as " + saved + ")"
+	}
+	output.Value(line)
 }
 
 // defaultDownloadPath names a file in ~/pinchtab-downloads after the page's

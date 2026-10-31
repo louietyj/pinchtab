@@ -73,6 +73,8 @@ type Bridge struct {
 
 	downloadsMu   sync.Mutex
 	pageDownloads *pageDownloads
+	downloadsCtx  context.Context
+	quietUntil    time.Time
 	choosersMu    sync.Mutex
 	choosers      map[string]FileChooser
 

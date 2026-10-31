@@ -132,6 +132,7 @@ type BridgeAPI interface {
 	PageDownloadsSince(tabID string, mark uint64) []PageDownload
 	WaitPageDownload(ctx context.Context, tabID string) (*PageDownload, error)
 	CopyPageDownload(tabCtx context.Context, pd *PageDownload, w io.Writer) (int64, error)
+	QuietDownloads()
 
 	// File pickers and drop zones (file_upload.go).
 	WatchFileChooser(tabCtx context.Context, tabID string) func() *FileChooser
