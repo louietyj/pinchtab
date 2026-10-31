@@ -206,7 +206,7 @@ Every step takes `--help`. Unified selectors work wherever a step takes one.
 | Kind | Steps |
 |---|---|
 | Navigate | `nav <url>` (`--block-images`, `--new-tab`, `--dismiss-banners`), `back`, `forward`, `reload`, `tab` (list), `tab <id>`, `tab close <id>` |
-| Act | `click <sel>` (`--wait-nav`, `--mode dom\|dispatch`, `--dialog-action accept\|dismiss`), `dblclick`, `hover`, `focus`, `fill <sel> <text>`, `type <sel> <text>`, `press [sel] <key\|chord>`, `keyboard type <text>`, `select <sel> <value\|label>`, `check`, `uncheck`, `scroll <px\|down\|sel>`, `scrollintoview <sel>`, `mouse down\|move\|up\|wheel`, `drag <from> <to>`, `dialog accept\|dismiss`, `upload <file> -s <sel>` |
+| Act | `click <sel>` (`--wait-nav`, `--mode dom\|dispatch`, `--dialog-action accept\|dismiss`), `dblclick`, `hover`, `focus`, `fill <sel> <text>`, `type <sel> <text>`, `press [sel] <key\|chord>`, `keyboard type <text>`, `select <sel> <value\|label>`, `check`, `uncheck`, `scroll <px\|down\|sel>`, `scrollintoview <sel>`, `mouse down\|move\|up\|wheel`, `drag <from> <to>`, `dialog accept\|dismiss`, `upload <file> [-s <sel>] [--drop]` |
 | Check | `expect ...`, `wait ...` (above) |
 | Read | `snap` (refs + headings; `-s <sel>` to scope, `--grep <regex>` to filter), `text` (`--full` for raw innerText, `--markdown`, `-s <sel>`), `url`, `title`, `value <sel>`, `attr <sel> <name>`, `count <sel>`, `box <sel>`, `visible <sel>`, `find <phrase>`, `html -s <sel>`, `eval '<js>'` (`--frame <url part>` for an iframe) |
 | Capture | `screenshot -o <file>` (`-s <sel>` crops; `--annotate` numbers refs), `pdf -o <file>`, `download <url> -o <file>` (a GET of a URL), `wait --download [-o <file>]` (a download the page started), `shots` |
@@ -248,6 +248,19 @@ click causes, for when the next step needs the new page loaded.
   check "#attachment_183697743"
   click "text:Download Zip File"
   wait --download -o /tmp/filing.zip
+  EOF
+  ```
+- To upload a file, click the page's own "Upload"/"Choose file" control. It
+  prints `file picker opened (selectSingle)` (no picker ever appears), and
+  `upload <file>` with no `-s` fills the input behind it; `-s <input>` names
+  one yourself. A drop zone takes `upload <file> -s <zone> --drop`. Works the
+  same in every browser, the cloud one included.
+
+  ```bash
+  pinchtab execute-batch <<'EOF'
+  click "text:Choose file"
+  upload /tmp/resume.pdf
+  click "text:Submit"
   EOF
   ```
 - When a snapshot looks right but clicks do nothing, read `errors` and

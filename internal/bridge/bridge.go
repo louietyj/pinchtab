@@ -73,6 +73,8 @@ type Bridge struct {
 
 	downloadsMu   sync.Mutex
 	pageDownloads *pageDownloads
+	choosersMu    sync.Mutex
+	choosers      map[string]FileChooser
 
 	captureFunc func(ctx context.Context, format string, quality int) ([]byte, error)
 }

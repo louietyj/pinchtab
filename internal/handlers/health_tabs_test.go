@@ -631,6 +631,13 @@ func (m *MockBridge) WaitPageDownload(ctx context.Context, tabID string) (*bridg
 func (m *MockBridge) CopyPageDownload(ctx context.Context, pd *bridge.PageDownload, w io.Writer) (int64, error) {
 	return 0, fmt.Errorf("not implemented")
 }
+func (m *MockBridge) WatchFileChooser(ctx context.Context, tabID string) func() *bridge.FileChooser {
+	return func() *bridge.FileChooser { return nil }
+}
+func (m *MockBridge) TakeFileChooser(tabID string) *bridge.FileChooser { return nil }
+func (m *MockBridge) DropFiles(ctx context.Context, nodeID int64, paths []string) error {
+	return nil
+}
 
 func (m *MockBridge) EnableFetchWithAuth(ctx context.Context) error                          { return nil }
 func (m *MockBridge) DisableFetch(ctx context.Context) error                                 { return nil }

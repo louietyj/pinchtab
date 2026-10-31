@@ -133,6 +133,11 @@ type BridgeAPI interface {
 	WaitPageDownload(ctx context.Context, tabID string) (*PageDownload, error)
 	CopyPageDownload(tabCtx context.Context, pd *PageDownload, w io.Writer) (int64, error)
 
+	// File pickers and drop zones (file_upload.go).
+	WatchFileChooser(tabCtx context.Context, tabID string) func() *FileChooser
+	TakeFileChooser(tabID string) *FileChooser
+	DropFiles(ctx context.Context, backendNodeID int64, paths []string) error
+
 	EnableFetchWithAuth(ctx context.Context) error
 	DisableFetch(ctx context.Context) error
 	ListenAuthRequired(ctx context.Context, handler func(requestID string, isAuth bool))

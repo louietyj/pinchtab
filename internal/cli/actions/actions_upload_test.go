@@ -19,7 +19,7 @@ func TestUploadDefaultPath(t *testing.T) {
 	}
 
 	captureStdout(t, func() {
-		Upload(m.server.Client(), m.base(), "", []string{f}, "#file", "")
+		Upload(m.server.Client(), m.base(), "", []string{f}, "#file", "", false)
 	})
 
 	if m.lastPath != "/upload" {
@@ -37,7 +37,7 @@ func TestUploadTabScopedPath(t *testing.T) {
 	}
 
 	captureStdout(t, func() {
-		Upload(m.server.Client(), m.base(), "", []string{f}, "#file", "tab1")
+		Upload(m.server.Client(), m.base(), "", []string{f}, "#file", "tab1", false)
 	})
 
 	if m.lastPath != "/tabs/tab1/upload" {
@@ -62,7 +62,7 @@ func TestUploadSendsTheBasenameOfEachFile(t *testing.T) {
 	}
 
 	captureStdout(t, func() {
-		Upload(m.server.Client(), m.base(), "", []string{first, second}, "#file", "")
+		Upload(m.server.Client(), m.base(), "", []string{first, second}, "#file", "", false)
 	})
 
 	var body struct {
@@ -100,7 +100,7 @@ func TestUploadSendsNoDirectoryComponent(t *testing.T) {
 	}
 
 	captureStdout(t, func() {
-		Upload(m.server.Client(), m.base(), "", []string{f}, "#file", "")
+		Upload(m.server.Client(), m.base(), "", []string{f}, "#file", "", false)
 	})
 
 	var body struct {

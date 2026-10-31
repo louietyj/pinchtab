@@ -236,6 +236,16 @@ func printActionResult(kind string, result map[string]any) {
 				return
 			}
 		}
+		if fc, ok := actionResult["fileChooser"].(map[string]any); ok {
+			if fc["backendNodeId"] == nil {
+				output.Value("file picker opened by showOpenFilePicker")
+				output.Hint("pinchtab can't answer this kind of picker yet; look for a file input or a drop zone on the page")
+			} else {
+				output.Value(fmt.Sprintf("file picker opened (%v)", fc["mode"]))
+				output.Hint("`upload <file>` with no -s fills the input behind it")
+			}
+			return
+		}
 		if downloads, ok := actionResult["downloads"].([]any); ok && len(downloads) > 0 {
 			for _, d := range downloads {
 				dl, _ := d.(map[string]any)

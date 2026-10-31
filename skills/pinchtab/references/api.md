@@ -355,7 +355,7 @@ curl -X POST /upload -H "Content-Type: application/json" \
   -d '{"selector": "#avatar-input", "files": ["data:image/png;base64,iVBOR..."], "fileNames": ["avatar.png"]}'
 ```
 
-Sets files on `<input type=file>` elements via CDP. Fires `change` events. Selector defaults to `input[type=file]` if omitted.
+Sets files on `<input type=file>` elements via CDP. Fires `change` events. With no selector it fills the input whose file picker the tab's last action opened (an action that opens one reports `result.fileChooser`), else `input[type=file]`. `"drop": true` drops the files on the selector as a drop zone receives them. A browser that refuses local paths (Browser Use: "Files must exist in the downloads directory") gets the files through a download made by the page.
 
 `fileNames` is index-aligned with `files` and is the name the page reads from `file.name`. Send it whenever you know the filename: without it a file arrives as `upload-<i>.bin`, and forms that gate on the extension (`accept=".csv"`, `file.name.endsWith(".pdf")`) reject it. Content sniffing fills the gap only for formats with magic bytes — png, jpeg, gif, webp, pdf — never for csv, json, txt, md or html. The CLI sends it automatically.
 

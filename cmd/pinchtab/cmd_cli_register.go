@@ -70,7 +70,8 @@ func registerManagementCommands() {
 }
 
 func configureBrowserFlags() {
-	uploadCmd.Flags().StringP("selector", "s", "", "CSS selector for file input")
+	uploadCmd.Flags().StringP("selector", "s", "", "File input to fill (default: the one whose file picker the last click opened, else the first file input)")
+	uploadCmd.Flags().Bool("drop", false, "Drop the files on -s, a drop zone, instead of filling a file input")
 	downloadCmd.Flags().StringP("output", "o", "", "Save downloaded file to path")
 
 	addPointerActionFlags(clickCmd, "click")

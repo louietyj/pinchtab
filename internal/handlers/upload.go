@@ -22,6 +22,9 @@ type uploadRequest struct {
 	Files     []string `json:"files"`
 	FileNames []string `json:"fileNames"`
 	Paths     []string `json:"paths"`
+	// Drop drops the files on the selector as a drop zone would receive them,
+	// instead of filling a file input.
+	Drop bool `json:"drop"`
 }
 
 const (
@@ -90,8 +93,9 @@ func (h *Handlers) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Selector == "" {
-		req.Selector = "input[type=file]"
+	if req.Drop && req.Selector == "" {
+		httpx.Error(w, 400, fmt.Errorf("drop needs a selector for the drop zone"))
+		return
 	}
 
 	if len(req.Files) == 0 && len(req.Paths) == 0 {
@@ -202,13 +206,29 @@ func (h *Handlers) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	defer tCancel()
 	go httpx.CancelOnClientDone(r.Context(), tCancel)
 
-	nodeID, err := h.Bridge.ResolveSelectorToNodeID(tCtx, req.Selector, h.Bridge.GetRefCache(resolvedTabID), h.selectorFrameID(resolvedTabID))
-	if err != nil {
-		respondSelectorFailure(w, fmt.Errorf("%w: upload selector %q: %v", ErrElementNotFound, req.Selector, err))
-		return
+	// With no selector, fill the input whose file picker the last action opened.
+	var nodeID int64
+	if req.Selector == "" {
+		if fc := h.Bridge.TakeFileChooser(resolvedTabID); fc != nil && fc.BackendNodeID > 0 {
+			nodeID = fc.BackendNodeID
+		} else {
+			req.Selector = "input[type=file]"
+		}
+	}
+	if nodeID == 0 {
+		nodeID, err = h.Bridge.ResolveSelectorToNodeID(tCtx, req.Selector, h.Bridge.GetRefCache(resolvedTabID), h.selectorFrameID(resolvedTabID))
+		if err != nil {
+			respondSelectorFailure(w, fmt.Errorf("%w: upload selector %q: %v", ErrElementNotFound, req.Selector, err))
+			return
+		}
 	}
 
-	if err := h.Bridge.SetFileInputFiles(tCtx, nodeID, allPaths); err != nil {
+	if req.Drop {
+		err = h.Bridge.DropFiles(tCtx, nodeID, allPaths)
+	} else {
+		err = h.Bridge.SetFileInputFiles(tCtx, nodeID, allPaths)
+	}
+	if err != nil {
 		httpx.Error(w, 500, fmt.Errorf("upload: %w", err))
 		return
 	}

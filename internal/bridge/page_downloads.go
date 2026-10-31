@@ -156,6 +156,39 @@ func (d *pageDownloads) claim(guid string) {
 	}
 }
 
+// waitFinished waits for the download named name that began after mark to
+// finish, and claims it so `wait --download` never collects it.
+func (d *pageDownloads) waitFinished(ctx context.Context, mark uint64, name string) (*PageDownload, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	for {
+		d.mu.Lock()
+		var found *PageDownload
+		for _, pd := range d.order {
+			if pd.seq > mark && !pd.claimed && pd.Filename == name {
+				found = pd
+				break
+			}
+		}
+		changed := d.changed
+		if found != nil && found.State != PageDownloadInProgress {
+			found.claimed = true
+			out := *found
+			d.mu.Unlock()
+			if out.State != PageDownloadCompleted {
+				return nil, fmt.Errorf("the download was %s: %s", out.State, out.Error)
+			}
+			return &out, nil
+		}
+		d.mu.Unlock()
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+}
+
 // enablePageDownloads runs on every browser start or attach; the setting can
 // be changed on a live connection.
 func (b *Bridge) enablePageDownloads(browserCtx context.Context) {
@@ -377,6 +410,17 @@ func copyBrowserFile(tabCtx context.Context, path string, size int64, w io.Write
 		defer func() { _ = cdpruntime.ReleaseObject(input.ObjectID).Do(ctx) }()
 		if err := dom.SetFileInputFiles([]string{path}).WithObjectID(input.ObjectID).Do(ctx); err != nil {
 			return fmt.Errorf("open %s in the browser: %w", path, err)
+		}
+		// Browser Use saves under the real name, so a later download with the
+		// same name replaces the file.
+		sz, _, err := cdpruntime.CallFunctionOn(`function() { return this.files[0].size }`).
+			WithObjectID(input.ObjectID).WithReturnByValue(true).Do(ctx)
+		if err != nil {
+			return err
+		}
+		var got int64
+		if err := json.Unmarshal(sz.Value, &got); err != nil || got != size {
+			return fmt.Errorf("%s on the browser's disk is %d bytes, not %d: a later download with the same name replaced it", path, got, size)
 		}
 		for off := int64(0); off < size; off += pageDownloadChunk {
 			fn := fmt.Sprintf(`async function() {

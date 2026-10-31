@@ -679,9 +679,17 @@ func (h *Handlers) HandleAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	downloadMark := h.Bridge.PageDownloadMark()
+	stopChooserWatch := h.Bridge.WatchFileChooser(ctx, resolvedTabID)
 	result, actionBackend, recoveryResult, actionErr := h.executeActionResilient(tCtx, &req, effectiveCfg, resolvedTabID, refMissing)
+	chooser := stopChooserWatch()
 	h.publishVocabIfReepoched(w, resolvedTabID, vocabBefore)
 	result = h.noteActionDownloads(ctx, result, resolvedTabID, downloadMark)
+	if chooser != nil && actionErr == nil {
+		if result == nil {
+			result = map[string]any{}
+		}
+		result["fileChooser"] = chooser
+	}
 	if result["downloads"] != nil {
 		// A click that starts a download often never finishes as a click.
 		actionErr = nil

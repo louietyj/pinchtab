@@ -11,9 +11,12 @@ import (
 	"github.com/pinchtab/pinchtab/internal/cli/apiclient"
 )
 
-func Upload(client *http.Client, base, token string, args []string, selector, tabID string) {
+func Upload(client *http.Client, base, token string, args []string, selector, tabID string, drop bool) {
 	if len(args) < 1 {
-		cli.Fatal("Usage: pinchtab upload <file-path> [--selector <css>] [--tab <id>]")
+		cli.Fatal("Usage: pinchtab upload <file-path> [--selector <css>] [--drop] [--tab <id>]")
+	}
+	if drop && selector == "" {
+		cli.Fatal("--drop needs -s <drop zone>")
 	}
 
 	var files, fileNames []string
@@ -32,6 +35,9 @@ func Upload(client *http.Client, base, token string, args []string, selector, ta
 	}
 	if selector != "" {
 		body["selector"] = selector
+	}
+	if drop {
+		body["drop"] = true
 	}
 
 	path := "/upload"

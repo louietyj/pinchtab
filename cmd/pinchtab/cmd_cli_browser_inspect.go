@@ -288,7 +288,8 @@ var uploadCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		runCLI(func(rt cliRuntime) {
-			browseractions.Upload(rt.client, rt.base, rt.token, args, stringFlag(cmd, "selector"), stringFlag(cmd, "tab"))
+			drop, _ := cmd.Flags().GetBool("drop")
+			browseractions.Upload(rt.client, rt.base, rt.token, args, stringFlag(cmd, "selector"), stringFlag(cmd, "tab"), drop)
 		})
 	},
 }
