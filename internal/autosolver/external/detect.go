@@ -169,6 +169,10 @@ func findCaptchaWidget(html string) captchaWidget {
 		if pk := attrValue(tag, pkeyAttrRe); pk != "" {
 			return captchaWidget{"funcaptcha", pk}
 		}
+		// Before the resource scan: Auth0's bundle names every provider it supports.
+		if w, ok := auth0Widget(tag); ok {
+			return w
+		}
 
 		key := attrValue(tag, siteKeyAttrRe)
 		// Explicit-render widgets are often marked by id rather than class —
@@ -224,6 +228,29 @@ func findCaptchaWidget(html string) captchaWidget {
 		}
 	}
 	return captchaWidget{vendor, unclassifiedKey}
+}
+
+// auth0Widget reads Auth0's data-captcha-provider / data-captcha-sitekey pair;
+// ok reports that tag is Auth0's captcha container. A provider with no solver
+// here (Auth0's own, Friendly Captcha) is an empty widget, not a cue to guess.
+func auth0Widget(tag string) (w captchaWidget, ok bool) {
+	provider := strings.ToLower(attrValue(tag, auth0ProviderAttrRe))
+	if provider == "" {
+		return captchaWidget{}, false
+	}
+	key := attrValue(tag, auth0SitekeyAttrRe)
+	switch {
+	case key == "":
+	case strings.Contains(provider, "recaptcha"):
+		w = captchaWidget{"recaptcha", key}
+	case strings.Contains(provider, "hcaptcha"):
+		w = captchaWidget{"hcaptcha", key}
+	case strings.Contains(provider, "arkose"):
+		w = captchaWidget{"funcaptcha", key}
+	case strings.Contains(provider, "turnstile"):
+		w = captchaWidget{"turnstile", key}
+	}
+	return w, true
 }
 
 // widgetAttr reads re off the first element whose class or id carries marker.
@@ -416,6 +443,9 @@ var (
 	// Case-insensitive so extraction matches detectCaptchaType (which lowercases);
 	// tolerant of either quote style and whitespace around '='.
 	siteKeyAttrRe = regexp.MustCompile(`(?i)data-sitekey\s*=\s*["']([^"']+)["']`)
+	// Auth0 Universal Login's captcha container.
+	auth0ProviderAttrRe = regexp.MustCompile(`(?i)\bdata-captcha-provider\s*=\s*["']([^"']+)["']`)
+	auth0SitekeyAttrRe  = regexp.MustCompile(`(?i)\bdata-captcha-sitekey\s*=\s*["']([^"']+)["']`)
 	// reCAPTCHA v3: the sitekey rides the api.js script URL as ?…render=<key>.
 	// Tolerates other query params before render= (e.g. ?onload=cb&render=key).
 	recaptchaRenderRe = regexp.MustCompile(`(?i)recaptcha/(?:enterprise|api)\.js\?[^"'>]*\brender=([0-9A-Za-z_-]+)`)

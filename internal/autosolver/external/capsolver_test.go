@@ -409,6 +409,23 @@ func TestDetectExplicitRenderRecaptchaFromFrameURL(t *testing.T) {
 	}
 }
 
+// Auth0's bundle carries a loader URL for every provider it supports, so the
+// resource scan read dashboard.retellai.com's reCAPTCHA as FunCaptcha.
+func TestDetectAuth0ReadsTheConfiguredProvider(t *testing.T) {
+	const bundle = `<script>case H:return"https://"+n+".arkoselabs.com/v2/"+r+"/api.js";case B:return"https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";case P:return"https://www.recaptcha.net/recaptcha/enterprise.js?render=explicit&hl="+e</script>`
+	for _, tc := range []struct{ provider, wantType, wantKey string }{
+		{"recaptcha_enterprise", "recaptcha", "6Lcd7uwqAAAAANTGwcB-LxP3EB9MGu4e0UidOhNL"},
+		{"hcaptcha", "hcaptcha", "6Lcd7uwqAAAAANTGwcB-LxP3EB9MGu4e0UidOhNL"},
+		{"auth0_v2", "", ""},
+	} {
+		html := bundle + `<div data-captcha-provider="` + tc.provider + `" data-captcha-sitekey="6Lcd7uwqAAAAANTGwcB-LxP3EB9MGu4e0UidOhNL" class="ulp-captcha-container"><div class="ulp-captcha"></div></div>` +
+			`<textarea id="g-recaptcha-response" class="g-recaptcha-response"></textarea>`
+		if w := findCaptchaWidget(html); w.typ != tc.wantType || w.key != tc.wantKey {
+			t.Errorf("%s: findCaptchaWidget = %+v, want {%s %s}", tc.provider, w, tc.wantType, tc.wantKey)
+		}
+	}
+}
+
 // A rendered v3 leaves an invisible anchor frame carrying its key; the page is
 // still v3, and a v2 task for it is refused or yields a useless token.
 func TestDetectRenderedRecaptchaV3StaysV3(t *testing.T) {
