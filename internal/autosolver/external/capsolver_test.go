@@ -534,3 +534,30 @@ func TestSolveMTCaptchaUsesTheWidgetFrameKey(t *testing.T) {
 		t.Errorf("token not injected into the verified-token field: %q", exec.lastInject)
 	}
 }
+
+// eBay's captcha page renders hCaptcha explicitly, so the key is only in the
+// frame URL, and the serialized DOM escapes its & as &amp;.
+func TestExtractSitekeyFromEscapedFrameURL(t *testing.T) {
+	cases := map[string]struct{ html, typ, want string }{
+		"hcaptcha": {
+			html: `<script src="https://js.hcaptcha.com/1/api.js?endpoint=https%3A%2F%2Fapi.hcaptcha.com&amp;onload=cb&amp;render=explicit"></script>
+				<div id="s0-78-captcha-ui"><iframe src="https://newassets.hcaptcha.com/captcha/v1/b1c4/static/hcaptcha.html#frame=checkbox&amp;id=0y7r&amp;host=www.ebay.com&amp;sitekey=195eeb9f-8f50-4a9c-abfc-a78ceaa3cdde&amp;theme=light"></iframe>
+				<textarea id="g-recaptcha-response-0y7r"></textarea><textarea id="h-captcha-response-0y7r"></textarea></div>`,
+			typ:  "hcaptcha",
+			want: "195eeb9f-8f50-4a9c-abfc-a78ceaa3cdde",
+		},
+		"funcaptcha": {
+			html: `<iframe src="https://client-api.arkoselabs.com/fc/gc/?x=1&amp;pk=476068BF-9607-4799-B53D-966BE98E2B81"></iframe>`,
+			typ:  "funcaptcha",
+			want: "476068BF-9607-4799-B53D-966BE98E2B81",
+		},
+	}
+	for name, tc := range cases {
+		if got := detectCaptchaType(tc.html); got != tc.typ {
+			t.Errorf("%s: detectCaptchaType = %q, want %q", name, got, tc.typ)
+		}
+		if got := extractSitekey(tc.html, tc.typ); got != tc.want {
+			t.Errorf("%s: extractSitekey = %q, want %q", name, got, tc.want)
+		}
+	}
+}

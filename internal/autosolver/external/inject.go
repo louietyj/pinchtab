@@ -273,11 +273,19 @@ const fireDataCallbacksJS = `function fire(sel,token){
 
 // Sites read hCaptcha and Turnstile through getResponse as often as through the
 // hidden field, and it answers from the widget's state, which injection never set.
+// An explicit render's callback (window.__ptHcaptcha, from the bridge hook) may
+// be the only way the site learns of the solve: eBay's builds the field its form posts.
 const hcaptchaInjectJS = `function(token,respKey){
-  ` + fireDataCallbacksJS + `
   document.querySelectorAll('textarea[name="h-captcha-response"], textarea[name="g-recaptcha-response"]').forEach(function(el){el.value=token;});
   try{ if(window.hcaptcha){ hcaptcha.getResponse=function(){return token;}; hcaptcha.getRespKey=function(){return respKey;}; } }catch(e){}
-  fire('.h-captcha',token);
+  var cbs=[];
+  function add(cb){
+    if(typeof cb==='string'){ cb=window[cb]; }
+    if(typeof cb==='function'&&cbs.indexOf(cb)<0){ cbs.push(cb); }
+  }
+  (window.__ptHcaptcha||[]).forEach(add);
+  document.querySelectorAll('.h-captcha[data-callback]').forEach(function(el){ add(el.getAttribute('data-callback')); });
+  cbs.forEach(function(cb){ try{ cb(token); }catch(e){} });
   return true;
 }`
 

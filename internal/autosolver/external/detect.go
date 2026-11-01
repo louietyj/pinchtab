@@ -401,7 +401,8 @@ var (
 	// Explicit-render widgets carry no data-sitekey: the key rides the vendor's
 	// own challenge frame URL, which is present once the widget has rendered.
 	recaptchaFrameKeyRe = regexp.MustCompile(`(?i)/recaptcha/(?:api2|enterprise)/(?:anchor|bframe)\?[^"'>]*\bk=([A-Za-z0-9_-]{20,})`)
-	frameSitekeyRe      = regexp.MustCompile(`(?i)[?&]sitekey=([A-Za-z0-9_-]{8,})`)
+	// Serialized HTML escapes & in attributes as &amp;, as on eBay's captcha page.
+	frameSitekeyRe = regexp.MustCompile(`(?i)(?:[?&#]|&amp;)sitekey=([A-Za-z0-9_-]{8,})`)
 	// A Turnstile frame path carries its sitekey as a segment. Live keys start
 	// 0x; Cloudflare's 1x/2x/3x test keys are refused by every solver.
 	turnstileFrameKeyRe = regexp.MustCompile(`/turnstile/[^?]*/(0x[0-9A-Za-z_-]{10,})/`)
@@ -436,7 +437,7 @@ var (
 
 	pkeyAttrRe      = regexp.MustCompile(`(?i)data-pkey\s*=\s*["']([^"']+)["']`)
 	publicKeyJSONRe = regexp.MustCompile(`(?i)"?public_?key"?\s*[:=]\s*["']([0-9A-Fa-f-]{20,})["']`)
-	arkosePkURLRe   = regexp.MustCompile(`(?i)[?&]pk=([0-9A-Fa-f-]{20,})`)
+	arkosePkURLRe   = regexp.MustCompile(`(?i)(?:[?&]|&amp;)pk=([0-9A-Fa-f-]{20,})`)
 	// The current embed carries the key only in the script path: /v2/<key>/api.js.
 	arkoseAPIPathRe   = regexp.MustCompile(`(?i)arkoselabs\.com/v2/([0-9A-Fa-f-]{36})/api\.js`)
 	arkoseSubdomainRe = regexp.MustCompile(`(?i)https?://([a-z0-9-]+\.arkoselabs\.com)`)

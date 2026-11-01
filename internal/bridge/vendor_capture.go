@@ -11,10 +11,11 @@ import (
 // vendorCaptureScript runs at document-start and records how a page wires up
 // the captchas whose solves reach the site only through a callback: Tencent's
 // `new TencentCaptcha(appId, callback, options)` and NetEase Yidun's
-// `initNECaptcha({captchaId, onVerify, ...})`. The app/captcha ID and the
-// callbacks land on window.__ptTencent and window.__ptYidun, where the
+// `initNECaptcha({captchaId, onVerify, ...})`, and hCaptcha's explicit
+// `hcaptcha.render(el, {callback})`. The app/captcha ID and the callbacks land
+// on window.__ptTencent, window.__ptYidun and window.__ptHcaptcha, where the
 // autosolver reads the ID for the task and calls the callback with the answer.
-// Inert on pages that never define either; the limitation noted on
+// Inert on pages that never define any of them; the limitation noted on
 // arkoseCaptureScript applies the same way.
 const vendorCaptureScript = `(function(){
   if (window.__ptVendorHook) return;
@@ -46,6 +47,28 @@ const vendorCaptureScript = `(function(){
       return Reflect.apply(target, self, args);
     }
   });
+  // hCaptcha is an object, so its render method is wrapped in place, on every
+  // read in case render is attached after window.hcaptcha is assigned.
+  var hc;
+  function wrapRender(o){
+    try{
+      var real = o && o.render;
+      if (typeof real !== 'function' || real.__ptWrapped) return;
+      var wrapped = function(el, params){
+        try{ if (params && params.callback) (window.__ptHcaptcha = window.__ptHcaptcha || []).push(params.callback); }catch(e){}
+        return real.apply(this, arguments);
+      };
+      wrapped.__ptWrapped = true;
+      o.render = wrapped;
+    }catch(e){}
+  }
+  try{
+    Object.defineProperty(window, 'hcaptcha', {
+      configurable: true, enumerable: true,
+      get: function(){ wrapRender(hc); return hc; },
+      set: function(v){ hc = v; wrapRender(hc); }
+    });
+  }catch(e){}
 })();`
 
 // injectVendorCapture installs vendorCaptureScript on the current target.
