@@ -21,7 +21,6 @@ func TestCaptureFromSurfaceRulePerGOOS(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
 		goos           string
-		external       bool
 		beyondViewport bool
 		clip           *page.Viewport
 		want           bool
@@ -40,15 +39,11 @@ func TestCaptureFromSurfaceRulePerGOOS(t *testing.T) {
 
 		{name: "linux both", goos: "linux", beyondViewport: true, clip: clip, want: true},
 		{name: "windows both", goos: "windows", beyondViewport: true, clip: clip, want: true},
-
-		{name: "windows attached browser reads the view", goos: "windows", external: true, want: false},
-		{name: "windows attached browser with a clip needs the surface", goos: "windows", external: true, clip: clip, want: true},
-		{name: "windows attached browser beyond viewport needs it", goos: "windows", external: true, beyondViewport: true, want: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := captureFromSurface(tc.goos, tc.external, tc.beyondViewport, tc.clip); got != tc.want {
-				t.Errorf("captureFromSurface(%q, external=%v, %v, %+v) = %v, want %v",
-					tc.goos, tc.external, tc.beyondViewport, tc.clip, got, tc.want)
+			if got := captureFromSurface(tc.goos, tc.beyondViewport, tc.clip); got != tc.want {
+				t.Errorf("captureFromSurface(%q, %v, %+v) = %v, want %v",
+					tc.goos, tc.beyondViewport, tc.clip, got, tc.want)
 			}
 		})
 	}

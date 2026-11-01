@@ -317,7 +317,7 @@ func TestCaptureFromSurface(t *testing.T) {
 		{name: "both", beyondViewport: true, clip: clip, want: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := cdptk.CaptureFromSurface(false, tc.beyondViewport, tc.clip); got != tc.want {
+			if got := cdptk.CaptureFromSurface(tc.beyondViewport, tc.clip); got != tc.want {
 				t.Errorf("cdptk.CaptureFromSurface(%v, %+v) = %v, want %v (GOOS=%s)",
 					tc.beyondViewport, tc.clip, got, tc.want, runtime.GOOS)
 			}
@@ -531,7 +531,7 @@ func TestViewportClipIsPageRelativeAtNativeScale(t *testing.T) {
 	if *clip != want {
 		t.Fatalf("ViewportClip = %+v, want %+v", *clip, want)
 	}
-	if !cdptk.CaptureFromSurface(false, false, clip) {
+	if !cdptk.CaptureFromSurface(false, clip) {
 		t.Error("the viewport clip does not take the surface path; CDP discards a clip on the read-the-view path, so the capture would silently come back unclipped")
 	}
 }

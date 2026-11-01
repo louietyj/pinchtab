@@ -16,6 +16,9 @@ import (
 // Real Chromium, since a mocked executor "succeeds" whether or not the tab
 // paints. Headed: PINCHTAB_TEST_HEADED=1 under xvfb-run.
 func TestCaptureScreenshotOfBackgroundTabWithoutRaisingIt(t *testing.T) {
+	if !unraisedCaptureWorks {
+		t.Skip("background tabs can't be captured unraised on this platform")
+	}
 	chromePath := testbrowser.Path(t)
 	profile := testbrowser.ProfileDir(t)
 	headed := os.Getenv("PINCHTAB_TEST_HEADED") == "1"

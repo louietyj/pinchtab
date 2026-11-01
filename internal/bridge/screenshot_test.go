@@ -102,6 +102,21 @@ func TestCaptureScreenshotWithoutActivationRaisesTabWhenBackgroundCaptureHangs(t
 	}
 }
 
+func TestCaptureScreenshotWithoutActivationRaisesAtOnceWhereUnraisedCaptureFails(t *testing.T) {
+	prev := unraisedCaptureWorks
+	unraisedCaptureWorks = false
+	t.Cleanup(func() { unraisedCaptureWorks = prev })
+	exec := &screenshotExecutor{}
+	ctx := cdp.WithExecutor(context.Background(), exec)
+	if _, err := captureScreenshotWithoutActivation(ctx, page.CaptureScreenshot(), false); err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+	wantMethods := []string{emulation.CommandSetFocusEmulationEnabled, page.CommandBringToFront, page.CommandCaptureScreenshot}
+	if !reflect.DeepEqual(exec.methods, wantMethods) {
+		t.Fatalf("CDP methods = %v, want %v", exec.methods, wantMethods)
+	}
+}
+
 func TestCaptureScreenshotWithoutActivationNeverRaisesWhenDisallowed(t *testing.T) {
 	shortBackgroundCaptureWait(t)
 	exec := &screenshotExecutor{hangCaptures: 1}

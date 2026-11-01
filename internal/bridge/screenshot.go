@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime"
 	"time"
 
 	"github.com/chromedp/cdproto/emulation"
@@ -106,9 +107,6 @@ type ScreenshotOpts struct {
 	// DisableActivation (the inverse of instanceDefaults.captureAllowActivation)
 	// never raises the tab, even when its unraised capture times out.
 	DisableActivation bool
-
-	// ExternalBrowser marks an attached browser (see cdptk.CaptureFromSurface).
-	ExternalBrowser bool
 }
 
 func scaledScreenshotClip(opts ScreenshotOpts, viewportWidth, viewportHeight, documentWidth, documentHeight float64) *page.Viewport {
@@ -139,17 +137,22 @@ func scaledScreenshotClip(opts ScreenshotOpts, viewportWidth, viewportHeight, do
 // backgroundCaptureWait bounds the unraised capture before falling back to Page.bringToFront.
 var backgroundCaptureWait = 5 * time.Second
 
+// unraisedCaptureWorks is false on Windows, where on a real Chrome window
+// (Chrome 156) a background tab's surface capture hangs and the read-the-view
+// path returns whatever tab the window shows; so the tab is raised at once.
+var unraisedCaptureWorks = runtime.GOOS != "windows"
+
 // captureScreenshotWithoutActivation captures a tab without raising it, so
 // parallel agents in one window don't keep stealing the active tab. Focus
 // emulation also makes Chromium render a background tab as visible, and is left
-// on so the tab stays unthrottled between captures. The tab is raised only if
-// the unraised capture times out and activation is allowed.
+// on so the tab stays unthrottled between captures. The tab is raised, when
+// activation is allowed, if the unraised capture times out or can't work.
 func captureScreenshotWithoutActivation(ctx context.Context, shot *page.CaptureScreenshotParams, disableActivation bool) ([]byte, error) {
 	focusEmulated := emulation.SetFocusEmulationEnabled(true).Do(ctx) == nil
 	if disableActivation {
 		return shot.Do(ctx)
 	}
-	if focusEmulated {
+	if focusEmulated && unraisedCaptureWorks {
 		tryCtx, cancel := context.WithTimeout(ctx, backgroundCaptureWait)
 		buf, err := shot.Do(tryCtx)
 		cancel()
@@ -185,7 +188,7 @@ func CaptureScreenshot(ctx context.Context, opts ScreenshotOpts) ([]byte, error)
 	}
 	clip := scaledScreenshotClip(opts, viewportWidth, viewportHeight, documentWidth, documentHeight)
 
-	fromSurface := cdptk.CaptureFromSurface(opts.ExternalBrowser, opts.BeyondViewport, clip)
+	fromSurface := cdptk.CaptureFromSurface(opts.BeyondViewport, clip)
 
 	return cdptk.CaptureWithSurfaceFallback(fromSurface, func(fromSurface bool) ([]byte, error) {
 		var buf []byte
@@ -311,7 +314,6 @@ func (b *Bridge) CaptureScreenshot(ctx context.Context, format string, quality i
 		Quality:           quality,
 		Clip:              vp,
 		DisableActivation: disableActivation,
-		ExternalBrowser:   b.Config.AttachesExternalBrowser(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("screenshot: %w", err)

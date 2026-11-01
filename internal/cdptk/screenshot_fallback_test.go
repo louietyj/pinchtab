@@ -12,7 +12,7 @@ import (
 )
 
 func TestWindowsViewportCaptureUsesSurface(t *testing.T) {
-	if !captureFromSurface("windows", false, false, nil) {
+	if !captureFromSurface("windows", false, nil) {
 		t.Fatal("Windows viewport capture used the read-the-view path")
 	}
 }
