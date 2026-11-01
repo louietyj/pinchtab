@@ -144,7 +144,10 @@ func (b *Bridge) tabSetup(ctx context.Context, tabID string) error {
 	// targets during attach caused locale-override failures and could alter a
 	// human's live profile. The debugger guard and optional proxy-auth wiring
 	// above are connection safety, not launch emulation, so they remain active.
+	// So does captcha callback capture: scoped to this tab's CDP session, and
+	// without it a solve cannot reach a site that learns of it by callback.
 	if b.externalAttachMode() {
+		b.injectCaptchaCapture(ctx)
 		if err := b.installAttachIndicator(ctx, tabID); err != nil {
 			slog.Warn("attach indicator setup failed", "tab", tabID, "err", err)
 		}
@@ -155,9 +158,7 @@ func (b *Bridge) tabSetup(ctx context.Context, tabID string) error {
 		b.installWorkerStealthParity(ctx)
 	}
 	b.injectStealth(ctx)
-	b.injectArkoseCapture(ctx)
-	b.injectGeetestCapture(ctx)
-	b.injectVendorCapture(ctx)
+	b.injectCaptchaCapture(ctx)
 	if b.Config != nil && b.Config.NoAnimations {
 		if err := b.InjectNoAnimations(ctx); err != nil {
 			slog.Warn("no-animations injection failed", "err", err)

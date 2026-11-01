@@ -71,6 +71,12 @@ const vendorCaptureScript = `(function(){
   }catch(e){}
 })();`
 
+func (b *Bridge) injectCaptchaCapture(ctx context.Context) {
+	b.injectArkoseCapture(ctx)
+	b.injectGeetestCapture(ctx)
+	b.injectVendorCapture(ctx)
+}
+
 // injectVendorCapture installs vendorCaptureScript on the current target.
 // Mirrors injectArkoseCapture; failures are non-fatal.
 func (b *Bridge) injectVendorCapture(ctx context.Context) {
