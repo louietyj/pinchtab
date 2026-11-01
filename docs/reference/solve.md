@@ -161,7 +161,7 @@ Each provider takes only the captcha types it can solve, so list both in `autoSo
 
 GeeTest v3 is detected but not solved. Its challenge is single-use, and the widget has already spent it by the time the page shows the puzzle.
 
-A solve is paid for once. A solver that fails after buying its answer, including a poll that runs out of time, ends the run instead of retrying, and actions on a page whose challenge was just solved do not trigger another solve. 2Captcha's human-solved tasks get up to 180s whatever `solverTimeoutSec` says.
+A solve is paid for once. A solver that fails after buying its answer, including a poll that runs out of time, ends the run instead of retrying, and actions on a page whose challenge was just solved do not trigger another solve. 2Captcha's human-solved tasks get up to 300s whatever `solverTimeoutSec` says: 2Captcha returns a token or a refunded "unsolvable" within about four minutes.
 
 ## Vision
 

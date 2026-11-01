@@ -22,8 +22,8 @@ func Expect(client *http.Client, base, token string, args []string, cmd *cobra.C
 }
 
 // captchaWaitDefault is how long `wait --captcha` waits when not told: most
-// solves are over in a minute, and a person solving hCaptcha takes up to three.
-const captchaWaitDefault = 3 * time.Minute
+// solves are over in a minute, and 2Captcha's solve deadline is five.
+const captchaWaitDefault = 5 * time.Minute
 
 // waitCaptcha waits for the captcha solve under way on the tab, past the two
 // minutes a step waits on its own.

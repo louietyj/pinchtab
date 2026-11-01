@@ -55,9 +55,10 @@ func NewTwoCaptcha(cfg TwoCaptchaConfig) *TwoCaptcha {
 	}}
 }
 
-// twoCaptchaSolveTimeout covers a human-solved task: hCaptcha on
-// accounts.hcaptcha.com/demo took 55s and 106s on consecutive tries.
-const twoCaptchaSolveTimeout = 180 * time.Second
+// twoCaptchaSolveTimeout outlasts 2Captcha's own verdict: hCaptcha solves took
+// 26-128s, and a task still processing at 180s came back unsolvable (refunded)
+// at 202s. A token that arrives after polling stops is billed and lost.
+const twoCaptchaSolveTimeout = 300 * time.Second
 
 // twoCaptchaV3MinScore is the highest of the scores 2Captcha offers (0.3, 0.7,
 // 0.9): a v3 token is bought only after the site refused the browser's own.

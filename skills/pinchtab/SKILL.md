@@ -269,16 +269,16 @@ click causes, for when the next step needs the new page loaded.
 ## Captchas
 
 Nothing to call: pinchtab solves a challenge when one shows (~$0.001, 20-60 s;
-hCaptcha one to three minutes) and says nothing on ordinary pages. An invisible
-widget is left alone until its puzzle opens, usually on submit. The step that
-set the puzzle off waits for the solve, and so does a step sent while one runs,
-for up to two minutes per solve in all; after that, steps on the tab return at
-once with the still-solving HINT and do not run. When there is one, a HINT puts
-it in one of these states. Do what it says:
+hCaptcha about two minutes, at most five) and says nothing on ordinary pages.
+An invisible widget is left alone until its puzzle opens, usually on submit.
+The step that set the puzzle off waits for the solve, and so does a step sent
+while one runs, for up to two minutes per solve in all; after that, steps on
+the tab return at once with the still-solving HINT and do not run. When there
+is one, a HINT puts it in one of these states. Do what it says:
 
 - **Still pinchtab's**: being solved, or to be retried at a stated time. Don't
   touch the page or navigate away (a new navigation loads a fresh challenge).
-  `wait --captcha` waits for the solve (3 minutes; `--timeout-ms` for more), or
+  `wait --captcha` waits for the solve (5 minutes; `--timeout-ms` for more), or
   do something else meanwhile.
 - **Solved**: proceed. A token solve doesn't tick the box, so a solved page
   can still show an unchecked "I'm not a robot". Leave it alone; clicking it
@@ -292,8 +292,8 @@ it in one of these states. Do what it says:
   (`pinchtab server restart`) and nav again; if it's still blocked, go on
   without the page.
 
-Covered: reCAPTCHA (v2, Enterprise, invisible), Turnstile, hCaptcha (one to
-three minutes), Arkose FunCaptcha, GeeTest v3/v4, MTCaptcha, AWS WAF, Tencent
+Covered: reCAPTCHA (v2, Enterprise, invisible), Turnstile, hCaptcha (up to
+five minutes), Arkose FunCaptcha, GeeTest v3/v4, MTCaptcha, AWS WAF, Tencent
 and NetEase Yidun (once their puzzle shows), Yandex SmartCaptcha, Prosopo,
 Lemin, and AliExpress's slider and robot-check overlay; inside embedded
 iframes too. Invisible reCAPTCHA v3 only scores the browser at submit: if a

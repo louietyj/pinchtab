@@ -130,7 +130,7 @@ func autoSolveHint(result map[string]any) string {
 		return fmt.Sprintf(
 			"a %s challenge on this page is still being solved in the background, and steps on this tab "+
 				"stop waiting for it after two minutes. Do NOT click the captcha widget or navigate away. "+
-				"`pinchtab wait --captcha` waits for the solve (up to 3 minutes; --timeout-ms for longer); "+
+				"`pinchtab wait --captcha` waits for the solve (up to 5 minutes; --timeout-ms for longer); "+
 				"or do something else meanwhile.",
 			challenge)
 	}
