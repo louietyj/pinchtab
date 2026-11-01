@@ -94,12 +94,9 @@ type RuntimeConfig struct {
 	UserAgent          string
 	NoAnimations       bool
 	// CaptureAllowActivation controls whether GET /capture and GET/POST /screenshot
-	// may call Page.bringToFront to wake a backgrounded tab's compositor before
-	// capturing. Default true: capture is reliable but a background-tab capture
-	// visibly raises that tab in the operator's browser. Set false to keep
-	// background tabs from ever being activated during capture, accepting that
-	// a background tab's capture may then block until ActionTimeout — Chromium's
-	// focus emulation alone does not resume a backgrounded compositor.
+	// may fall back to Page.bringToFront when a background tab's unraised capture
+	// times out. Set false to never raise a tab; such a capture then blocks until
+	// ActionTimeout.
 	CaptureAllowActivation bool
 	Humanize               bool // when true, mouse moves and clicks use a humanized bezier path with per-step jitter and pre-press delays; default false (raw, fast input)
 	StealthLevel           string

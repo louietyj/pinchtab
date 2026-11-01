@@ -16,12 +16,13 @@ func TestHeadlessCreatedTabIsVisible(t *testing.T) {
 	chromePath := testbrowser.Path(t)
 
 	for _, tc := range []struct {
-		name     string
-		headless bool
-		want     string
+		name string
+		cfg  *config.RuntimeConfig
+		want string
 	}{
-		{"headless config brings the tab forward", true, "visible"},
-		{"without it the same tab stays hidden", false, "hidden"},
+		{"headless config brings the tab forward", &config.RuntimeConfig{Headless: true}, "visible"},
+		{"headed config focus-emulates it in the background", &config.RuntimeConfig{}, "visible"},
+		{"without either the same tab stays hidden", nil, "hidden"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			alloc, cancelAlloc := chromedp.NewExecAllocator(context.Background(), append(
@@ -39,7 +40,7 @@ func TestHeadlessCreatedTabIsVisible(t *testing.T) {
 				t.Fatalf("start browser: %v", err)
 			}
 
-			tm := NewTabManager(browserCtx, &config.RuntimeConfig{Headless: tc.headless}, nil, nil, nil)
+			tm := NewTabManager(browserCtx, tc.cfg, nil, nil, nil)
 			_, tabCtx, cancelTab, err := tm.createTab("", "")
 			if err != nil {
 				t.Fatalf("create tab: %v", err)

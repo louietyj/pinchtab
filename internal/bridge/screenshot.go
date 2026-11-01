@@ -3,10 +3,10 @@ package bridge
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
-	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
@@ -103,13 +103,8 @@ type ScreenshotOpts struct {
 	ViewportWidth  float64
 	ViewportHeight float64
 
-	// DisableActivation suppresses the Page.bringToFront call that wakes a
-	// backgrounded tab's compositor before capturing (the inverse of
-	// instanceDefaults.captureAllowActivation, default true — so the zero
-	// value here is the safe/reliable default even if a caller forgets to
-	// set it). When true, capture relies solely on focus emulation and never
-	// raises the tab in the operator's browser, accepting that a background
-	// tab's capture may then block until the caller's deadline.
+	// DisableActivation (the inverse of instanceDefaults.captureAllowActivation)
+	// never raises the tab, even when its unraised capture times out.
 	DisableActivation bool
 }
 
@@ -138,29 +133,28 @@ func scaledScreenshotClip(opts ScreenshotOpts, viewportWidth, viewportHeight, do
 	}
 }
 
-// captureScreenshotWithoutActivation wakes a background renderer before
-// capturing it. Focus emulation alone does not resume a backgrounded tab's
-// compositor — that requires Page.bringToFront — so unless disableActivation
-// is set, it always runs as well; focus emulation is layered on top only so
-// document.hasFocus()/`:focus` reflect the capture as best-effort. When
-// disableActivation is true, the tab is never raised in the operator's
-// browser, accepting that its capture may then block until the caller's
-// deadline (Chromium never resumes a backgrounded compositor without either
-// activation or being brought into view).
+// backgroundCaptureWait bounds the unraised capture before falling back to Page.bringToFront.
+var backgroundCaptureWait = 5 * time.Second
+
+// captureScreenshotWithoutActivation captures a tab without raising it, so
+// parallel agents in one window don't keep stealing the active tab. Focus
+// emulation also makes Chromium render a background tab as visible, and is left
+// on so the tab stays unthrottled between captures. The tab is raised only if
+// the unraised capture times out and activation is allowed.
 func captureScreenshotWithoutActivation(ctx context.Context, shot *page.CaptureScreenshotParams, disableActivation bool) ([]byte, error) {
-	executor := cdp.ExecutorFromContext(ctx)
 	focusEmulated := emulation.SetFocusEmulationEnabled(true).Do(ctx) == nil
+	if disableActivation {
+		return shot.Do(ctx)
+	}
 	if focusEmulated {
-		defer func() {
-			restoreCtx, cancel := context.WithTimeout(context.Background(), time.Second)
-			defer cancel()
-			restoreCtx = cdp.WithExecutor(restoreCtx, executor)
-			_ = emulation.SetFocusEmulationEnabled(false).Do(restoreCtx)
-		}()
+		tryCtx, cancel := context.WithTimeout(ctx, backgroundCaptureWait)
+		buf, err := shot.Do(tryCtx)
+		cancel()
+		if err == nil || ctx.Err() != nil || !errors.Is(err, context.DeadlineExceeded) {
+			return buf, err
+		}
 	}
-	if !disableActivation {
-		_ = page.BringToFront().Do(ctx)
-	}
+	_ = page.BringToFront().Do(ctx)
 	return shot.Do(ctx)
 }
 
