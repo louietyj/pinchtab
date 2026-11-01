@@ -9,11 +9,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// solveTimeout outlasts the server's own deadline for a run: the server cancels
-// the solve when the client leaves, and a token delivered after that is billed and lost.
-const solveTimeout = 20 * time.Minute
-
-// Solve runs the solvers on the current page now, or only the named one.
+// Solve runs the solvers on the current page now, or only the named one. It
+// blocks within the step wait budget; a solve still running after that goes on
+// in the background, and the HINT says so.
 func Solve(client *http.Client, base, token string, cmd *cobra.Command, args []string) {
 	body := map[string]any{}
 	if len(args) == 1 {
@@ -22,8 +20,15 @@ func Solve(client *http.Client, base, token string, cmd *cobra.Command, args []s
 	if tab, _ := cmd.Flags().GetString("tab"); tab != "" {
 		body["tabId"] = tab
 	}
-	longClient := &http.Client{Transport: client.Transport, Timeout: solveTimeout}
-	apiclient.DoPost(longClient, base, token, "/solve", body)
+	result := apiclient.DoPostQuiet(client, base, token, "/solve", body)
+	if solve, ok := result["autoSolve"].(map[string]any); ok {
+		if pending, _ := solve["pending"].(bool); pending {
+			output.Hint(autoSolveHint(result))
+			return
+		}
+		result = solve
+	}
+	output.JSON(result)
 }
 
 // AwaitCaptcha watches the current tab for --linger-ms for a widget to open a

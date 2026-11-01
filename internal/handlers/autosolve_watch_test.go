@@ -71,6 +71,38 @@ func TestStepAimedAtAPageTheSolveChangedIsRefused(t *testing.T) {
 	}
 }
 
+// An explicit solve that outlasts its step share answers pending and goes on,
+// uncancelled, like an auto-triggered one; the next step reports it.
+func TestExplicitSolveAnswersPendingAndCarriesOn(t *testing.T) {
+	shortStepSolveWait(t, 30*time.Millisecond)
+	h := &Handlers{Bridge: &urlBridge{url: "https://a.test/form"}}
+	release := make(chan struct{})
+	var solveErr error
+	out, done := h.runTrackedSolve(context.Background(), "t1", "https://a.test/form", time.Minute, func(ctx context.Context) autoSolveOutcome {
+		<-release
+		solveErr = ctx.Err()
+		return autoSolveOutcome{"solved": true, "challengeType": "hcaptcha"}
+	})
+	solve, _ := out["autoSolve"].(autoSolveOutcome)
+	if done || solve["pending"] != true || solve["tabId"] != "t1" {
+		t.Fatalf("out = %v, done = %v", out, done)
+	}
+	if again, done := h.runTrackedSolve(context.Background(), "t1", "https://a.test/form", time.Minute, nil); done || again["pending"] != true {
+		t.Errorf("a second solve started alongside the first: %v", again)
+	}
+
+	run := h.autoSolve.running("t1")
+	close(release)
+	<-run.done
+	if solveErr != nil {
+		t.Errorf("solve context ended early: %v", solveErr)
+	}
+	report, ok := h.solveBeforeStep(context.Background(), httptest.NewRecorder(), "t1", true)
+	if !ok || report["solved"] != true {
+		t.Errorf("next step's report = %v, ok = %v", report, ok)
+	}
+}
+
 func TestStepAnswersSolveInProgressRatherThanOutwaitTheCLI(t *testing.T) {
 	shortStepSolveWait(t, 30*time.Millisecond)
 	h := &Handlers{Bridge: &urlBridge{url: "https://a.test/form"}}

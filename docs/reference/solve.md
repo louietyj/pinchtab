@@ -73,7 +73,7 @@ curl -X POST http://localhost:9867/tabs/{tabId}/solve \
 | `tabId`      | string | —       | Tab ID (optional, uses default tab)      |
 | `solver`     | string | —       | Solver name (optional, auto-detect)      |
 | `maxAttempts`| int    | config (`autoSolver.maxAttempts`, default 8) | Maximum solve attempts |
-| `timeout`    | float  | auto-estimated from the solver chain (never below 30000) | Overall timeout in milliseconds; an explicit value is used as-is |
+| `timeout`    | float  | auto-estimated from the solver chain, at most 5 minutes | Overall timeout in milliseconds; an explicit value is used as-is |
 
 The path form (`/solve/{name}`) overrides a body `solver`. On `/tabs/{id}/solve`, a body `tabId` that disagrees with the path is rejected.
 
@@ -100,6 +100,8 @@ The path form (`/solve/{name}`) overrides a body `solver`. On `/tabs/{id}/solve`
 | `title`         | string | Final page title                               |
 | `handoff`       | string | `paused_handoff` when a challenge was detected but not solved — the tab is paused for [handoff](./handoff.md) |
 | `hint`          | string | Present with `handoff`: return control to the user, then resume the tab |
+
+A solve still running after 20 seconds answers `{"tabId", "solved": false, "pending": true, "autoSolve": {...}}` and goes on in the background: leaving the request does not cancel it. Steps on the tab wait for it, as for an auto-triggered solve, and `GET /autosolve` returns its outcome (the CLI does both: `pinchtab solve` blocks up to two minutes, then `pinchtab wait --captcha` waits longer). A `solve` sent while one runs answers the same pending shape for that one.
 
 ## Error Responses
 

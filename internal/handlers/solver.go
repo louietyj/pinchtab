@@ -25,9 +25,9 @@ import (
 // @Param tabId       string  body  Tab ID (optional — uses default tab)
 // @Param solver      string  body  Solver name (optional — auto-detect)
 // @Param maxAttempts int     body  Max solve attempts (optional, default: 3)
-// @Param timeout     float64 body  Timeout in ms (optional, default: 30000)
+// @Param timeout     float64 body  Timeout in ms for the whole solve (optional, default: the solvers' estimate, at most 5 minutes)
 //
-// @Response 200 application/json Returns {tabId, solver, solved, challengeType, attempts, title}
+// @Response 200 application/json Returns {tabId, solver, solved, challengeType, attempts, title}, or {tabId, pending: true, autoSolve} for a solve still running after 20s: it goes on in the background, and GET /autosolve waits for it
 // @Response 400 application/json Invalid request body or unknown solver
 // @Response 423 application/json Tab is locked by another owner
 // @Response 500 application/json Chrome/CDP error
@@ -104,37 +104,68 @@ func (h *Handlers) HandleSolve(w http.ResponseWriter, r *http.Request) {
 	includeSemantic := req.Solver == "" || req.Solver == coreautosolver.SemanticSolverName
 	as := h.buildAutoSolver(cfg, includeSemantic)
 
-	timeout := 30 * time.Second
+	timeout := min(estimateAutoSolverRunTimeout(cfg), solveRunCap)
 	if req.Timeout > 0 {
 		timeout = time.Duration(req.Timeout) * time.Millisecond
-	} else {
-		estimated := estimateAutoSolverRunTimeout(cfg)
-		if estimated > timeout {
-			timeout = estimated
+	}
+
+	outcome, done := h.runTrackedSolve(ctx, resolvedTabID, page.URL(), timeout, func(ctx context.Context) autoSolveOutcome {
+		return h.explicitSolve(ctx, resolvedTabID, req.Solver, as, page, executor)
+	})
+	if done {
+		if _, ok := h.applyTabGuards(w, r, ctx, resolvedTabID, guardDomainPolicy); !ok {
+			return
 		}
 	}
+	httpx.JSON(w, 200, outcome)
+}
 
-	tCtx, tCancel := context.WithTimeout(ctx, timeout)
-	defer tCancel()
-	go httpx.CancelOnClientDone(r.Context(), tCancel)
+// runTrackedSolve runs solve on tabID like an auto-triggered solve: tracked on
+// the tab, parented on tabCtx rather than the request (a token bought after the
+// caller left would be lost), and waited on by steps and GET /autosolve. It
+// waits one step's share and reports done with the outcome, or a pending answer
+// the CLI waits on through autoSolve.pending as it does for a step's.
+func (h *Handlers) runTrackedSolve(tabCtx context.Context, tabID, url string, timeout time.Duration, solve func(context.Context) autoSolveOutcome) (map[string]any, bool) {
+	run, ok := h.autoSolve.begin(tabID, url, "")
+	if !ok {
+		return pendingSolveResponse(tabID, h.autoSolve.running(tabID)), false
+	}
+	run.doc = h.tabDocumentKey(tabID)
+	go func() {
+		ctx, cancel := context.WithTimeout(tabCtx, timeout)
+		defer cancel()
+		h.autoSolve.end(tabID, run, solve(ctx))
+	}()
+	if !h.waitStep(run, stepSolveWait) {
+		return pendingSolveResponse(tabID, run), false
+	}
+	h.autoSolve.takeFinished(tabID)
+	return run.outcome, true
+}
 
-	result, err := as.Solve(tCtx, page, executor)
+func pendingSolveResponse(tabID string, run *solveRun) map[string]any {
+	solve := autoSolveOutcome{"solved": false, "pending": true, "tabId": tabID}
+	if run != nil && run.challengeType != "" {
+		solve["challengeType"] = run.challengeType
+	}
+	return map[string]any{"tabId": tabID, "solved": false, "pending": true, "autoSolve": solve}
+}
+
+// explicitSolve runs as on tabID and records the outcome as an auto-triggered
+// solve's would be: solved, or given up and handed off.
+func (h *Handlers) explicitSolve(ctx context.Context, tabID, solver string, as *coreautosolver.AutoSolver, page coreautosolver.Page, executor coreautosolver.ActionExecutor) autoSolveOutcome {
+	url := page.URL()
+	result, err := as.Solve(ctx, page, executor)
+	if err == nil && result == nil {
+		err = fmt.Errorf("empty result")
+	}
 	if err != nil {
-		httpx.Error(w, 500, fmt.Errorf("solve: %w", err))
-		return
-	}
-	if result == nil {
-		httpx.Error(w, 500, fmt.Errorf("solve: empty result"))
-		return
-	}
-
-	if _, ok := h.applyTabGuards(w, r, ctx, resolvedTabID, guardDomainPolicy); !ok {
-		return
+		return autoSolveOutcome{"tabId": tabID, "solved": false, "error": fmt.Sprintf("solve: %v", err)}
 	}
 
 	solverName := result.SolverUsed
-	if solverName == "" && req.Solver != "" {
-		solverName = req.Solver
+	if solverName == "" && solver != "" {
+		solverName = solver
 	}
 
 	title := result.FinalTitle
@@ -143,13 +174,18 @@ func (h *Handlers) HandleSolve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	challengeType := deriveChallengeType(result, page)
-	resp := map[string]any{
-		"tabId":         resolvedTabID,
+	resp := autoSolveOutcome{
+		"tabId":         tabID,
 		"solver":        solverName,
 		"solved":        result.Solved,
 		"challengeType": challengeType,
 		"attempts":      result.Attempts,
 		"title":         title,
+	}
+	if result.Solved {
+		h.autoSolve.markSolved(tabID, url, challengeType)
+		// An earlier auto-trigger may have given up on this challenge.
+		h.autoSolve.clearGaveUp(tabID)
 	}
 
 	// Without this the caller sees only solved:false, and cannot tell an
@@ -173,12 +209,12 @@ func (h *Handlers) HandleSolve(w http.ResponseWriter, r *http.Request) {
 	// tab into paused_handoff so subsequent actions block and the caller can
 	// escalate to a human.
 	if !result.Solved && result.Attempts > 0 && challengeType != "" {
-		h.autoHandoffAfterFailure(resolvedTabID, challengeType)
+		h.autoSolve.markGaveUp(tabID, challengeType, resp)
+		h.autoHandoffAfterFailure(tabID, challengeType)
 		resp["handoff"] = "paused_handoff"
 		resp["hint"] = handoffHintMessage
 	}
-
-	httpx.JSON(w, 200, resp)
+	return resp
 }
 
 // HandleTabSolve handles POST /tabs/{id}/solve and /tabs/{id}/solve/{name}.

@@ -39,6 +39,7 @@ var hintSites = map[string]struct {
 	"../actions/actions_navigate.go:printNavigateHints":                 {occurrence, 2, "this navigation hit a captcha, or landed on a file rather than a page"},
 	"../actions/actions_element.go:postActionWithHeaders":               {occurrence, 1, "this action hit a captcha"},
 	"../actions/actions_solve.go:AwaitCaptcha":                          {occurrence, 1, "this batch's last step opened a captcha"},
+	"../actions/actions_solve.go:Solve":                                 {occurrence, 1, "this solve was still running when the step stopped waiting"},
 	"../actions/actions_wait.go:waitCaptcha":                            {occurrence, 1, "the captcha this wait waited on was solved or given up"},
 	"../actions/actions_element.go:printActionResult":                   {occurrence, 6, "this action's refs went stale, this submit is still pending, this click went unacknowledged, this action started a download, or this action opened a file picker"},
 	"../actions/actions_element.go:printRecoveryHint":                   {occurrence, 1, "this action's ref had gone stale and went to its closest match"},

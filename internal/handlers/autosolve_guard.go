@@ -208,6 +208,12 @@ func (t *autoSolveTabs) markGaveUp(tabID, challengeType string, outcome autoSolv
 	t.gaveUp[tabID] = gaveUpChallenge{challengeType: challengeType, outcome: outcome}
 }
 
+func (t *autoSolveTabs) clearGaveUp(tabID string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.gaveUp, tabID)
+}
+
 // gaveUpOn is the final outcome recorded for tabID's challenge of this type.
 func (t *autoSolveTabs) gaveUpOn(tabID, challengeType string) (autoSolveOutcome, bool) {
 	t.mu.Lock()

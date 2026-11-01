@@ -31,6 +31,10 @@ const (
 	// autoTriggerRunBudget floors the total time an auto-trigger run can take
 	// end-to-end (detection + retries). Safety valve for slow pages.
 	autoTriggerRunBudget = 45 * time.Second
+
+	// solveRunCap bounds any solve run, auto or explicit, unless a caller names
+	// its own timeout: one 2Captcha hCaptcha attempt, which settles within it.
+	solveRunCap = 5 * time.Minute
 )
 
 var (
@@ -137,10 +141,7 @@ func autoSolveReplyCutoff(ctx context.Context) <-chan time.Time {
 // not succeed on the challenges it exists to handle.
 func (h *Handlers) autoTriggerBudget() time.Duration {
 	budget := estimateAutoSolverRunTimeout(h.normalizedAutoSolverConfig())
-	if budget < autoTriggerRunBudget {
-		return autoTriggerRunBudget
-	}
-	return budget
+	return min(max(budget, autoTriggerRunBudget), solveRunCap)
 }
 
 func (h *Handlers) shouldAutoSolve(trigger string) bool {
