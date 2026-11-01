@@ -59,7 +59,7 @@ func TestCaptureScreenshotWithoutActivationLeavesTabInBackground(t *testing.T) {
 	if string(got) != "png" {
 		t.Fatalf("capture bytes = %q, want png", got)
 	}
-	wantMethods := []string{emulation.CommandSetFocusEmulationEnabled, page.CommandCaptureScreenshot}
+	wantMethods := []string{emulation.CommandSetFocusEmulationEnabled, page.CommandStartScreencast, page.CommandCaptureScreenshot, page.CommandStopScreencast}
 	if !reflect.DeepEqual(exec.methods, wantMethods) {
 		t.Fatalf("CDP methods = %v, want %v", exec.methods, wantMethods)
 	}
@@ -74,7 +74,7 @@ func TestCaptureScreenshotWithoutActivationReturnsCaptureErrorWithoutRaising(t *
 	if _, err := captureScreenshotWithoutActivation(ctx, page.CaptureScreenshot(), false); err == nil {
 		t.Fatal("expected capture error")
 	}
-	wantMethods := []string{emulation.CommandSetFocusEmulationEnabled, page.CommandCaptureScreenshot}
+	wantMethods := []string{emulation.CommandSetFocusEmulationEnabled, page.CommandStartScreencast, page.CommandCaptureScreenshot, page.CommandStopScreencast}
 	if !reflect.DeepEqual(exec.methods, wantMethods) {
 		t.Fatalf("CDP methods = %v, want %v", exec.methods, wantMethods)
 	}
@@ -93,25 +93,12 @@ func TestCaptureScreenshotWithoutActivationRaisesTabWhenBackgroundCaptureHangs(t
 	}
 	wantMethods := []string{
 		emulation.CommandSetFocusEmulationEnabled,
+		page.CommandStartScreencast,
 		page.CommandCaptureScreenshot,
+		page.CommandStopScreencast,
 		page.CommandBringToFront,
 		page.CommandCaptureScreenshot,
 	}
-	if !reflect.DeepEqual(exec.methods, wantMethods) {
-		t.Fatalf("CDP methods = %v, want %v", exec.methods, wantMethods)
-	}
-}
-
-func TestCaptureScreenshotWithoutActivationRaisesAtOnceWhereUnraisedCaptureFails(t *testing.T) {
-	prev := unraisedCaptureWorks
-	unraisedCaptureWorks = false
-	t.Cleanup(func() { unraisedCaptureWorks = prev })
-	exec := &screenshotExecutor{}
-	ctx := cdp.WithExecutor(context.Background(), exec)
-	if _, err := captureScreenshotWithoutActivation(ctx, page.CaptureScreenshot(), false); err != nil {
-		t.Fatalf("capture: %v", err)
-	}
-	wantMethods := []string{emulation.CommandSetFocusEmulationEnabled, page.CommandBringToFront, page.CommandCaptureScreenshot}
 	if !reflect.DeepEqual(exec.methods, wantMethods) {
 		t.Fatalf("CDP methods = %v, want %v", exec.methods, wantMethods)
 	}

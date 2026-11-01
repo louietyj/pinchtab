@@ -16,9 +16,6 @@ import (
 // Real Chromium, since a mocked executor "succeeds" whether or not the tab
 // paints. Headed: PINCHTAB_TEST_HEADED=1 under xvfb-run.
 func TestCaptureScreenshotOfBackgroundTabWithoutRaisingIt(t *testing.T) {
-	if !unraisedCaptureWorks {
-		t.Skip("background tabs can't be captured unraised on this platform")
-	}
 	chromePath := testbrowser.Path(t)
 	profile := testbrowser.ProfileDir(t)
 	headed := os.Getenv("PINCHTAB_TEST_HEADED") == "1"
@@ -83,5 +80,46 @@ func TestCaptureScreenshotOfBackgroundTabWithoutRaisingIt(t *testing.T) {
 	}
 	if after-before < 5 {
 		t.Fatalf("background tab ran %d animation frames in 500ms after capture, want it rendering (focus emulation left on)", after-before)
+	}
+}
+
+// A static page presents no new frame, so without keepFrameComing its
+// background capture waits out the deadline (crbug 377715191).
+func TestCaptureScreenshotOfStaticBackgroundTab(t *testing.T) {
+	alloc, cancelAlloc := chromedp.NewExecAllocator(context.Background(), append(
+		chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.ExecPath(testbrowser.Path(t)),
+		chromedp.UserDataDir(testbrowser.ProfileDir(t)),
+		chromedp.Flag("headless", os.Getenv("PINCHTAB_TEST_HEADED") != "1"),
+		chromedp.Flag("no-sandbox", true),
+	)...)
+	defer cancelAlloc()
+	browserCtx, cancelBrowser := chromedp.NewContext(alloc)
+	defer cancelBrowser()
+	if err := chromedp.Run(browserCtx, chromedp.Navigate("data:text/html,<h1>front</h1>")); err != nil {
+		t.Fatalf("start browser: %v", err)
+	}
+	var bgTarget target.ID
+	if err := chromedp.Run(browserCtx, chromedp.ActionFunc(func(ctx context.Context) error {
+		id, err := target.CreateTarget("data:text/html,<h1>static background</h1>").WithBackground(true).Do(ctx)
+		bgTarget = id
+		return err
+	})); err != nil {
+		t.Fatalf("create background target: %v", err)
+	}
+	bgCtx, cancelBg := chromedp.NewContext(browserCtx, chromedp.WithTargetID(bgTarget))
+	defer cancelBg()
+	if err := chromedp.Run(bgCtx); err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+	time.Sleep(time.Second) // past the window where a fresh page still presents frames
+
+	for i := 0; i < 3; i++ {
+		captureCtx, cancel := context.WithTimeout(bgCtx, 4*time.Second)
+		buf, err := CaptureScreenshot(captureCtx, ScreenshotOpts{Format: page.CaptureScreenshotFormatPng, DisableActivation: true})
+		cancel()
+		if err != nil || len(buf) == 0 {
+			t.Fatalf("capture %d of a static background tab: %v", i, err)
+		}
 	}
 }

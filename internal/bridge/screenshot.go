@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"runtime"
+	"sync"
 	"time"
 
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/page"
+	"github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
 	"github.com/pinchtab/pinchtab/internal/cdptk"
 )
@@ -137,10 +138,43 @@ func scaledScreenshotClip(opts ScreenshotOpts, viewportWidth, viewportHeight, do
 // backgroundCaptureWait bounds the unraised capture before falling back to Page.bringToFront.
 var backgroundCaptureWait = 5 * time.Second
 
-// unraisedCaptureWorks is false on Windows, where on a real Chrome window
-// (Chrome 156) a background tab's surface capture hangs and the read-the-view
-// path returns whatever tab the window shows; so the tab is raised at once.
-var unraisedCaptureWorks = runtime.GOOS != "windows"
+// liveScreencasts counts the Page.startScreencast streams open on each target,
+// so a capture's own short screencast never stops one.
+var liveScreencasts = struct {
+	sync.Mutex
+	n map[target.ID]int
+}{n: map[target.ID]int{}}
+
+func markScreencast(id target.ID, delta int) {
+	liveScreencasts.Lock()
+	defer liveScreencasts.Unlock()
+	if liveScreencasts.n[id] += delta; liveScreencasts.n[id] <= 0 {
+		delete(liveScreencasts.n, id)
+	}
+}
+
+func contextTargetID(ctx context.Context) target.ID {
+	if c := chromedp.FromContext(ctx); c != nil && c.Target != nil {
+		return c.Target.TargetID
+	}
+	return ""
+}
+
+// keepFrameComing runs a tiny screencast for the length of a capture. A static
+// background tab presents no frame, so its capture waits for ever (crbug
+// 377715191; measured on Windows Chrome 156 and headed Linux Chromium 153); a screencast
+// makes the compositor produce one. Skipped when a stream is already open.
+func keepFrameComing(ctx context.Context) (stop func()) {
+	id := contextTargetID(ctx)
+	liveScreencasts.Lock()
+	live := id != "" && liveScreencasts.n[id] > 0
+	liveScreencasts.Unlock()
+	if live || page.StartScreencast().WithFormat(page.ScreencastFormatJpeg).
+		WithQuality(1).WithMaxWidth(64).WithMaxHeight(64).Do(ctx) != nil {
+		return func() {}
+	}
+	return func() { _ = page.StopScreencast().Do(ctx) }
+}
 
 // captureScreenshotWithoutActivation captures a tab without raising it, so
 // parallel agents in one window don't keep stealing the active tab. Focus
@@ -150,12 +184,15 @@ var unraisedCaptureWorks = runtime.GOOS != "windows"
 func captureScreenshotWithoutActivation(ctx context.Context, shot *page.CaptureScreenshotParams, disableActivation bool) ([]byte, error) {
 	focusEmulated := emulation.SetFocusEmulationEnabled(true).Do(ctx) == nil
 	if disableActivation {
+		defer keepFrameComing(ctx)()
 		return shot.Do(ctx)
 	}
-	if focusEmulated && unraisedCaptureWorks {
+	if focusEmulated {
+		stop := keepFrameComing(ctx)
 		tryCtx, cancel := context.WithTimeout(ctx, backgroundCaptureWait)
 		buf, err := shot.Do(tryCtx)
 		cancel()
+		stop()
 		if err == nil || ctx.Err() != nil || !errors.Is(err, context.DeadlineExceeded) {
 			return buf, err
 		}

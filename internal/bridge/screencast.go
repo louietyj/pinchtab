@@ -131,8 +131,11 @@ func (b *Bridge) startScreencastEventDriven(ctx context.Context, opts Screencast
 	}
 
 	stopRepaintLoop := cdptk.StartRepaintLoop(ctx)
+	targetID := contextTargetID(ctx)
+	markScreencast(targetID, 1)
 
 	stream := runtimetypes.NewScreencastStreamWithDone(frameCh, done, func() {
+		markScreencast(targetID, -1)
 		stopRepaintLoop()
 		_ = chromedp.Run(ctx,
 			chromedp.ActionFunc(func(c context.Context) error {
