@@ -141,12 +141,16 @@ func ClipForNode(ctx context.Context, nodeID int64, css1x bool) (*ScreenshotClip
 //
 // The nil-clip pair matches on dimensions, which is why an unclipped browser test cannot
 // pin this choice; hence the table test beside this function.
-func CaptureFromSurface(beyondViewport bool, clip *page.Viewport) bool {
-	return captureFromSurface(runtime.GOOS, beyondViewport, clip)
+//
+// The Windows rule is for a browser pinchtab launched. On an attached one (a real headed
+// window) a background tab's surface capture hung past 5 s on Windows Chrome 156, so it
+// reads the view like every other platform.
+func CaptureFromSurface(externalBrowser, beyondViewport bool, clip *page.Viewport) bool {
+	return captureFromSurface(runtime.GOOS, externalBrowser, beyondViewport, clip)
 }
 
-func captureFromSurface(goos string, beyondViewport bool, clip *page.Viewport) bool {
-	return goos == "windows" || beyondViewport || clip != nil
+func captureFromSurface(goos string, externalBrowser, beyondViewport bool, clip *page.Viewport) bool {
+	return (goos == "windows" && !externalBrowser) || beyondViewport || clip != nil
 }
 
 // ViewportClip is the clip that makes a DEFAULT capture come back in the space its

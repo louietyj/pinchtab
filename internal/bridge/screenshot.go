@@ -106,6 +106,9 @@ type ScreenshotOpts struct {
 	// DisableActivation (the inverse of instanceDefaults.captureAllowActivation)
 	// never raises the tab, even when its unraised capture times out.
 	DisableActivation bool
+
+	// ExternalBrowser marks an attached browser (see cdptk.CaptureFromSurface).
+	ExternalBrowser bool
 }
 
 func scaledScreenshotClip(opts ScreenshotOpts, viewportWidth, viewportHeight, documentWidth, documentHeight float64) *page.Viewport {
@@ -182,7 +185,7 @@ func CaptureScreenshot(ctx context.Context, opts ScreenshotOpts) ([]byte, error)
 	}
 	clip := scaledScreenshotClip(opts, viewportWidth, viewportHeight, documentWidth, documentHeight)
 
-	fromSurface := cdptk.CaptureFromSurface(opts.BeyondViewport, clip)
+	fromSurface := cdptk.CaptureFromSurface(opts.ExternalBrowser, opts.BeyondViewport, clip)
 
 	return cdptk.CaptureWithSurfaceFallback(fromSurface, func(fromSurface bool) ([]byte, error) {
 		var buf []byte
@@ -308,6 +311,7 @@ func (b *Bridge) CaptureScreenshot(ctx context.Context, format string, quality i
 		Quality:           quality,
 		Clip:              vp,
 		DisableActivation: disableActivation,
+		ExternalBrowser:   b.Config.AttachesExternalBrowser(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("screenshot: %w", err)

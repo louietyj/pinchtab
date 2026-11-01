@@ -54,6 +54,12 @@ func (c *RuntimeConfig) ListenAddr() string {
 	return c.Bind + ":" + c.Port
 }
 
+// AttachesExternalBrowser reports a browser pinchtab attached to rather than
+// launched: a real headed window whatever Headless says.
+func (c *RuntimeConfig) AttachesExternalBrowser() bool {
+	return c != nil && (strings.TrimSpace(c.CDPAttachURL) != "" || strings.TrimSpace(c.RemoteCDPURL) != "")
+}
+
 func GenerateAuthToken() (string, error) {
 	buf := make([]byte, 24)
 	if _, err := rand.Read(buf); err != nil {

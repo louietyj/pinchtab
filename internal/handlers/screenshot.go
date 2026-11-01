@@ -120,6 +120,7 @@ func (h *Handlers) HandleScreenshot(w http.ResponseWriter, r *http.Request) {
 		BeyondViewport:    req.beyondViewport,
 		Scale:             req.scale,
 		DisableActivation: !h.Config.CaptureAllowActivation,
+		ExternalBrowser:   h.Config.AttachesExternalBrowser(),
 	})
 	if captureErr != nil {
 		h.errorWithCrashContext(w, 500, fmt.Errorf("screenshot: %w", captureErr))

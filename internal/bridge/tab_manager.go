@@ -233,9 +233,11 @@ func (tm *TabManager) createTab(url, browserContextID string) (string, context.C
 	var targetID target.ID
 	createCtx, createCancel := context.WithTimeout(browserExecCtx, tabCreateTimeout)
 	params := target.CreateTarget("about:blank").WithFocus(false)
-	// focus=false alone doesn't reliably keep a headed tab behind the operator's;
-	// focus emulation below renders it anyway.
-	if tm.config != nil && !tm.config.Headless {
+	// An attached browser is someone's real window even when Headless is left at
+	// its default, so its new tabs open behind theirs; focus emulation below
+	// renders them anyway.
+	ownHeadless := tm.config != nil && tm.config.Headless && !tm.config.AttachesExternalBrowser()
+	if tm.config != nil && !ownHeadless {
 		params = params.WithBackground(true)
 	}
 	if browserContextID != "" {
@@ -261,7 +263,7 @@ func (tm *TabManager) createTab(url, browserContextID string) (string, context.C
 	// Headless Chromium reports an unfocused tab as hidden with a 0x0 window, which
 	// page-visibility checks read as a background tab. There is no operator window
 	// to take focus from, so bring it forward.
-	if tm.config != nil && tm.config.Headless {
+	if ownHeadless {
 		if err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 			return page.BringToFront().Do(ctx)
 		})); err != nil {
