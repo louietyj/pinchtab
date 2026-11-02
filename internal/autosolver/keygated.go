@@ -3,6 +3,7 @@ package autosolver
 const (
 	CapsolverSolverName  = "capsolver"
 	TwoCaptchaSolverName = "twocaptcha"
+	NoneCapSolverName    = "nonecap"
 )
 
 // KeyGatedSolver is a solver that only registers once its API key is set, paired
@@ -18,6 +19,7 @@ type KeyGatedSolver struct {
 var keyGatedSolvers = []KeyGatedSolver{
 	{Name: CapsolverSolverName, ConfigKey: "autoSolver.external.capsolverKey"},
 	{Name: TwoCaptchaSolverName, ConfigKey: "autoSolver.external.twoCaptchaKey"},
+	{Name: NoneCapSolverName, ConfigKey: "autoSolver.external.noneCapKey"},
 }
 
 // KeyGatedSolvers returns a copy, so a caller iterating it cannot edit the set.

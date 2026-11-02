@@ -885,6 +885,8 @@ func setAutoSolverExternalField(e *AutoSolverExtConf, field, value string) error
 		e.CapsolverKey = value
 	case "twoCaptchaKey":
 		e.TwoCaptchaKey = value
+	case "noneCapKey":
+		e.NoneCapKey = value
 	default:
 		return fmt.Errorf("unknown field autoSolver.external.%s", field)
 	}

@@ -499,6 +499,7 @@ func (h *Handlers) autoSolverAPIKeys() map[string]string {
 	return map[string]string{
 		coreautosolver.CapsolverSolverName:  h.Config.AutoSolver.CapsolverKey,
 		coreautosolver.TwoCaptchaSolverName: h.Config.AutoSolver.TwoCaptchaKey,
+		coreautosolver.NoneCapSolverName:    h.Config.AutoSolver.NoneCapKey,
 	}
 }
 

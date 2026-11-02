@@ -234,6 +234,7 @@ type autoSolverFileConfigJSON struct {
 type autoSolverExtConfigJSON struct {
 	CapsolverKey  string `json:"capsolverKey,omitempty"`
 	TwoCaptchaKey string `json:"twoCaptchaKey,omitempty"`
+	NoneCapKey    string `json:"noneCapKey,omitempty"`
 }
 
 type autoSolverCredentialsConfigJSON struct {

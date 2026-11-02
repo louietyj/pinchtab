@@ -305,6 +305,7 @@ func (fc FileConfig) MarshalJSON() ([]byte, error) {
 			External: autoSolverExtConfigJSON{
 				CapsolverKey:  fc.AutoSolver.External.CapsolverKey,
 				TwoCaptchaKey: fc.AutoSolver.External.TwoCaptchaKey,
+				NoneCapKey:    fc.AutoSolver.External.NoneCapKey,
 			},
 			Credentials: autoSolverCredentialsConfigJSON{
 				Login: autoSolverLoginConfigJSON{
@@ -601,6 +602,7 @@ func autoSolverConfigFromRuntime(cfg *RuntimeConfig) AutoSolverFileConfig {
 		External: AutoSolverExtConf{
 			CapsolverKey:  a.CapsolverKey,
 			TwoCaptchaKey: a.TwoCaptchaKey,
+			NoneCapKey:    a.NoneCapKey,
 		},
 		Credentials: AutoSolverCredentialsConf{
 			Login: AutoSolverLoginConf{

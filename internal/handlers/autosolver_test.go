@@ -217,6 +217,7 @@ func TestRegisteredSolversAreAllKnownToTheCatalog(t *testing.T) {
 	h := &Handlers{Config: &config.RuntimeConfig{AutoSolver: config.AutoSolverConfig{
 		CapsolverKey:  "test-capsolver-key",
 		TwoCaptchaKey: "test-twocaptcha-key",
+		NoneCapKey:    "test-nonecap-key",
 	}}}
 
 	// The normalised config, exactly as both production call sites build it: the keys
@@ -251,6 +252,7 @@ func TestEveryGatedSolverKeyReachesTheNormalisedConfig(t *testing.T) {
 	h := &Handlers{Config: &config.RuntimeConfig{AutoSolver: config.AutoSolverConfig{
 		CapsolverKey:  "cap-key",
 		TwoCaptchaKey: "two-key",
+		NoneCapKey:    "none-key",
 	}}}
 
 	cfg := h.normalizedAutoSolverConfig()
@@ -292,6 +294,7 @@ func TestAvailableNamesFollowTheConfiguredKeys(t *testing.T) {
 			keyed := &Handlers{Config: &config.RuntimeConfig{AutoSolver: config.AutoSolverConfig{
 				CapsolverKey:  "k",
 				TwoCaptchaKey: "k",
+				NoneCapKey:    "k",
 				Solvers:       []string{solver.Name},
 			}}}
 			if !slices.Contains(keyed.availableAutoSolverNames(), solver.Name) {

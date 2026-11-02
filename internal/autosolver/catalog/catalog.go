@@ -30,6 +30,7 @@ func buildAll(cfg autosolver.Config) []autosolver.Solver {
 		&solvers.NoCaptcha{},
 		external.NewCapsolver(external.CapsolverConfig{APIKey: cfg.APIKey(autosolver.CapsolverSolverName)}),
 		external.NewTwoCaptcha(external.TwoCaptchaConfig{APIKey: cfg.APIKey(autosolver.TwoCaptchaSolverName)}),
+		external.NewNoneCap(external.NoneCapConfig{APIKey: cfg.APIKey(autosolver.NoneCapSolverName)}),
 	}
 }
 

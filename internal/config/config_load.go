@@ -869,6 +869,7 @@ func applyAutoSolverConfig(cfg *RuntimeConfig, a AutoSolverFileConfig) {
 	}
 	cfg.AutoSolver.CapsolverKey = a.External.CapsolverKey
 	cfg.AutoSolver.TwoCaptchaKey = a.External.TwoCaptchaKey
+	cfg.AutoSolver.NoneCapKey = a.External.NoneCapKey
 	cfg.AutoSolver.Credentials = AutoSolverCredentials{
 		Login: AutoSolverLoginCreds{
 			User:     a.Credentials.Login.User,

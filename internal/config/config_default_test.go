@@ -118,6 +118,7 @@ var autoSolverFieldsWithoutDefault = map[string]string{
 	"LLMProvider":   "no provider is chosen for the operator; an empty value means the LLM fallback stays unconfigured",
 	"CapsolverKey":  "an external solver API key; a default would be a fabricated credential",
 	"TwoCaptchaKey": "an external solver API key; a default would be a fabricated credential",
+	"NoneCapKey":    "an external solver API key; a default would be a fabricated credential",
 	"Credentials":   "user-supplied login/signup/form values; never defaulted",
 	// Handler-only, so it has no core counterpart for the default rows to read.
 	// Zero is upstream's behaviour: navigate returns without awaiting the solve.

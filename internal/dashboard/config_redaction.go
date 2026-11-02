@@ -18,6 +18,7 @@ func redactToken(cfg config.FileConfig) config.FileConfig {
 	cfg.Security.StateEncryptionKey = nil
 	cfg.AutoSolver.External.CapsolverKey = ""
 	cfg.AutoSolver.External.TwoCaptchaKey = ""
+	cfg.AutoSolver.External.NoneCapKey = ""
 	cfg.AutoSolver.Credentials = config.AutoSolverCredentialsConf{}
 	cfg.Browser.Proxy = cfg.Browser.Proxy.Redacted()
 	if len(cfg.Browser.Targets) > 0 {
@@ -40,6 +41,7 @@ func preserveWriteOnlyConfigFields(dst, src *config.FileConfig) {
 	dst.Security.StateEncryptionKey = src.Security.StateEncryptionKey
 	dst.AutoSolver.External.CapsolverKey = src.AutoSolver.External.CapsolverKey
 	dst.AutoSolver.External.TwoCaptchaKey = src.AutoSolver.External.TwoCaptchaKey
+	dst.AutoSolver.External.NoneCapKey = src.AutoSolver.External.NoneCapKey
 	// Credentials are write-only: a blank or omitted credential field — which is
 	// what GET echoes back, having redacted them — keeps the value already on disk.
 	// A blank field does NOT clear a credential via the dashboard: missing and

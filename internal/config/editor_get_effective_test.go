@@ -112,6 +112,7 @@ var blankIsTheAnswer = map[string]string{
 	"autoSolver.llmProvider":                  "no LLM provider configured",
 	"autoSolver.external.capsolverKey":        "no external solver key configured",
 	"autoSolver.external.twoCaptchaKey":       "no external solver key configured",
+	"autoSolver.external.noneCapKey":          "no external solver key configured",
 	"autoSolver.credentials.login.user":       "no stored credential",
 	"autoSolver.credentials.login.password":   "no stored credential",
 	"autoSolver.credentials.signup.name":      "no stored credential",

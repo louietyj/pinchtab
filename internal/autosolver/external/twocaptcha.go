@@ -18,8 +18,8 @@ type TwoCaptchaConfig struct {
 }
 
 // TwoCaptcha implements autosolver.Solver using 2Captcha's API v2. It is the
-// provider for hCaptcha and FunCaptcha, which CapSolver no longer solves, and a
-// fallback for the rest.
+// provider for FunCaptcha, which CapSolver no longer solves, and a fallback for
+// the rest, hCaptcha included (after NoneCap).
 type TwoCaptcha struct {
 	provider
 }

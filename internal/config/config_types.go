@@ -223,6 +223,7 @@ type AutoSolverConfig struct {
 	AwaitOnNavigate bool   `json:"awaitOnNavigate"`
 	CapsolverKey    string `json:"capsolverKey,omitempty"`
 	TwoCaptchaKey   string `json:"twoCaptchaKey,omitempty"`
+	NoneCapKey      string `json:"noneCapKey,omitempty"`
 	Credentials     AutoSolverCredentials
 }
 
@@ -609,6 +610,7 @@ type AutoSolverFileConfig struct {
 type AutoSolverExtConf struct {
 	CapsolverKey  string `json:"capsolverKey,omitempty"`
 	TwoCaptchaKey string `json:"twoCaptchaKey,omitempty"`
+	NoneCapKey    string `json:"noneCapKey,omitempty"`
 }
 
 // AutoSolverCredentialsConf is the persisted form of the credentials block.

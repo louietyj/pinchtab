@@ -599,6 +599,8 @@ func getAutoSolverExternalField(e *AutoSolverExtConf, field string) (string, err
 		return e.CapsolverKey, nil
 	case "twoCaptchaKey":
 		return e.TwoCaptchaKey, nil
+	case "noneCapKey":
+		return e.NoneCapKey, nil
 	default:
 		return "", fmt.Errorf("unknown field autoSolver.external.%s", field)
 	}
