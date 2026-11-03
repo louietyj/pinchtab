@@ -32,27 +32,36 @@ func TestTabCloseUsesCloseEndpoint(t *testing.T) {
 func TestTabListMarksCurrentAndOwner(t *testing.T) {
 	m := newMockServer()
 	defer m.close()
+	// Titles are decoration: the server's opened flag and the caller's own
+	// record decide, so an untagged tab PinchTab opened is still an agent's.
 	m.setResponse("GET", "/tabs", 200, `{"tabs":[
-		{"id":"MINE","url":"https://a.test/","title":"[PinchTab :9867] A"},
-		{"id":"OTHER","url":"https://b.test/","title":"[PinchTab :9867] B"},
-		{"id":"USERS","url":"https://mail.test/","title":"Inbox"}]}`)
+		{"id":"MINE","url":"https://a.test/","title":"A","opened":true},
+		{"id":"OTHER","url":"https://b.test/","title":"B","opened":true},
+		{"id":"USERS","url":"https://mail.test/","title":"[PinchTab :9867] Inbox"}]}`)
 	oldCurrent, oldOwns := CurrentTab, OwnsTab
 	defer func() { CurrentTab, OwnsTab = oldCurrent, oldOwns }()
-	CurrentTab = func() string { return "MINE" }
-	OwnsTab = func(id string) bool { return id == "MINE" }
+	CurrentTab = func() string { return "USERS" }
+	OwnsTab = func(id string) (bool, bool) { return id == "MINE", true }
 
 	cmd := &cobra.Command{}
 	cmd.Flags().Bool("json", false, "")
 	out := captureStdout(t, func() { TabList(m.server.Client(), m.base(), "", cmd) })
 
 	for _, want := range []string{
-		"*MINE\tyours\thttps://a.test/",
+		"MINE\tyours\thttps://a.test/",
 		"OTHER\tanother agent's\thttps://b.test/",
-		"USERS\tnot pinchtab's\thttps://mail.test/",
+		"*USERS\tnot pinchtab's\thttps://mail.test/",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)
 		}
+	}
+
+	// Where the server keeps tabs per session, the list names no owners.
+	OwnsTab = func(string) (bool, bool) { return false, false }
+	out = captureStdout(t, func() { TabList(m.server.Client(), m.base(), "", cmd) })
+	if strings.Contains(out, "yours") || strings.Contains(out, "pinchtab's") {
+		t.Fatalf("owners named without local tracking:\n%s", out)
 	}
 }
 

@@ -21,6 +21,8 @@ type TabTarget struct {
 	Title            string `json:"title"`
 	Type             string `json:"type"`
 	BrowserContextID string `json:"browserContextId,omitempty"`
+	// Opened: PinchTab opened this tab (TabEntry.Opened).
+	Opened bool `json:"opened,omitempty"`
 }
 
 var ErrBrowserDraining = errors.New("browser restart in progress; retry shortly")

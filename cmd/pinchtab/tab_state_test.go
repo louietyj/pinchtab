@@ -289,23 +289,25 @@ func TestAnInvalidServerBaseLeavesTheTabStateInconclusiveWithoutExiting(t *testi
 	defaultTabState.announceCachedTab("tab1")
 }
 
-// Every tab the caller made current is its own until closed, so a shared
-// browser's tab list can tell its tabs from other agents'.
-func TestTabsMadeCurrentAreOwnedUntilClosed(t *testing.T) {
+// A tab the caller opened is its own until closed; one it was pointed at and
+// switched to is current but stays the user's.
+func TestOpenedTabsAreOwnedUntilClosedAndSwitchedToTabsAreNot(t *testing.T) {
 	newTabStateHarness(t)
-	WriteTabStateFile("OPENER")
-	WriteTabStateFile("POPUP")
-	WriteTabStateFile("OPENER")
+	OwnOpenedTab("OPENER")
+	OwnOpenedTab("POPUP")
+	OwnOpenedTab("OPENER")
+	WriteTabStateFile("USERS")
 
 	if !defaultTabState.owns("OPENER") || !defaultTabState.owns("POPUP") {
 		t.Fatalf("owned = %v, want OPENER and POPUP", defaultTabState.owned())
 	}
-	if defaultTabState.owns("SOMEONE-ELSES") {
-		t.Fatal("a tab never made current reads as owned")
+	if defaultTabState.owns("USERS") || defaultTabState.read() != "USERS" {
+		t.Fatalf("a switched-to tab: owned=%v current=%q; want current, not owned", defaultTabState.owns("USERS"), defaultTabState.read())
 	}
 	if got := defaultTabState.owned(); len(got) != 2 {
 		t.Fatalf("owned = %v, want each tab once", got)
 	}
+	WriteTabStateFile("OPENER")
 
 	ClearTabStateFileIfCurrent("POPUP")
 	if defaultTabState.owns("POPUP") {

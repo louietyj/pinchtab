@@ -347,6 +347,7 @@ func (tm *TabManager) createTab(url, browserContextID string) (string, context.C
 		CreatedAt:             now,
 		LastUsed:              now,
 		ConsoleCaptureEnabled: tm.shouldEagerlyCaptureConsole(),
+		Opened:                true,
 	}
 	tm.accessed[tabID] = true
 	tm.currentTab = tabID

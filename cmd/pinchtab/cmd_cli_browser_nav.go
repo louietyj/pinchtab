@@ -30,7 +30,11 @@ var navCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		url := urls.Normalize(args[0])
 		runCLIEnsuringServer("nav", func(rt cliRuntime) {
-			tabID := browseractions.Navigate(rt.client, rt.base, rt.token, url, cmd)
+			tabID, created := browseractions.Navigate(rt.client, rt.base, rt.token, url, cmd)
+			if created {
+				OwnOpenedTab(tabID)
+				return
+			}
 			WriteTabStateFile(tabID)
 		})
 	},

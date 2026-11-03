@@ -109,6 +109,18 @@ func TestAutoSwitchFinish_NoPopupReturnsWithinGrace(t *testing.T) {
 	}
 }
 
+// Only tabs PinchTab opened are listed as opened; a tracked tab of the user's
+// is not.
+func TestOpenedTabsAreOnlyTheOnesPinchTabOpened(t *testing.T) {
+	tm := &TabManager{tabs: map[string]*TabEntry{"CREATED": {Opened: true}, "POPUP": {}, "USERS": {}}}
+	tm.markOpened("POPUP")
+	tm.markOpened("GONE")
+	got := tm.openedTabs()
+	if !got["CREATED"] || !got["POPUP"] || got["USERS"] || len(got) != 2 {
+		t.Fatalf("openedTabs = %v, want CREATED and POPUP", got)
+	}
+}
+
 // In a personal browser a popup that arrives after the grace still reaches the
 // click, when the click was expected to open one.
 func TestAutoSwitchFinish_PersonalBrowserWaitsForAnExpectedPopup(t *testing.T) {

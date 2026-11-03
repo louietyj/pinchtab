@@ -86,17 +86,25 @@ func (s tabStateStore) write(tabID string) {
 	path := s.path()
 	_ = os.MkdirAll(filepath.Dir(path), 0755)
 	_ = os.WriteFile(path, []byte(tabID+"\n"), 0644)
-	if !s.owns(tabID) {
-		if f, err := os.OpenFile(s.ownedPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-			_, _ = f.WriteString(tabID + "\n")
-			_ = f.Close()
-		}
+}
+
+// own records a tab this caller opened: by nav into a new tab, or as the
+// popup of its own click. A tab it was pointed at and switched to is current
+// but not its own.
+func (s tabStateStore) own(tabID string) {
+	if tabID == "" || !s.useLocal() || s.owns(tabID) {
+		return
+	}
+	_ = os.MkdirAll(s.dir(), 0755)
+	if f, err := os.OpenFile(s.ownedPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		_, _ = f.WriteString(tabID + "\n")
+		_ = f.Close()
 	}
 }
 
-// ownedPath lists every tab this caller made current: opened, adopted from a
-// click, or switched to. In a browser several agents share, it is what tells
-// one agent's tabs from another's; the state directory is per agent.
+// ownedPath lists the tabs this caller opened. In a browser several agents
+// share, it tells one agent's tabs from another's; the state directory is per
+// agent.
 func (s tabStateStore) ownedPath() string {
 	return s.dir() + "/owned-tabs-" + s.serverSlug()
 }
@@ -264,9 +272,20 @@ func tabStateFile() string { return defaultTabState.path() }
 // WriteTabStateFile persists the current tab for anonymous local workflows.
 func WriteTabStateFile(tabID string) { defaultTabState.write(tabID) }
 
+// OwnOpenedTab makes an opened tab the caller's current tab and its own.
+func OwnOpenedTab(tabID string) {
+	defaultTabState.write(tabID)
+	defaultTabState.own(tabID)
+}
+
 func init() {
-	browseractions.OnTabOpened = WriteTabStateFile
-	browseractions.OwnsTab = defaultTabState.owns
+	browseractions.OnTabOpened = OwnOpenedTab
+	browseractions.OwnsTab = func(tabID string) (owned, tracked bool) {
+		if !defaultTabState.useLocal() {
+			return false, false
+		}
+		return defaultTabState.owns(tabID), true
+	}
 	browseractions.CurrentTab = func() string {
 		if !defaultTabState.useLocal() {
 			return ""

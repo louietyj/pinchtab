@@ -210,16 +210,19 @@ func pendingSolveCheck(result map[string]any) string {
 	return fmt.Sprintf("pinchtab wait --fn 'document.title !== %s' --timeout 30000; pinchtab snap", literal)
 }
 
-func Navigate(client *http.Client, base, token string, url string, cmd *cobra.Command) string {
+// Navigate returns the tab it landed on, and whether the server opened that
+// tab for this navigation.
+func Navigate(client *http.Client, base, token string, url string, cmd *cobra.Command) (string, bool) {
 	req := buildNavigateRequest(url, cmd)
 
 	if timeoutSeconds, ok := req.body["timeout"].(float64); ok {
 		client = navigationHTTPClient(client, timeoutSeconds)
 	}
 
+	var hdr http.Header
 	jsonOutput, _ := cmd.Flags().GetBool("json")
 	if jsonOutput {
-		result, usedFallback := postNavigate(client, base, token, req, false)
+		result, usedFallback := postNavigate(client, base, token, req, false, &hdr)
 		// The HINT is what an agent acts on (a pending solve's check command
 		// included), so --json carries it rather than dropping it.
 		if raw, ok := result["autoSolve"].(map[string]any); ok {
@@ -237,10 +240,10 @@ func Navigate(client *http.Client, base, token string, url string, cmd *cobra.Co
 		resultTabID := tabIDFromNavigateResult(result)
 		reportFallbackNewTab(cmd, usedFallback, req.tabID, resultTabID)
 		apiclient.SuggestNextAction("navigate", result)
-		return resultTabID
+		return resultTabID, tabCreated(hdr)
 	}
 
-	result, usedFallback := postNavigate(client, base, token, req, false)
+	result, usedFallback := postNavigate(client, base, token, req, false, &hdr)
 	resultTabID := tabIDFromNavigateResult(result)
 	reportFallbackNewTab(cmd, usedFallback, req.tabID, resultTabID)
 	stdout := navigateStdoutFor(cmd)
@@ -265,7 +268,12 @@ func Navigate(client *http.Client, base, token string, url string, cmd *cobra.Co
 
 	printPostActionOutput(client, base, token, resultTabID, cmd)
 
-	return resultTabID
+	return resultTabID, tabCreated(hdr)
+}
+
+// tabCreated reads the server's X-PinchTab-Tab-Created header.
+func tabCreated(hdr http.Header) bool {
+	return hdr.Get("X-PinchTab-Tab-Created") == "true"
 }
 
 func printNavigateHints(result map[string]any) {
@@ -376,12 +384,12 @@ func navigationHTTPClient(client *http.Client, timeoutSeconds float64) *http.Cli
 
 // postNavigate returns the decoded response and whether the tab-scoped request
 // 404'd and was retried unscoped, which is the case the caller has to report.
-func postNavigate(client *http.Client, base, token string, req navigateRequest, printResponse bool) (map[string]any, bool) {
-	statusCode, respBody, result := apiclient.DoPostQuietWithStatus(client, base, token, req.path, req.body)
+func postNavigate(client *http.Client, base, token string, req navigateRequest, printResponse bool, hdr *http.Header) (map[string]any, bool) {
+	statusCode, respBody, result := apiclient.DoPostQuietWithStatus(client, base, token, req.path, req.body, apiclient.CaptureHeaders(hdr))
 	usedFallback := false
 	if statusCode == http.StatusNotFound && req.fallbackOnNotFound {
 		usedFallback = true
-		statusCode, respBody, result = apiclient.DoPostQuietWithStatus(client, base, token, "/navigate", req.body)
+		statusCode, respBody, result = apiclient.DoPostQuietWithStatus(client, base, token, "/navigate", req.body, apiclient.CaptureHeaders(hdr))
 	}
 	if statusCode >= 400 {
 		apiclient.ExitWithAPIError(statusCode, respBody)

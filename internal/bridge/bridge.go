@@ -324,6 +324,7 @@ func (b *Bridge) ListTargets() ([]TabTarget, error) {
 	if err != nil {
 		return nil, err
 	}
+	opened := tm.openedTabs()
 	targets := make([]TabTarget, len(infos))
 	for i, t := range infos {
 		targets[i] = TabTarget{
@@ -332,6 +333,7 @@ func (b *Bridge) ListTargets() ([]TabTarget, error) {
 			Title:            t.Title,
 			Type:             string(t.Type),
 			BrowserContextID: string(t.BrowserContextID),
+			Opened:           opened[string(t.TargetID)],
 		}
 	}
 	return targets, nil

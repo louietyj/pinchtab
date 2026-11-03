@@ -206,6 +206,9 @@ func (h *Handlers) HandleTabs(w http.ResponseWriter, r *http.Request) {
 		if t.BrowserContextID != "" {
 			entry["browserContextId"] = t.BrowserContextID
 		}
+		if t.Opened {
+			entry["opened"] = true
+		}
 		if hr, ok := bridgeAs[tabHandoffReader](h.Bridge); ok {
 			if hs, ok := hr.TabHandoffState(tabID); ok {
 				entry["status"] = hs.Status

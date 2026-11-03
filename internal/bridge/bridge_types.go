@@ -25,6 +25,10 @@ type TabEntry struct {
 	ConsoleCaptureEnabled bool
 	CreatorScope          string
 	UsedByOtherScope      bool
+	// Opened: PinchTab opened this tab, or adopted it as the popup of a click
+	// it made. A tab of the user's that an agent was pointed at is tracked
+	// too, but stays theirs.
+	Opened bool
 
 	idleTimer   *time.Timer
 	idleGen     uint64

@@ -94,6 +94,28 @@ func (tm *TabManager) claimPendingPopup(openerCDP, newTargetID target.ID) bool {
 	}
 }
 
+// markOpened records that PinchTab opened tabID (see TabEntry.Opened).
+func (tm *TabManager) markOpened(tabID string) {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	if entry, ok := tm.tabs[tabID]; ok {
+		entry.Opened = true
+	}
+}
+
+// openedTabs is the set of tracked tab IDs PinchTab opened.
+func (tm *TabManager) openedTabs() map[string]bool {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+	out := make(map[string]bool)
+	for id, entry := range tm.tabs {
+		if entry.Opened {
+			out[id] = true
+		}
+	}
+	return out
+}
+
 // lookupCDPID returns the raw CDP target ID for the given tab ID, if tracked.
 func (tm *TabManager) lookupCDPID(tabID string) (target.ID, bool) {
 	if tm == nil || tabID == "" {
@@ -363,6 +385,7 @@ func (s *autoSwitchSession) finish(ctx context.Context, result map[string]any) m
 		}
 		return result
 	}
+	s.tm.markOpened(newTabID)
 	// In a personal browser the tab stays in the background, like every tab an
 	// agent works in there: raising it would take the window from its owner.
 	if !s.tm.personalBrowser {
