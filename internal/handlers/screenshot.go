@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/pinchtab/pinchtab/internal/api/types"
 	"github.com/pinchtab/pinchtab/internal/bridge"
@@ -168,6 +169,15 @@ func (h *Handlers) resolveScreenshotClip(ctx context.Context, tabID, selector st
 	}
 	clip, err := bridge.ScreenshotClipForNode(ctx, nodeID)
 	if err != nil {
+		// A selector takes the first match, rendered or not, as CSS does; say
+		// so, and how many there were to choose from, rather than CDP's words.
+		if strings.Contains(err.Error(), "does not have a layout object") {
+			matched := "an element that"
+			if n, cerr := h.countElements(ctx, tabID, selector); cerr == nil && n > 1 {
+				matched = fmt.Sprintf("%d elements, and the first", n)
+			}
+			return nil, &statusError{422, fmt.Errorf("selector screenshot: %q matched %s is not rendered (hidden or not laid out); use nth:N:%s, a more specific selector, or a ref from snap", selector, matched, selector)}
+		}
 		return nil, &statusError{500, fmt.Errorf("selector screenshot: %w", err)}
 	}
 	return clip, nil
