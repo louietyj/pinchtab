@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/pinchtab/pinchtab/internal/api/types"
+	browseractions "github.com/pinchtab/pinchtab/internal/cli/actions"
 	"github.com/pinchtab/pinchtab/internal/cli/apiclient"
 	"github.com/pinchtab/pinchtab/internal/cli/clistate"
 	"github.com/spf13/cobra"
@@ -85,10 +86,52 @@ func (s tabStateStore) write(tabID string) {
 	path := s.path()
 	_ = os.MkdirAll(filepath.Dir(path), 0755)
 	_ = os.WriteFile(path, []byte(tabID+"\n"), 0644)
+	if !s.owns(tabID) {
+		if f, err := os.OpenFile(s.ownedPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			_, _ = f.WriteString(tabID + "\n")
+			_ = f.Close()
+		}
+	}
+}
+
+// ownedPath lists every tab this caller made current: opened, adopted from a
+// click, or switched to. In a browser several agents share, it is what tells
+// one agent's tabs from another's; the state directory is per agent.
+func (s tabStateStore) ownedPath() string {
+	return s.dir() + "/owned-tabs-" + s.serverSlug()
+}
+
+func (s tabStateStore) owned() []string {
+	data, _ := os.ReadFile(s.ownedPath())
+	return strings.Fields(string(data))
+}
+
+func (s tabStateStore) owns(tabID string) bool {
+	if tabID == "" || !s.useLocal() {
+		return false
+	}
+	for _, id := range s.owned() {
+		if id == tabID {
+			return true
+		}
+	}
+	return false
 }
 
 func (s tabStateStore) clearIfCurrent(tabID string) {
-	if tabID == "" || !s.useLocal() || s.read() != tabID {
+	if tabID == "" || !s.useLocal() {
+		return
+	}
+	if ids := s.owned(); len(ids) > 0 {
+		kept := make([]string, 0, len(ids))
+		for _, id := range ids {
+			if id != tabID {
+				kept = append(kept, id)
+			}
+		}
+		_ = os.WriteFile(s.ownedPath(), []byte(strings.Join(append(kept, ""), "\n")), 0644)
+	}
+	if s.read() != tabID {
 		return
 	}
 	_ = os.Remove(s.path())
@@ -220,6 +263,17 @@ func tabStateFile() string { return defaultTabState.path() }
 
 // WriteTabStateFile persists the current tab for anonymous local workflows.
 func WriteTabStateFile(tabID string) { defaultTabState.write(tabID) }
+
+func init() {
+	browseractions.OnTabOpened = WriteTabStateFile
+	browseractions.OwnsTab = defaultTabState.owns
+	browseractions.CurrentTab = func() string {
+		if !defaultTabState.useLocal() {
+			return ""
+		}
+		return defaultTabState.read()
+	}
+}
 
 // ClearTabStateFileIfCurrent removes the cached tab only if it matches tabID.
 func ClearTabStateFileIfCurrent(tabID string) { defaultTabState.clearIfCurrent(tabID) }

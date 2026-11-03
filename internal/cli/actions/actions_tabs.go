@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 
 	"github.com/pinchtab/pinchtab/internal/cli"
 	"github.com/pinchtab/pinchtab/internal/cli/apiclient"
@@ -19,25 +20,61 @@ func TabList(client *http.Client, base, token string, cmd *cobra.Command) {
 		return
 	}
 
-	// Terse: one line per tab: [*]<id>\t<url>\t<title>
+	// Terse: one line per tab: [*]<id>\t[<owner>\t]<url>\t<title>
 	body := apiclient.DoGetRaw(client, base, token, "/tabs", nil)
-	var tabs []map[string]any
-	if err := json.Unmarshal(body, &tabs); err != nil {
+	var listed struct {
+		Tabs []map[string]any `json:"tabs"`
+	}
+	if err := json.Unmarshal(body, &listed); err != nil {
 		fmt.Println(string(body))
 		return
 	}
-	for _, tab := range tabs {
+	current := ""
+	if CurrentTab != nil {
+		current = CurrentTab()
+	}
+	// The attach indicator's title tag marks every tab PinchTab works in, so in a
+	// browser where any tab carries it, an untagged tab is the user's own.
+	attached := false
+	for _, tab := range listed.Tabs {
+		if title, _ := tab["title"].(string); attachTagPattern.MatchString(title) {
+			attached = true
+		}
+	}
+	for _, tab := range listed.Tabs {
 		id, _ := tab["id"].(string)
 		url, _ := tab["url"].(string)
 		title, _ := tab["title"].(string)
-		active, _ := tab["active"].(bool)
 		prefix := ""
-		if active {
+		if id == current {
 			prefix = "*"
 		}
-		fmt.Printf("%s%s\t%s\t%s\n", prefix, id, url, title)
+		owner := ""
+		switch {
+		case OwnsTab != nil && OwnsTab(id):
+			owner = "yours"
+		case attachTagPattern.MatchString(title):
+			owner = "another agent's"
+		case attached:
+			owner = "not pinchtab's"
+		}
+		if owner != "" {
+			fmt.Printf("%s%s\t%s\t%s\t%s\n", prefix, id, owner, url, title)
+		} else {
+			fmt.Printf("%s%s\t%s\t%s\n", prefix, id, url, title)
+		}
 	}
 }
+
+// CurrentTab and OwnsTab read the command layer's local tab state: the tab
+// later steps go to, and the tabs this agent opened, adopted or switched to.
+// Nil, or empty answers, when the server tracks tabs per session instead.
+var (
+	CurrentTab func() string
+	OwnsTab    func(tabID string) bool
+)
+
+var attachTagPattern = regexp.MustCompile(`^\[PinchTab :\d+(?:,:\d+)*\]`)
 
 // TabClose closes a tab by ID.
 func TabClose(client *http.Client, base, token string, tabID string, cmd *cobra.Command) {

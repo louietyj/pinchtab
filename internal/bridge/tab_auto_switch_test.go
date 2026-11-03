@@ -109,6 +109,31 @@ func TestAutoSwitchFinish_NoPopupReturnsWithinGrace(t *testing.T) {
 	}
 }
 
+// In a personal browser a popup that arrives after the grace still reaches the
+// click, when the click was expected to open one.
+func TestAutoSwitchFinish_PersonalBrowserWaitsForAnExpectedPopup(t *testing.T) {
+	tm := &TabManager{personalBrowser: true}
+	opener := target.ID("OPENER")
+	slot := tm.markPendingClick(opener)
+	session := &autoSwitchSession{tm: tm, openerCDP: opener, slot: slot, anchorURL: "https://b.test/"}
+
+	go func() {
+		time.Sleep(3 * autoSwitchGraceTimeout)
+		tm.claimPendingPopup(opener, target.ID("LATE"))
+	}()
+	got, arrived, _ := session.awaitPopup(context.Background(), autoSwitchGraceTimeout)
+	if arrived {
+		t.Fatalf("popup %s arrived inside the grace; the test needs it late", got)
+	}
+	if session.fallbackPopupURL(context.Background()) == "" {
+		t.Fatal("a target=_blank anchor should make the popup expected")
+	}
+	got, arrived, _ = session.awaitPopup(context.Background(), personalPopupGraceTimeout)
+	if !arrived || got != "LATE" {
+		t.Fatalf("late popup = %q arrived=%v, want LATE", got, arrived)
+	}
+}
+
 func TestAdoptExistingTarget_EnforcesRejectTabLimit(t *testing.T) {
 	tm := NewTabManager(context.Background(), &config.RuntimeConfig{
 		MaxTabs:           1,

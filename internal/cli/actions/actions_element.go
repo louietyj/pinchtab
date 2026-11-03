@@ -200,6 +200,10 @@ func fetchAndPrintText(client *http.Client, base, token, tabID string) {
 	output.Value(result.Text)
 }
 
+// OnTabOpened makes a tab an action opened the CLI's current tab. Set by the
+// command layer, which owns the current-tab state.
+var OnTabOpened func(tabID string)
+
 func printActionResult(kind string, result map[string]any) {
 	if success, ok := result["success"].(bool); ok && !success {
 		errMsg := "unknown error"
@@ -218,6 +222,18 @@ func printActionResult(kind string, result map[string]any) {
 	}
 	printRecoveryHint(result)
 	if actionResult, ok := result["result"].(map[string]any); ok {
+		// The step opened a tab and the server adopted it; later steps go there.
+		if opened, _ := actionResult["switchedToTab"].(string); opened != "" {
+			if OnTabOpened != nil {
+				OnTabOpened(opened)
+			}
+			line := "opened tab " + opened
+			if url, _ := actionResult["switchedToTabUrl"].(string); url != "" {
+				line += " " + url
+			}
+			output.Value(line + " (now current)")
+			return
+		}
 		// A submit reports its own bounded post-state, which says more than "it
 		// moved" — so it is the headline, and the navigation rides underneath it
 		// rather than replacing it.

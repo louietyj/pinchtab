@@ -38,6 +38,9 @@ func (tm *TabManager) StartBrowserGuards() {
 			if tm.claimPendingPopup(info.OpenerID, info.TargetID) {
 				return
 			}
+			if tm.personalBrowser {
+				return
+			}
 			go tm.closePopupTarget(info.TargetID, info.OpenerID, info.URL)
 		})
 

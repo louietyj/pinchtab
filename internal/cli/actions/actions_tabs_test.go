@@ -28,6 +28,53 @@ func TestTabCloseUsesCloseEndpoint(t *testing.T) {
 	}
 }
 
+// In a shared browser the list says whose each tab is, and marks the current one.
+func TestTabListMarksCurrentAndOwner(t *testing.T) {
+	m := newMockServer()
+	defer m.close()
+	m.setResponse("GET", "/tabs", 200, `{"tabs":[
+		{"id":"MINE","url":"https://a.test/","title":"[PinchTab :9867] A"},
+		{"id":"OTHER","url":"https://b.test/","title":"[PinchTab :9867] B"},
+		{"id":"USERS","url":"https://mail.test/","title":"Inbox"}]}`)
+	oldCurrent, oldOwns := CurrentTab, OwnsTab
+	defer func() { CurrentTab, OwnsTab = oldCurrent, oldOwns }()
+	CurrentTab = func() string { return "MINE" }
+	OwnsTab = func(id string) bool { return id == "MINE" }
+
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("json", false, "")
+	out := captureStdout(t, func() { TabList(m.server.Client(), m.base(), "", cmd) })
+
+	for _, want := range []string{
+		"*MINE\tyours\thttps://a.test/",
+		"OTHER\tanother agent's\thttps://b.test/",
+		"USERS\tnot pinchtab's\thttps://mail.test/",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+// A click that opened a tab says so, and that tab becomes the current one.
+func TestActionThatOpenedATabReportsIt(t *testing.T) {
+	var made string
+	old := OnTabOpened
+	defer func() { OnTabOpened = old }()
+	OnTabOpened = func(id string) { made = id }
+
+	out := captureStdout(t, func() {
+		printActionResult("click", map[string]any{"success": true, "result": map[string]any{
+			"switchedToTab": "POPUP", "switchedToTabUrl": "https://b.test/"}})
+	})
+	if !strings.Contains(out, "opened tab POPUP https://b.test/ (now current)") {
+		t.Fatalf("output = %q", out)
+	}
+	if made != "POPUP" {
+		t.Fatalf("current tab = %q, want POPUP", made)
+	}
+}
+
 func TestTabFocusUsesResolvedTabID(t *testing.T) {
 	m := newMockServer()
 	m.response = `{"focused":true,"tabId":"tab_123"}`

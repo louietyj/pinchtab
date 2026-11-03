@@ -288,3 +288,30 @@ func TestAnInvalidServerBaseLeavesTheTabStateInconclusiveWithoutExiting(t *testi
 	}
 	defaultTabState.announceCachedTab("tab1")
 }
+
+// Every tab the caller made current is its own until closed, so a shared
+// browser's tab list can tell its tabs from other agents'.
+func TestTabsMadeCurrentAreOwnedUntilClosed(t *testing.T) {
+	newTabStateHarness(t)
+	WriteTabStateFile("OPENER")
+	WriteTabStateFile("POPUP")
+	WriteTabStateFile("OPENER")
+
+	if !defaultTabState.owns("OPENER") || !defaultTabState.owns("POPUP") {
+		t.Fatalf("owned = %v, want OPENER and POPUP", defaultTabState.owned())
+	}
+	if defaultTabState.owns("SOMEONE-ELSES") {
+		t.Fatal("a tab never made current reads as owned")
+	}
+	if got := defaultTabState.owned(); len(got) != 2 {
+		t.Fatalf("owned = %v, want each tab once", got)
+	}
+
+	ClearTabStateFileIfCurrent("POPUP")
+	if defaultTabState.owns("POPUP") {
+		t.Fatal("a closed tab is still owned")
+	}
+	if defaultTabState.read() != "OPENER" {
+		t.Fatalf("closing a tab that was not current cleared the current tab: %q", defaultTabState.read())
+	}
+}

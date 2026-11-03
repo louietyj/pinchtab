@@ -233,6 +233,7 @@ func (b *Bridge) reinitWiring(browserCtx context.Context, opts reinitWiringOpts)
 // path-specific setup (e.g. New's StartBrowserGuards) afterward.
 func (b *Bridge) wireTabManager(browserCtx context.Context) {
 	b.TabManager = NewTabManager(browserCtx, b.Config, b.IdMgr, b.LogStore, b.tabSetup)
+	b.TabManager.personalBrowser = b.externalAttachMode()
 	b.SetOnAfterClose(func() { go b.SaveState() })
 	b.SetDialogManager(b.Dialogs)
 	b.SetNetworkMonitor(b.netMonitor)

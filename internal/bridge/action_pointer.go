@@ -330,6 +330,13 @@ func (b *Bridge) actionClick(ctx context.Context, req ActionRequest) (result map
 			}
 			err = clickByNodeIDWithMode(clickCtx, req.NodeID, req.Mode)
 		} else if req.HasXY {
+			if auto != nil {
+				// Agents click links by coordinates too; the link under the point
+				// is what says a new tab is coming.
+				if nodeID, nodeErr := backendNodeAtPoint(clickCtx, req.X, req.Y); nodeErr == nil {
+					auto.prepareNode(clickCtx, nodeID)
+				}
+			}
 			err = clickByCoordinateAction(clickCtx, req.X, req.Y, req.Modifiers)
 		} else {
 			resultCh <- clickResult{err: NewInvalidActionRequestError("need selector, ref, nodeId, or x/y coordinates")}

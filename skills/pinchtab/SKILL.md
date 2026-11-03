@@ -222,6 +222,11 @@ carries `previousUrl` and `refsStale` (a new document loaded: snap again).
 `--wait-nav` is not permission to navigate: it waits for the navigation the
 click causes, for when the next step needs the new page loaded.
 
+A click that opens a new tab prints `opened tab <id> <url> (now current)`, and
+the steps after it go to that tab; `tab close <id>` it when done. In a browser
+shared with others, `tab` marks each tab `yours`, `another agent's` or
+`not pinchtab's`, and `*` is your current one.
+
 ## Reading a page
 
 - `text` is Readability-filtered prose. It drops controls and anything that

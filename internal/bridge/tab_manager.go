@@ -51,9 +51,13 @@ type TabManager struct {
 	executor          *TabExecutor
 	guardOnce         sync.Once
 	guardActive       bool
-	mu                sync.RWMutex
-	freezeVeto        func(tabID string) bool
-	setFrozen         func(ctx context.Context, frozen bool) error
+	// personalBrowser: attached to a browser someone is using. Popups the agent
+	// did not open are theirs, so the guard leaves them be, and an adopted
+	// popup is not raised over the tab they are looking at.
+	personalBrowser bool
+	mu              sync.RWMutex
+	freezeVeto      func(tabID string) bool
+	setFrozen       func(ctx context.Context, frozen bool) error
 
 	// pendingClicks tracks in-flight click actions that may open a popup.
 	// Keyed by the opener tab's raw CDP target ID. Read by the popup guard

@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -16,6 +17,11 @@ import (
 // arrive during the click itself; this keeps ordinary clicks from paying a
 // long no-popup timeout.
 const autoSwitchGraceTimeout = 100 * time.Millisecond
+
+// personalPopupGraceTimeout is the further wait, in a personal browser, for a
+// popup the click was expected to open: a busy everyday Chrome can take longer
+// than the grace to create the tab, and there is no fallback tab there.
+const personalPopupGraceTimeout = time.Second
 
 // pendingClickSlot records that a click is in flight for a specific opener tab
 // and provides a one-shot channel the popup guard uses to hand the newly
@@ -186,6 +192,22 @@ func (s *autoSwitchSession) prepareNode(ctx context.Context, backendNodeID int64
 	s.prepareWindowOpenCapture(ctx)
 }
 
+// backendNodeAtPoint is the element a click at viewport point x,y lands on.
+func backendNodeAtPoint(ctx context.Context, x, y float64) (int64, error) {
+	var out struct {
+		BackendNodeID int64 `json:"backendNodeId"`
+	}
+	if err := chromedp.FromContext(ctx).Target.Execute(ctx, "DOM.getNodeForLocation", map[string]any{
+		"x": int64(x), "y": int64(y), "includeUserAgentShadowDOM": false,
+	}, &out); err != nil {
+		return 0, err
+	}
+	if out.BackendNodeID == 0 {
+		return 0, fmt.Errorf("no node at %v,%v", x, y)
+	}
+	return out.BackendNodeID, nil
+}
+
 func popupAnchorURL(ctx context.Context, backendNodeID int64) (string, error) {
 	var resolved json.RawMessage
 	if err := chromedp.FromContext(ctx).Target.Execute(ctx, "DOM.resolveNode", map[string]any{
@@ -309,27 +331,29 @@ func (s *autoSwitchSession) finish(ctx context.Context, result map[string]any) m
 		}
 	}
 
-	waitCtx, cancel := context.WithTimeout(context.Background(), autoSwitchGraceTimeout)
-	defer cancel()
-
-	var newTargetID target.ID
-	select {
-	case newTargetID = <-s.slot.captured:
-	case <-waitCtx.Done():
-		cancelUnadopted()
-		return s.createFallbackTab(ctx, result)
-	case <-ctx.Done():
-		// Honour the parent context too, but drain the channel non-blockingly
-		// in case the popup arrived right at cancellation.
-		select {
-		case newTargetID = <-s.slot.captured:
-		default:
-			cancelUnadopted()
-			return result
+	expectedURL := ""
+	newTargetID, arrived, cancelled := s.awaitPopup(ctx, autoSwitchGraceTimeout)
+	if !arrived && !cancelled && s.tm.personalBrowser {
+		// Nothing here closes a popup that arrives late, so a fallback tab would
+		// sit beside it as a duplicate. When the click was expected to open one,
+		// wait a little longer for it instead.
+		if expectedURL = s.fallbackPopupURL(ctx); expectedURL != "" {
+			newTargetID, arrived, cancelled = s.awaitPopup(ctx, personalPopupGraceTimeout)
 		}
 	}
+	if !arrived {
+		cancelUnadopted()
+		if cancelled || s.tm.personalBrowser {
+			return result
+		}
+		return s.createFallbackTab(ctx, result)
+	}
 	s.tm.clearPendingClick(s.openerCDP, s.slot)
-	s.restoreWindowOpenAndFallbackURL(ctx)
+	if url := s.restoreWindowOpenAndFallbackURL(ctx); url != "" {
+		expectedURL = url
+	} else if expectedURL == "" {
+		expectedURL = strings.TrimSpace(s.anchorURL)
+	}
 
 	newTabID, err := s.tm.adoptExistingTarget(newTargetID, true)
 	if err != nil {
@@ -339,17 +363,45 @@ func (s *autoSwitchSession) finish(ctx context.Context, result map[string]any) m
 		}
 		return result
 	}
-	if err := s.tm.FocusTab(newTabID); err != nil {
-		slog.Warn("auto-switch: focus popup failed", "tabId", newTabID, "err", err)
-		return result
+	// In a personal browser the tab stays in the background, like every tab an
+	// agent works in there: raising it would take the window from its owner.
+	if !s.tm.personalBrowser {
+		if err := s.tm.FocusTab(newTabID); err != nil {
+			slog.Warn("auto-switch: focus popup failed", "tabId", newTabID, "err", err)
+			return result
+		}
 	}
 
 	if result == nil {
 		result = map[string]any{}
 	}
 	result["switchedToTab"] = newTabID
+	if expectedURL != "" {
+		result["switchedToTabUrl"] = expectedURL
+	}
 	slog.Debug("auto-switch: focused popup", "openerCDP", string(s.openerCDP), "newTabId", newTabID)
 	return result
+}
+
+// awaitPopup waits up to grace for the popup the guard hands over. cancelled
+// means ctx ended first; the channel is drained once more in case the popup
+// arrived right at cancellation.
+func (s *autoSwitchSession) awaitPopup(ctx context.Context, grace time.Duration) (id target.ID, arrived, cancelled bool) {
+	timer := time.NewTimer(grace)
+	defer timer.Stop()
+	select {
+	case id = <-s.slot.captured:
+		return id, true, false
+	case <-timer.C:
+		return "", false, false
+	case <-ctx.Done():
+		select {
+		case id = <-s.slot.captured:
+			return id, true, false
+		default:
+			return "", false, true
+		}
+	}
 }
 
 func (s *autoSwitchSession) createFallbackTab(ctx context.Context, result map[string]any) map[string]any {
