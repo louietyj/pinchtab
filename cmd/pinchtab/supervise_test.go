@@ -207,6 +207,26 @@ func TestWholeOrFilePrintsShortOutputAndFilesLongOutputWhole(t *testing.T) {
 	}
 }
 
+func TestCapGreppedFilesAGrepThatMatchedTooMuch(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "0007-snap-grep.txt")
+	var fifty, more bytes.Buffer
+	for i := 0; i < failedOutputLines; i++ {
+		fifty.WriteString("e1:button \"Go\"\n")
+	}
+	if got := capGrepped(fifty.Bytes(), path); !bytes.Equal(got, fifty.Bytes()) {
+		t.Fatal("50 matched lines must print whole")
+	}
+	more.Write(fifty.Bytes())
+	more.WriteString("e2:link \"More\"\n")
+	got := string(capGrepped(more.Bytes(), path))
+	if !strings.Contains(got, "matched 51 lines") || !strings.Contains(got, path) || strings.Contains(got, "e1:") {
+		t.Fatalf("51 lines must print only the count and the file: got %q", got)
+	}
+	if saved, _ := os.ReadFile(path); !bytes.Equal(saved, more.Bytes()) {
+		t.Fatal("the matches must be saved whole")
+	}
+}
+
 func TestQuoteHintRebuildsTheStep(t *testing.T) {
 	if got := quoteHint([]string{"click", "text:Second", "section", "--snap"}); got != `quote a selector that has spaces: click "text:Second section" --snap` {
 		t.Fatalf("got %q", got)

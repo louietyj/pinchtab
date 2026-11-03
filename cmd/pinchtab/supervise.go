@@ -188,7 +188,7 @@ func superviseOnce(cmdArgs []string, name string, rest []string, autoshot, stick
 		takeShot(paths, name, tabFlag(rest), env)
 	}
 	if grep != nil && code == 0 {
-		stdout = grepLines(stdout, grep)
+		stdout = capGrepped(grepLines(stdout, grep), filepath.Join(paths.dir, fmt.Sprintf("%04d-%s-grep.txt", paths.count(), name)))
 	}
 	_, _ = os.Stdout.Write(stdout)
 	_, _ = os.Stderr.Write(stderr)
@@ -687,6 +687,22 @@ func runBatch(globals, flags []string, in *os.File, w io.Writer) int {
 // failedOutputLines is the longest end-state output a failed batch prints:
 // about what a typical page's whole snapshot is, ~500 tokens.
 const failedOutputLines = 50
+
+// capGrepped holds a step's --grep output to the same 50 lines: a filter that
+// still matches more than that was too loose, and the whole of it would land
+// in the agent's context. The matches are kept in a file to grep further.
+func capGrepped(out []byte, path string) []byte {
+	n := strings.Count(strings.TrimRight(string(out), "\n"), "\n") + 1
+	if n <= failedOutputLines {
+		return out
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err == nil {
+		if err := os.WriteFile(path, out, 0o644); err == nil {
+			return []byte(fmt.Sprintf("--grep matched %d lines, too many to print; saved to %s. Narrow the regex, or grep that file\n", n, path))
+		}
+	}
+	return out
+}
 
 // wholeOrFile returns out if it is short, and otherwise saves it to path and
 // returns only a line naming the file.

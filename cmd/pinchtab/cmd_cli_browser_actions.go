@@ -73,6 +73,19 @@ var pressCmd = newSimpleActionCmd("press [ref] <key|chord>", "Press a key or cho
 
 var fillCmd = newSimpleActionCmd("fill <ref|selector> <text>", "Fill input directly", "fill", cobra.MinimumNArgs(2))
 
+// type and fill need an element to focus, so they take no coordinates; the
+// unknown-flag error says what does.
+func init() {
+	for _, c := range []*cobra.Command{typeCmd, fillCmd} {
+		c.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+			if strings.Contains(err.Error(), "--x") || strings.Contains(err.Error(), "--y") {
+				return fmt.Errorf("%w\nto type at a point: `click --x .. --y .. --unscale ..`, then `keyboard type \"...\"`", err)
+			}
+			return err
+		})
+	}
+}
+
 var hoverCmd = newOptionalRefActionCmd("hover <ref>", "Hover element", "hover")
 
 var mouseCmd = &cobra.Command{

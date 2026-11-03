@@ -762,6 +762,9 @@ func (h *Handlers) HandleAction(w http.ResponseWriter, r *http.Request) {
 				"doNotRetry": true,
 			}
 		}
+		if hint := notFocusableHint(req.Kind, actionErr); hint != "" {
+			details = map[string]any{"hint": hint}
+		}
 		h.errorCodeWithCrashContext(w, 500, "action_failed", fmt.Sprintf("action %s: %v", req.Kind, actionErr), actionFailureIsRetryable(actionErr, dispatchMayHaveLanded), details)
 		return
 	}

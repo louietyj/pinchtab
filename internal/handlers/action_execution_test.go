@@ -1,12 +1,26 @@
 package handlers
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/pinchtab/pinchtab/internal/bridge"
 	"github.com/pinchtab/pinchtab/internal/config"
 	"github.com/pinchtab/semantic/recovery"
 )
+
+func TestNotFocusableHintOnlyForTypingIntoAnUnfocusableElement(t *testing.T) {
+	unfocusable := errors.New("Element is not focusable (-32000)")
+	if notFocusableHint(bridge.ActionType, unfocusable) == "" || notFocusableHint(bridge.ActionFill, unfocusable) == "" {
+		t.Fatal("type and fill on an unfocusable element should say how to type there")
+	}
+	if notFocusableHint(bridge.ActionClick, unfocusable) != "" {
+		t.Fatal("a click is not typing")
+	}
+	if notFocusableHint(bridge.ActionType, errors.New("node is detached")) != "" {
+		t.Fatal("other failures get no typing hint")
+	}
+}
 
 // TestCacheActionIntent_DescriptorComposite asserts the recovery intent recorded
 // for a ref yields the same Composite() (role/name/value) as before the switch

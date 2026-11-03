@@ -97,7 +97,8 @@ the next batch.
 - `--grep <regex>` on any step keeps only the output lines that match
   (case-insensitive): `snap --grep "sort|filter|electric"` gives you the refs
   you need next without the whole tree. Never pipe pinchtab through grep,
-  head or tail.
+  head or tail. More than 50 matching lines print only the file they were
+  saved to: narrow the regex.
 - An action waits up to 3 s for a selector's target to appear, so a control
   still rendering in doesn't fail the batch. Refs never wait. A step that
   changes the page also waits for it to settle before its screenshot, so
@@ -110,8 +111,11 @@ the next batch.
   changes the URL (`OK navigated` on a single-page app) keeps them. They die
   when a new page loads; using a dead one fails loudly (`ref e12 not found`).
 - **Text** `text:Sign in`: the control with that accessible name (exact, then
-  prefix, then contains), else visible text. It never guesses: two equally
-  good matches fail `selector is ambiguous` and name them.
+  prefix, then contains), else visible text, else a phrase that runs from
+  text into one link. It never guesses: two equally good matches fail
+  `selector is ambiguous` and name them, and no match names near misses
+  (`did you mean button "+ 3 more"?`). For a control you can only describe,
+  `find "<what it does>"` ranks the page's elements against it.
 - **Within** `--within <selector>` on any action looks for the target inside
   the nearest container of what that selector matches. It is how you pick a
   day in one month of a two-month calendar:

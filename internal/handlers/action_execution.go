@@ -314,6 +314,16 @@ func (h *Handlers) executeActionResilient(ctx context.Context, req *bridge.Actio
 	return result, backend, rr, err
 }
 
+// notFocusableHint is the way into a field type and fill cannot focus, such as
+// a custom combobox. Falling back to keyboard input on its own would type into
+// whatever has focus, possibly another field, so the caller does it knowingly.
+func notFocusableHint(kind string, err error) string {
+	if (kind != bridge.ActionType && kind != bridge.ActionFill) || !strings.Contains(err.Error(), "not focusable") {
+		return ""
+	}
+	return "this element can't take focus; click the field (by ref, text: or `--x .. --y .. --unscale ..`), then `keyboard type \"...\"`, and check the screenshot that it landed there"
+}
+
 func switchedTabFromActionResult(result map[string]any) string {
 	if switched, ok := result["switchedToTab"].(string); ok {
 		return strings.TrimSpace(switched)
