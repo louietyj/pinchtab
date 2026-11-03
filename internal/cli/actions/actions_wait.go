@@ -59,20 +59,26 @@ func waitFor(client *http.Client, base, token string, args []string, cmd *cobra.
 	stateFlag, _ := cmd.Flags().GetString("state")
 	tabID, _ := cmd.Flags().GetString("tab")
 
-	if domQuiet, _ := cmd.Flags().GetBool("dom-quiet"); domQuiet {
-		if !settleDOM(client, base, token, tabID) {
-			output.Hint("the page was still changing after 2s")
-		}
-		output.Success()
-		return
-	}
-
 	// The server's /wait timeout is milliseconds. --timeout-ms is the canonical
 	// flag; --timeout is the deprecated millisecond alias (cobra prints its
 	// deprecation note on use). --timeout-ms wins when both are given.
 	timeoutMs, _ := cmd.Flags().GetInt("timeout-ms")
 	if timeoutMs == 0 {
 		timeoutMs, _ = cmd.Flags().GetInt("timeout")
+	}
+
+	if domQuiet, _ := cmd.Flags().GetBool("dom-quiet"); domQuiet {
+		ms := timeoutMs
+		if ms <= 0 {
+			ms = explicitSettleMs
+		}
+		unreported, _ := cmd.Flags().GetBool("unreported")
+		// Silent when an earlier wait on the same anchor already said so.
+		if settled, already := settleDOM(client, base, token, tabID, ms, !unreported); !settled && !already {
+			output.Hint(fmt.Sprintf("the page was still changing %s after your last step", time.Duration(ms)*time.Millisecond))
+		}
+		output.Success()
+		return
 	}
 
 	if captcha, _ := cmd.Flags().GetBool("captcha"); captcha {

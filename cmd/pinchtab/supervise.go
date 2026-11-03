@@ -382,8 +382,9 @@ func takeShot(p shotPaths, name, tab string, env []string) {
 		tabArgs = []string{"--tab", tab}
 	}
 	// A shot taken the moment the command returns catches spinners and half-applied
-	// re-renders, each costing the agent another look.
-	runSelf(append([]string{"wait", "--dom-quiet"}, tabArgs...), env, nil)
+	// re-renders, each costing the agent another look. The wait counts from the
+	// step's end, so after a `wait` step that already settled it passes at once.
+	runSelf(append([]string{"wait", "--dom-quiet", "--timeout-ms", "1000", "--unreported"}, tabArgs...), env, nil)
 
 	n := p.count() + 1
 	_ = os.WriteFile(p.counter, []byte(strconv.Itoa(n)+"\n"), 0o644)

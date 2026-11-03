@@ -68,8 +68,8 @@ func (s *epochServer) handle(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/navigate":
 		s.epoch++ // navigation renumbers refs, minting a fresh token
 		_, _ = w.Write([]byte(`{"tabId":"` + s.tab + `","url":"http://example.test"}`))
-	case strings.HasSuffix(r.URL.Path, "/evaluate"): // the settle before a --snap tail; reads only
-		_, _ = w.Write([]byte(`{"result":true}`))
+	case strings.HasSuffix(r.URL.Path, "/wait"): // the settle before a --snap tail; reads only
+		_, _ = w.Write([]byte(`{"waited":true}`))
 	default: // an action (/action or /tabs/<id>/action)
 		body, _ := io.ReadAll(r.Body)
 		var decoded map[string]any

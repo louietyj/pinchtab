@@ -407,7 +407,11 @@ func configureBrowserFlags() {
 	waitCmd.Flags().String("not-text", "", "Wait for text to disappear from page")
 	waitCmd.Flags().String("url", "", "Wait for URL glob match")
 	waitCmd.Flags().String("load", "", "Wait for load state (networkidle)")
-	waitCmd.Flags().Bool("dom-quiet", false, "Wait until the DOM goes 300ms unchanged and unscrolled, with no spinner or finite animation running (at most 2s); unlike networkidle, analytics don't hold it up")
+	waitCmd.Flags().Bool("dom-quiet", false, "Wait until the DOM goes 300ms unchanged and unscrolled, with no spinner or finite animation running; unlike networkidle, analytics don't hold it up. Counts from your last step, so it passes at once if that step already settled (--timeout-ms, default 2000)")
+	// The screenshot's own settle: its output is never shown, so it must not
+	// count as having told the agent the page was still changing.
+	waitCmd.Flags().Bool("unreported", false, "")
+	_ = waitCmd.Flags().MarkHidden("unreported")
 	waitCmd.Flags().String("fn", "", "Wait for JS expression to be truthy")
 	waitCmd.Flags().String("state", "", "Element state: visible (default) or hidden")
 	waitCmd.Flags().Bool("captcha", false, "Wait for the captcha solve under way on the tab (default timeout 3m, no max)")

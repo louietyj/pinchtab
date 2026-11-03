@@ -139,6 +139,7 @@ func TestWaitRequest_Mode(t *testing.T) {
 		{"load", waitRequest{Load: "networkidle"}, "load"},
 		{"fn", waitRequest{Fn: "true"}, "fn"},
 		{"ms", waitRequest{Ms: intPtr(100)}, "ms"},
+		{"domQuiet", waitRequest{DomQuiet: true}, "domQuiet"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

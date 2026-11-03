@@ -279,8 +279,8 @@ func TestPressWithSnapDiffFetchesSnapshot(t *testing.T) {
 	if len(m.requests) != 3 {
 		t.Fatalf("expected 3 requests (action + settle + snapshot), got %d", len(m.requests))
 	}
-	if m.requests[1].Path != "/evaluate" {
-		t.Fatalf("second request = %q, want the /evaluate settle before the snapshot", m.requests[1].Path)
+	if m.requests[1].Path != "/wait" {
+		t.Fatalf("second request = %q, want the /wait settle before the snapshot", m.requests[1].Path)
 	}
 	if m.requests[2].Path != "/snapshot" {
 		t.Fatalf("snapshot path = %q, want /snapshot", m.requests[2].Path)
@@ -292,26 +292,29 @@ func TestPressWithSnapDiffFetchesSnapshot(t *testing.T) {
 
 func TestSettleDOM(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		status int
-		body   string
-		want   bool
+		name        string
+		status      int
+		body        string
+		wantSettled bool
+		wantAlready bool
 	}{
-		{"settled", 200, `{"result":true}`, true},
-		{"still changing at the cap", 200, `{"result":false}`, false},
-		{"evaluate failed", 500, `{"error":"context destroyed"}`, true},
+		{"settled", 200, `{"waited":true}`, true, false},
+		{"still changing at the cap", 200, `{"waited":true,"unsettled":true}`, false, false},
+		{"already reported", 200, `{"waited":true,"unsettled":true,"alreadyReported":true}`, false, true},
+		{"wait failed", 500, `{"error":"context destroyed"}`, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := newMockServer()
 			defer m.close()
-			m.setResponse("POST", "/evaluate", tc.status, tc.body)
-			if got := settleDOM(m.server.Client(), m.base(), "", ""); got != tc.want {
-				t.Fatalf("settleDOM = %v, want %v", got, tc.want)
+			m.setResponse("POST", "/tabs/T1/wait", tc.status, tc.body)
+			settled, already := settleDOM(m.server.Client(), m.base(), "", "T1", 1000, true)
+			if settled != tc.wantSettled || already != tc.wantAlready {
+				t.Fatalf("settleDOM = %v, %v; want %v, %v", settled, already, tc.wantSettled, tc.wantAlready)
 			}
 			var body map[string]any
 			_ = json.Unmarshal([]byte(m.lastBody), &body)
-			if body["awaitPromise"] != true {
-				t.Fatalf("awaitPromise = %v, want true", body["awaitPromise"])
+			if body["domQuiet"] != true || body["timeout"] != float64(1000) || body["report"] != true {
+				t.Fatalf("body = %v", body)
 			}
 		})
 	}

@@ -224,6 +224,8 @@ func (h *Handlers) executeAction(ctx context.Context, req bridge.ActionRequest, 
 		return nil, "", fmt.Errorf("browser initialization: %w", err)
 	}
 	result, err := h.Bridge.ExecuteAction(ctx, req.Kind, req)
+	// A failed action may still have dispatched, so it moves the anchor too.
+	markSettleAnchor(ctx)
 	return result, "", err
 }
 

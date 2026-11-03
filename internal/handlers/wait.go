@@ -17,13 +17,14 @@ import (
 )
 
 const (
-	maxWaitTimeout   = 30_000 // 30s max
-	defaultTimeout   = 10_000 // 10s default
-	pollInterval     = 250 * time.Millisecond
-	maxFixedWaitMS   = 30_000
-	defaultIdleForMS = 500
-	maxIdleForMS     = 10_000
-	networkIdlePoll  = 100 * time.Millisecond
+	maxWaitTimeout    = 30_000 // 30s max
+	defaultTimeout    = 10_000 // 10s default
+	pollInterval      = 250 * time.Millisecond
+	maxFixedWaitMS    = 30_000
+	defaultDomQuietMS = 2_000
+	defaultIdleForMS  = 500
+	maxIdleForMS      = 10_000
+	networkIdlePoll   = 100 * time.Millisecond
 )
 
 // waitRequest is the JSON body for POST /wait and POST /tabs/{id}/wait.
@@ -39,6 +40,12 @@ type waitRequest struct {
 	Ms       *int   `json:"ms,omitempty"`       // fixed duration wait
 	Timeout  *int   `json:"timeout,omitempty"`  // timeout in ms
 	IdleFor  *int   `json:"idleFor,omitempty"`  // network-idle quiet period in ms (default 500, max 10000)
+	// DomQuiet waits for the DOM to stop changing, looking back to the tab's
+	// anchor (see wait_dom_quiet.go); Timeout defaults to 2s for it. Report
+	// marks an unsettled result as shown, so later waits on the anchor stay
+	// silent; a wait whose output nobody reads leaves it unset.
+	DomQuiet bool `json:"domQuiet,omitempty"`
+	Report   bool `json:"report,omitempty"`
 }
 
 // waitResponse is the JSON response for wait endpoints.
@@ -47,10 +54,16 @@ type waitResponse struct {
 	Elapsed int64  `json:"elapsed"`
 	Match   string `json:"match,omitempty"`
 	Error   string `json:"error,omitempty"`
+	// Unsettled: a DOM-quiet wait ran out its timeout with the page still
+	// changing. AlreadyReported: an earlier wait on the same anchor said so.
+	Unsettled       bool `json:"unsettled,omitempty"`
+	AlreadyReported bool `json:"alreadyReported,omitempty"`
 }
 
 func (wr *waitRequest) mode() string {
 	switch {
+	case wr.DomQuiet:
+		return "domQuiet"
 	case wr.Ms != nil:
 		return "ms"
 	case wr.Selector != "":
@@ -137,7 +150,7 @@ func (h *Handlers) handleWaitCore(w http.ResponseWriter, r *http.Request, req wa
 
 	mode := req.mode()
 	if mode == "" {
-		httpx.Error(w, 400, fmt.Errorf("one of selector, text, url, load, fn, or ms is required"))
+		httpx.Error(w, 400, fmt.Errorf("one of selector, text, url, load, fn, domQuiet, or ms is required"))
 		return
 	}
 
@@ -177,6 +190,25 @@ func (h *Handlers) handleWaitCore(w http.ResponseWriter, r *http.Request, req wa
 
 	ctx, resolvedTabID, ok := h.guardedTabContext(w, r, req.TabID, guardDialogBlocked|guardDomainPolicy)
 	if !ok {
+		return
+	}
+
+	if mode == "domQuiet" {
+		if req.Timeout == nil {
+			ms := defaultDomQuietMS
+			req.Timeout = &ms
+		}
+		qCtx, qCancel := context.WithCancel(ctx)
+		defer qCancel()
+		go httpx.CancelOnClientDone(r.Context(), qCancel)
+		settled, already := waitDOMQuiet(qCtx, req.resolvedTimeout(), req.Report)
+		httpx.JSON(w, 200, waitResponse{
+			Waited:          true,
+			Elapsed:         time.Since(start).Milliseconds(),
+			Match:           "dom-quiet",
+			Unsettled:       !settled,
+			AlreadyReported: !settled && already,
+		})
 		return
 	}
 
@@ -240,6 +272,9 @@ func (h *Handlers) handleWaitCore(w http.ResponseWriter, r *http.Request, req wa
 	})
 	h.publishVocabIfReepoched(w, resolvedTabID, vocabBefore)
 	if err == nil {
+		// What a DOM-quiet wait after this one waits for is the page's response
+		// to the condition, so the condition is its anchor.
+		markSettleAnchor(tCtx)
 		httpx.JSON(w, 200, waitResponse{
 			Waited:  true,
 			Elapsed: time.Since(start).Milliseconds(),
