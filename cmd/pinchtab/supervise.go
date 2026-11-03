@@ -643,9 +643,10 @@ func runBatch(globals, flags []string, in *os.File, w io.Writer) int {
 		return 2
 	}
 	// An invisible widget opens its puzzle a moment after the step that set it
-	// off, usually a submit. Waiting here a few seconds, when the page carries
-	// one, makes this batch the one that blocks on the solve, not whatever runs
-	// next. Pages without one answer at once.
+	// off, usually a submit. Waiting here a second, when the page carries one,
+	// makes this batch the one that blocks on the solve in the usual case. One
+	// that opens later is still solved: the next step waits for it. Pages
+	// without a widget answer at once.
 	if rc == 0 && acted {
 		out, errOut, _ := runSupervised(append(append([]string{}, globals...), "await-captcha"), env)
 		if solved := bytes.TrimSpace(append(out, errOut...)); len(solved) > 0 {
