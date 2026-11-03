@@ -2,7 +2,10 @@ package bridge
 
 import (
 	"errors"
+	"strings"
 	"testing"
+
+	"github.com/pinchtab/pinchtab/internal/selector"
 )
 
 // Each case is one a DOM-text matcher got wrong on a real site, or a rule the
@@ -47,6 +50,28 @@ func TestTextSelectorResolvesTheControlTheTextNames(t *testing.T) {
 				t.Errorf("%s resolved to %s, want %s: %s", tc.query, describeNode(t, ctx, got), describeNode(t, ctx, want), tc.why)
 			}
 		})
+	}
+}
+
+// Two misses from IKEA. A phrase that runs from plain text into a link is
+// still the link; with two links in it, it is no one link. A space a
+// downscaled screenshot lost is never matched around, only suggested.
+func TestTextSelectorPhraseAcrossElementsAndNearMisses(t *testing.T) {
+	ctx := newTextFixture(t, `<!doctype html><html><body>
+<div>In stock in <a id="store" href="#">IKEA East Palo Alto, CA</a></div>
+<div>Ships from <a href="#a">Oakland</a> or <a href="#b">Fresno</a></div>
+<button id="more">+ 3 more</button>
+</body></html>`, "#store")
+
+	if got, want := resolve(t, ctx, "text:In stock in IKEA East Palo Alto, CA"), resolve(t, ctx, "css:#store"); got != want {
+		t.Errorf("phrase resolved to %s, want the store link", describeNode(t, ctx, got))
+	}
+	if _, err := ResolveUnifiedSelector(ctx, selector.Parse("text:Ships from Oakland or Fresno"), nil); !errors.Is(err, ErrSelectorAmbiguous) {
+		t.Errorf("a phrase holding two links: err = %v, want ambiguous", err)
+	}
+	_, err := ResolveUnifiedSelector(ctx, selector.Parse("text:+3 more"), nil)
+	if !errors.Is(err, ErrSelectorNoMatch) || !strings.Contains(err.Error(), `did you mean button "+ 3 more"?`) {
+		t.Errorf("text:+3 more: err = %v, want a no-match naming the button", err)
 	}
 }
 

@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/chromedp/chromedp"
+	"github.com/pinchtab/pinchtab/internal/cdptk"
 )
 
 // ErrSelectorAmbiguous marks a text selector whose best matches are more than one
@@ -35,13 +37,13 @@ var ErrSelectorAmbiguous = errors.New("selector is ambiguous")
 // frameID scopes to one frame ("" is the top document); scopeBackendNodeID, when
 // non-zero, to one subtree (an open dialog).
 func resolveTextAt(ctx context.Context, frameID string, scopeBackendNodeID int64, query string, index int, fromEnd, positional bool) (int64, error) {
-	candidates, err := textCandidates(ctx, frameID, scopeBackendNodeID, query)
+	candidates, near, err := textCandidates(ctx, frameID, scopeBackendNodeID, query)
 	if err != nil {
 		return 0, err
 	}
 	switch {
 	case len(candidates) == 0:
-		return 0, fmt.Errorf("no control is named %q and no visible text contains it: %w", query, ErrSelectorNoMatch)
+		return 0, fmt.Errorf("no control is named %q and no visible text contains it%s: %w", query, didYouMean(near), ErrSelectorNoMatch)
 	case !positional && len(candidates) == 1:
 		return candidates[0].NodeID, nil
 	case !positional:
@@ -60,7 +62,7 @@ func resolveTextAt(ctx context.Context, frameID string, scopeBackendNodeID int64
 // a bare selector refuses when there is more than one, and the set first:, last:
 // and nth: index.
 func CountText(ctx context.Context, frameID, query string) (int, error) {
-	candidates, err := textCandidates(ctx, frameID, 0, query)
+	candidates, _, err := textCandidates(ctx, frameID, 0, query)
 	return len(candidates), err
 }
 
@@ -69,11 +71,13 @@ func CountText(ctx context.Context, frameID, query string) (int, error) {
 const textLookupDeadline = 3 * time.Second
 
 // textCandidates returns the best-ranked matches of the first tier that has any:
-// controls by name, then rendered text runs, the latter as their elements.
-func textCandidates(ctx context.Context, frameID string, scopeBackendNodeID int64, query string) ([]A11yNode, error) {
+// controls by name, then rendered text runs as their elements, then a phrase
+// that crosses elements as the one control holding it. With no match at all it
+// returns near misses instead, for the error to name.
+func textCandidates(ctx context.Context, frameID string, scopeBackendNodeID int64, query string) (matches, near []A11yNode, err error) {
 	want := normalizeAccessibleName(query)
 	if want == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
 	parent := ctx
 	ctx, cancel := context.WithTimeout(ctx, textLookupDeadline)
@@ -81,16 +85,16 @@ func textCandidates(ctx context.Context, frameID string, scopeBackendNodeID int6
 	raw, err := FetchAXTree(ctx)
 	if err != nil {
 		if ctx.Err() != nil && parent.Err() == nil {
-			return nil, fmt.Errorf("text %q lookup timed out after %s (page may be large or unresponsive): %w", query, textLookupDeadline, err)
+			return nil, nil, fmt.Errorf("text %q lookup timed out after %s (page may be large or unresponsive): %w", query, textLookupDeadline, err)
 		}
-		return nil, fmt.Errorf("read accessibility tree: %w", err)
+		return nil, nil, fmt.Errorf("read accessibility tree: %w", err)
 	}
 	if scopeBackendNodeID != 0 {
 		scoped := FilterSubtree(raw, scopeBackendNodeID)
 		if len(scoped) == len(raw) {
 			// FilterSubtree returns everything when the scope is not in the tree;
 			// answering from the whole page would act outside the dialog.
-			return nil, fmt.Errorf("dialog is not in the accessibility tree: %w", ErrSelectorNoMatch)
+			return nil, nil, fmt.Errorf("dialog is not in the accessibility tree: %w", ErrSelectorNoMatch)
 		}
 		raw = scoped
 	}
@@ -112,7 +116,7 @@ func textCandidates(ctx context.Context, frameID string, scopeBackendNodeID int6
 		return usable(n) && InteractiveRoles[n.Role] && !strings.EqualFold(n.Role, "iframe")
 	})
 	if len(controls) > 0 {
-		return controls, nil
+		return controls, nil, nil
 	}
 
 	runs := bestNamed(nodes, want, func(n A11yNode) bool { return usable(n) && n.Role == "StaticText" })
@@ -127,7 +131,153 @@ func textCandidates(ctx context.Context, frameID string, scopeBackendNodeID int6
 		run.NodeID = elementID
 		elements = append(elements, run)
 	}
-	return elements, nil
+	if len(elements) > 0 {
+		return elements, nil, nil
+	}
+
+	// Frames and dialogs keep to the two tiers above: the phrase search reads
+	// the top document's rendered text.
+	if frameID == "" && scopeBackendNodeID == 0 {
+		if spanning, err := controlHoldingPhrase(ctx, want, query); err != nil {
+			return nil, nil, err
+		} else if spanning != 0 {
+			return []A11yNode{{NodeID: spanning, Name: query}}, nil, nil
+		}
+	}
+	return nil, nearMisses(nodes, want, usable), nil
+}
+
+// controlHoldingPhrase handles a phrase that crosses elements, like "In stock
+// in IKEA East Palo Alto, CA", where "In stock in" is text and the store name
+// a link: no single element's own text holds it. It takes the smallest element
+// whose rendered text does, and its one visible control, or the element itself
+// when it is a control. Several controls in there is ambiguous, not a guess.
+func controlHoldingPhrase(ctx context.Context, want, query string) (int64, error) {
+	const find = `function (want) {
+  var norm = function (s) { return (s || '').toLowerCase().replace(/\s+/g, ' ').trim(); };
+  var el = document.body;
+  if (!el || norm(el.innerText).indexOf(want) < 0) return '';
+  descend: for (;;) {
+    for (var i = 0; i < el.children.length; i++) {
+      if (norm(el.children[i].innerText).indexOf(want) >= 0) { el = el.children[i]; continue descend; }
+    }
+    break;
+  }
+  var control = 'a[href], button, input, select, textarea, summary, [role=button], [role=link], [role=checkbox], [role=tab], [role=menuitem], [role=option]';
+  if (el.matches(control)) return el;
+  var found = Array.prototype.filter.call(el.querySelectorAll(control), function (c) {
+    var r = c.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  });
+  if (found.length === 1) return found[0];
+  if (found.length === 0) return '';
+  return found.length + ' controls: ' + found.slice(0, 3).map(function (c) { return JSON.stringify(norm(c.innerText || c.getAttribute('aria-label') || c.value)); }).join(', ');
+}`
+	execID, err := cdptk.IsolatedContextID(ctx, "")
+	if err != nil {
+		return 0, nil
+	}
+	var raw json.RawMessage
+	if err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
+		return chromedp.FromContext(ctx).Target.Execute(ctx, "Runtime.callFunctionOn", map[string]any{
+			"functionDeclaration": find,
+			"executionContextId":  execID,
+			"arguments":           []map[string]any{{"value": want}},
+		}, &raw)
+	})); err != nil {
+		return 0, nil
+	}
+	var call struct {
+		Result struct {
+			ObjectID string `json:"objectId"`
+			Value    any    `json:"value"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(raw, &call) != nil {
+		return 0, nil
+	}
+	if call.Result.ObjectID != "" {
+		return backendNodeIDFromObjectID(ctx, call.Result.ObjectID)
+	}
+	if many, _ := call.Result.Value.(string); many != "" {
+		return 0, fmt.Errorf("%w: the text holding %q has %s; use a ref from snap or click one of them by its own text", ErrSelectorAmbiguous, query, many)
+	}
+	return 0, nil
+}
+
+// nearMisses are the visible controls and text whose names match the query
+// once spaces and punctuation are ignored, or within a small edit distance:
+// "+3 more" for "+ 3 more", whose space a downscaled screenshot loses. They
+// are only ever suggested, never acted on.
+func nearMisses(nodes []A11yNode, want string, usable func(A11yNode) bool) []A11yNode {
+	compact := func(s string) string {
+		return strings.Map(func(r rune) rune {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				return r
+			}
+			return -1
+		}, strings.ToLower(s))
+	}
+	target := compact(want)
+	if target == "" {
+		return nil
+	}
+	var out []A11yNode
+	seen := map[string]bool{}
+	for _, n := range nodes {
+		if !usable(n) || (n.Role != "StaticText" && !InteractiveRoles[n.Role]) {
+			continue
+		}
+		// A control and the text run inside it share a name; one is enough.
+		name := compact(n.Name)
+		if name == "" || seen[n.Name] {
+			continue
+		}
+		if strings.Contains(name, target) || editDistance(name, target) <= max(1, len([]rune(target))/5) {
+			seen[n.Name] = true
+			out = append(out, n)
+			if len(out) == 3 {
+				break
+			}
+		}
+	}
+	return out
+}
+
+func didYouMean(near []A11yNode) string {
+	if len(near) == 0 {
+		return ""
+	}
+	named := make([]string, 0, len(near))
+	for _, n := range near {
+		role := n.Role
+		if role == "StaticText" {
+			role = "text"
+		}
+		named = append(named, fmt.Sprintf("%s %q", role, n.Name))
+	}
+	return "; did you mean " + strings.Join(named, ", ") + "?"
+}
+
+func editDistance(a, b string) int {
+	ra, rb := []rune(a), []rune(b)
+	prev := make([]int, len(rb)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(ra); i++ {
+		cur := make([]int, len(rb)+1)
+		cur[0] = i
+		for j := 1; j <= len(rb); j++ {
+			cost := 1
+			if ra[i-1] == rb[j-1] {
+				cost = 0
+			}
+			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
+		}
+		prev = cur
+	}
+	return prev[len(rb)]
 }
 
 // bestNamed returns the nodes keep accepts whose name matches want at the best
