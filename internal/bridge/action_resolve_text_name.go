@@ -153,7 +153,9 @@ func textCandidates(ctx context.Context, frameID string, scopeBackendNodeID int6
 // whose rendered text does, and its one visible control, or the element itself
 // when it is a control. Several controls in there is ambiguous, not a guess.
 func controlHoldingPhrase(ctx context.Context, want, query string) (int64, error) {
-	const find = `function (want) {
+	// Evaluated, not called on a node: it searches the top document, the one
+	// whose isolated world it runs in.
+	const find = `(function (want) {
   var norm = function (s) { return (s || '').toLowerCase().replace(/\s+/g, ' ').trim(); };
   var el = document.body;
   if (!el || norm(el.innerText).indexOf(want) < 0) return '';
@@ -172,17 +174,17 @@ func controlHoldingPhrase(ctx context.Context, want, query string) (int64, error
   if (found.length === 1) return found[0];
   if (found.length === 0) return '';
   return found.length + ' controls: ' + found.slice(0, 3).map(function (c) { return JSON.stringify(norm(c.innerText || c.getAttribute('aria-label') || c.value)); }).join(', ');
-}`
+})`
 	execID, err := cdptk.IsolatedContextID(ctx, "")
 	if err != nil {
 		return 0, nil
 	}
+	arg, _ := json.Marshal(want)
 	var raw json.RawMessage
 	if err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
-		return chromedp.FromContext(ctx).Target.Execute(ctx, "Runtime.callFunctionOn", map[string]any{
-			"functionDeclaration": find,
-			"executionContextId":  execID,
-			"arguments":           []map[string]any{{"value": want}},
+		return chromedp.FromContext(ctx).Target.Execute(ctx, "Runtime.evaluate", map[string]any{
+			"expression": find + "(" + string(arg) + ")",
+			"contextId":  execID,
 		}, &raw)
 	})); err != nil {
 		return 0, nil
