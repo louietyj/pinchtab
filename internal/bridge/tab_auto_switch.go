@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
 )
@@ -388,7 +389,17 @@ func (s *autoSwitchSession) finish(ctx context.Context, result map[string]any) m
 	s.tm.markOpened(newTabID)
 	// In a personal browser the tab stays in the background, like every tab an
 	// agent works in there: raising it would take the window from its owner.
-	if !s.tm.personalBrowser {
+	// Focus emulation keeps it rendering once its owner switches back, as
+	// createTab does for the tabs PinchTab opens there.
+	if s.tm.personalBrowser {
+		if tabCtx, _, err := s.tm.TabContext(newTabID); err == nil {
+			if err := chromedp.Run(tabCtx, chromedp.ActionFunc(func(ctx context.Context) error {
+				return emulation.SetFocusEmulationEnabled(true).Do(ctx)
+			})); err != nil {
+				slog.Debug("auto-switch: focus-emulate popup failed", "tabId", newTabID, "err", err)
+			}
+		}
+	} else {
 		if err := s.tm.FocusTab(newTabID); err != nil {
 			slog.Warn("auto-switch: focus popup failed", "tabId", newTabID, "err", err)
 			return result
