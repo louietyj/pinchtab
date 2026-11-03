@@ -32,7 +32,9 @@ func (b *Bridge) ensureRemoteCDPLocked(cfg *config.RuntimeConfig) error {
 	b.initialized = true
 	b.stealthLaunchMode = launchMode
 
-	b.reinitWiring(browserCtx, reinitWiringOpts{initActionRegistry: true})
+	// The guard is what hands a click the tab it opened. In an attached browser
+	// it never closes anyone else's popup or reaps their tabs (personalBrowser).
+	b.reinitWiring(browserCtx, reinitWiringOpts{initActionRegistry: true, startBrowserGuards: true})
 
 	if err := b.ensureAtLeastOnePageTarget(browserCtx); err != nil {
 		slog.Warn("failed to ensure a page target on remote CDP", "err", err)

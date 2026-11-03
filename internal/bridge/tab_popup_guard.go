@@ -48,7 +48,10 @@ func (tm *TabManager) StartBrowserGuards() {
 		tm.guardActive = true
 		tm.mu.Unlock()
 
-		tm.reconcileTabBudget()
+		// Every tab in a personal browser is untracked, and its owner's.
+		if !tm.personalBrowser {
+			tm.reconcileTabBudget()
+		}
 	})
 }
 

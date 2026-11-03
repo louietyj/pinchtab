@@ -196,8 +196,7 @@ func (b *Bridge) AddTabRemovedHook(fn func(tabID string)) {
 // core in one place (see reinitWiring).
 type reinitWiringOpts struct {
 	// startBrowserGuards starts the popup/crash guards after wiring (skipped in
-	// full stealth and on paths that never ran them, e.g. SetBrowserContexts and
-	// remote-CDP).
+	// full stealth and on paths that never ran them, e.g. SetBrowserContexts).
 	startBrowserGuards bool
 	// initActionRegistry seeds the action registry when it is nil (skipped by
 	// SetBrowserContexts, which leaves registry init to a later path).
