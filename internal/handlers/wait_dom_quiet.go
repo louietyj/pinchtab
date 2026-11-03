@@ -27,9 +27,10 @@ const domQuietWindowMs = 300
 // shown to the caller, so the next wait on the same anchor stays silent.
 //
 // A visible busy indicator or a running finite animation (a wheel scroll's
-// ease, a panel sliding in) also counts as change: a CSS spinner awaiting a
-// fetch mutates nothing. Only an indeterminate progressbar counts; a
-// determinate one, like a checkout stepper, never goes away.
+// ease, a panel sliding in) also counts as change: a CSS spinner, or a
+// skeleton placeholder, awaiting a fetch mutates nothing (data.census.gov's
+// results). Only an indeterminate progressbar counts; a determinate one, like
+// a checkout stepper, never goes away.
 func domQuietScript(op string) string {
 	return fmt.Sprintf(`(function (op, quiet) {
   var s = window.__pinchtabQuiet, now = Date.now();
@@ -48,7 +49,7 @@ func domQuietScript(op string) string {
       var e = as[i].effect;
       if (as[i].playState === 'running' && e && isFinite(e.getComputedTiming().endTime)) return true;
     }
-    var els = document.querySelectorAll('[aria-busy="true"], [role="progressbar"]:not([aria-valuenow]), [class*="spinner" i], [class*="loading" i], [class*="loader" i]');
+    var els = document.querySelectorAll('[aria-busy="true"], [role="progressbar"]:not([aria-valuenow]), [class*="spinner" i], [class*="loading" i], [class*="loader" i], [class*="skeleton" i], [class*="shimmer" i]');
     for (var j = 0; j < els.length; j++) {
       var r = els[j].getBoundingClientRect(), st = getComputedStyle(els[j]);
       if (r.width && r.height && st.visibility !== 'hidden' && st.opacity !== '0' && r.bottom > 0 && r.top < innerHeight) return true;
