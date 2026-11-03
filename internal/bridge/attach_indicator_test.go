@@ -181,3 +181,52 @@ new MutationObserver(() => { if (document.title !== 'Mine') document.title = 'Mi
 		}
 	}
 }
+
+// An app that sets its title several times while it boots (E-OneStop) trips
+// the guard, but once it stops, the tag comes back.
+func TestAttachIndicatorReturnsAfterAnAppStopsSettingItsTitle(t *testing.T) {
+	chromePath := testbrowser.Path(t)
+	profile := testbrowser.ProfileDir(t)
+	alloc, cancelAlloc := chromedp.NewExecAllocator(context.Background(), append(
+		chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.ExecPath(chromePath),
+		chromedp.UserDataDir(profile),
+		chromedp.Flag("headless", true),
+		chromedp.Flag("no-sandbox", true),
+	)...)
+	ctx, cancelBrowser := chromedp.NewContext(alloc)
+	ctx, cancelTimeout := context.WithTimeout(ctx, 20*time.Second)
+	t.Cleanup(func() {
+		cancelTimeout()
+		cancelBrowser()
+		cancelAlloc()
+		_ = os.RemoveAll(profile)
+	})
+	html := `<title>App</title><script>
+setTimeout(() => { let i = 0; const id = setInterval(() => {
+  document.title = 'App ' + i; if (++i === 12) clearInterval(id); }, 20); }, 300);
+</script>`
+	if err := chromedp.Run(ctx, chromedp.Navigate("data:text/html;base64,"+base64.StdEncoding.EncodeToString([]byte(html)))); err != nil {
+		t.Fatal(err)
+	}
+
+	b := New(context.Background(), ctx, &config.RuntimeConfig{Port: "9876"})
+	b.stealthLaunchMode = stealth.LaunchModeAttached
+	target := chromedp.FromContext(ctx).Target
+	b.RegisterTab("tab-boot", cdp.WithExecutor(ctx, target))
+	t.Cleanup(b.Cleanup)
+	if err := b.tabSetup(cdp.WithExecutor(ctx, target), "tab-boot"); err != nil {
+		t.Fatal(err)
+	}
+
+	var title string
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(200 * time.Millisecond) {
+		if err := chromedp.Run(ctx, chromedp.Title(&title)); err != nil {
+			t.Fatal(err)
+		}
+		if title == "[PinchTab :9876] App 11" {
+			return
+		}
+	}
+	t.Fatalf("title = %q, want the tag back on the app's final title", title)
+}

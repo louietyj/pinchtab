@@ -44,11 +44,15 @@ func attachIndicatorScript(port string) (string, error) {
     if (document.title === prefix + clean) return;
     // A page or extension that re-asserts its own title would otherwise trade
     // writes with this observer forever in microtasks, hanging the renderer.
+    // So past 5 writes a second it backs off for 2s and tries again: an app
+    // that sets its title a few times while it boots then keeps the tag, and
+    // one that fights forever costs a few writes every couple of seconds.
     const now = performance.now();
     state.writes = state.writes.filter(t => now - t < 1000);
     if (state.writes.length >= 5) {
       state.yielded = true;
       state.observer.disconnect();
+      setTimeout(() => { state.yielded = false; state.writes = []; state.start(); }, 2000);
       return;
     }
     state.writes.push(now);
