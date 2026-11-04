@@ -44,7 +44,7 @@ func TestAutoSolveHint(t *testing.T) {
 		{"not solved", "", map[string]any{"solved": false, "error": "all 2 attempts exhausted"}, "NOT solved: all 2 attempts exhausted. pinchtab has given up on it; it is yours to try."},
 		{"not solved after one that was", "", map[string]any{"solved": false, "challengeType": "turnstile, then recaptcha-v2", "error": "all 2 attempts exhausted"}, "pinchtab solved a turnstile challenge, then a recaptcha-v2 challenge on this page was NOT solved: all 2 attempts exhausted."},
 		{"solved between steps", "", map[string]any{"solved": true, "challengeType": "hcaptcha", "solver": "twocaptcha", "beforeStep": true}, "a captcha opened after your last step, and pinchtab dealt with it before running this one: twocaptcha bought a token for the hcaptcha challenge"},
-		{"token bought", "", map[string]any{"solved": true, "challengeType": "recaptcha-v2", "solver": "capsolver"}, "whether the site accepts it shows only once the page goes on. Do NOT click the captcha widget"},
+		{"token bought", "", map[string]any{"solved": true, "challengeType": "recaptcha-v2", "solver": "capsolver"}, "injected it; the site has not confirmed it"},
 		{"solve found nothing", "", map[string]any{"solved": false, "noChallenge": true}, ""},
 		{"blocked outright", "", map[string]any{"solved": false, "error": "all 2 attempts exhausted (nocaptcha: refused without a slider: this IP is blocked outright)"}, "Restart the browser once (`pinchtab server restart`)"},
 		{"v3 left to the browser", "", map[string]any{"solved": false, "challengeType": "recaptcha-v3", "leftToBrowser": true}, "pinchtab is NOT solving it: the browser's own token is used"},

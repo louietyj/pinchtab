@@ -158,10 +158,10 @@ func autoSolveHint(result map[string]any) string {
 		// Only the site knows if it takes a bought token: Fanatical refused about half of CapSolver's.
 		if _, token := autosolver.KeyGatedSolverNamed(solver); token {
 			return fmt.Sprintf(
-				"%s bought a token for the %s challenge on this page and handed it to the page; whether the site "+
-					"accepts it shows only once the page goes on. Do NOT click the captcha widget: it stays unticked, "+
-					"and clicking it discards the token. If the site rejects it (the challenge shows again, or an error "+
-					"such as \"validation failed\"), dismiss any dialog and run `pinchtab solve` to buy another.",
+				"%s bought a token for the %s challenge on this page and injected it; the site has not confirmed it, "+
+					"and sites do reject bought tokens. Look at the page to see what it did with it. Do NOT click the "+
+					"captcha widget: it stays unticked, and clicking it discards the token. `pinchtab solve` buys a new "+
+					"token for a challenge that is showing.",
 				solver, challenge)
 		}
 		by := "for you"
