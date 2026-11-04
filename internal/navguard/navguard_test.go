@@ -20,9 +20,8 @@ func stubHostResolution(t *testing.T, fn func(context.Context, string, string) (
 	})
 }
 
-// Behind a proxy that resolves names (SOCKS5), a hostname is not looked up locally:
-// that is what lets .onion through and keeps visited names off the local resolver.
-// A literal private IP needs no lookup and stays blocked.
+// Behind a name-resolving proxy a hostname is not looked up locally (so .onion works);
+// a literal private IP still is.
 func TestValidatorLeavesHostnamesToAProxyThatResolvesThem(t *testing.T) {
 	lookups := 0
 	stubHostResolution(t, func(context.Context, string, string) ([]net.IP, error) {

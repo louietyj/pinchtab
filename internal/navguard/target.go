@@ -21,8 +21,7 @@ import (
 // overrides the private-IP block for explicitly allowed domains.
 func (v *Validator) ValidateTarget(ctx context.Context, raw string, allowExplicitInternal bool) (*ValidatedTarget, error) {
 	if v.ProxyResolvesNames {
-		// Only a hostname is the proxy's to resolve. A literal IP needs no lookup and
-		// is still checked here, and so is a local name, which keeps its own path.
+		// Only hostnames are the proxy's; literal IPs and local names are checked as usual.
 		host := security.ExtractHost(raw)
 		if host != "" && !netguard.IsLocalHost(host) && net.ParseIP(netguard.NormalizeHost(host)) == nil {
 			return &ValidatedTarget{}, nil

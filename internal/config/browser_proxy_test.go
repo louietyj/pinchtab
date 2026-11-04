@@ -614,10 +614,8 @@ func TestClearingTheServerOnAPopulatedProxyIsPersisted(t *testing.T) {
 	}
 }
 
-// The same fail-open, when the server was the ONLY thing set: clearing it empties the
-// block, an empty block is omitted from the render, and the save then kept the whole
-// on-disk block as an unmodelled key, so `config set browser.proxy.server ""` printed
-// "Set" while the browser kept going through the old proxy.
+// The same fail-open when the server was the only field set: the emptied block is
+// omitted from the render, so the save used to keep the old one on disk.
 func TestClearingTheOnlyFieldOfAProxyRemovesIt(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")

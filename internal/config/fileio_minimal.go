@@ -187,10 +187,8 @@ func renderMinimalConfig(fc *FileConfig, existing []byte) ([]byte, error) {
 
 	onDisk := parseJSONObject(existing)
 	if fc.Browser.Proxy.IsZero() {
-		// An empty proxy is omitted from the render, which the patch would read as a key
-		// the struct does not model and keep, old server and all: clearing the last field
-		// left the browser on the proxy. Every field of the block is modelled, so an
-		// empty one means the operator removed it.
+		// An empty proxy is omitted from the render, which the patch would keep as an
+		// unmodelled key, old server and all. Every field of the block is modelled.
 		onDisk = withoutMember(onDisk, "browser", "proxy")
 	}
 	members := patchConfigObject(onDisk, full, shipped)

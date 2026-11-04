@@ -94,11 +94,8 @@ func validateNavigateTarget(raw string, allowExplicitInternal bool, trustedResol
 	return v.ValidateTarget(context.Background(), raw, allowExplicitInternal)
 }
 
-// proxyResolvesNames reports whether the browser sends every hostname unresolved to
-// its proxy: Chrome does for socks5 (socks4 resolves locally, and http(s) proxies are
-// left on the local check). A bypass list sends some hosts direct, and matching Chrome's
-// bypass rules here would be a second implementation of them, so any list keeps the
-// local check for all.
+// proxyResolvesNames: Chrome sends hostnames unresolved to a socks5 proxy. Any bypass
+// list keeps the local check, rather than reimplementing Chrome's bypass matching.
 func proxyResolvesNames(cfg *config.RuntimeConfig) bool {
 	if cfg == nil || cfg.Proxy.HasNoServer() || len(cfg.Proxy.BypassList) > 0 {
 		return false
