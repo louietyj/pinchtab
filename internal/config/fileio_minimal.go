@@ -127,6 +127,28 @@ func patchedValue(onDisk json.RawMessage, full, shipped any) json.RawMessage {
 	return encodeJSONObject(patchConfigObject(parseJSONObject(onDisk), fullObj, shippedObj))
 }
 
+// withoutMember drops the member at path (an object key at each level), leaving
+// everything else, order included, as it was.
+func withoutMember(members []jsonMember, path ...string) []jsonMember {
+	out := make([]jsonMember, 0, len(members))
+	for _, member := range members {
+		if member.key != path[0] {
+			out = append(out, member)
+			continue
+		}
+		if len(path) == 1 {
+			continue
+		}
+		inner := parseJSONObject(member.value)
+		if inner == nil {
+			out = append(out, member)
+			continue
+		}
+		out = append(out, jsonMember{key: member.key, value: encodeJSONObject(withoutMember(inner, path[1:]...))})
+	}
+	return out
+}
+
 // encodeJSONObject serialises members in order, compactly. renderMinimalConfig indents
 // the whole document once at the end, so no depth has to be threaded through here.
 func encodeJSONObject(members []jsonMember) json.RawMessage {
@@ -163,7 +185,15 @@ func renderMinimalConfig(fc *FileConfig, existing []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	members := patchConfigObject(parseJSONObject(existing), full, shipped)
+	onDisk := parseJSONObject(existing)
+	if fc.Browser.Proxy.IsZero() {
+		// An empty proxy is omitted from the render, which the patch would read as a key
+		// the struct does not model and keep, old server and all: clearing the last field
+		// left the browser on the proxy. Every field of the block is modelled, so an
+		// empty one means the operator removed it.
+		onDisk = withoutMember(onDisk, "browser", "proxy")
+	}
+	members := patchConfigObject(onDisk, full, shipped)
 	compact := encodeJSONObject(members)
 
 	var out bytes.Buffer

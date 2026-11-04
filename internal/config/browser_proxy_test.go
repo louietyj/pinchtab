@@ -614,6 +614,35 @@ func TestClearingTheServerOnAPopulatedProxyIsPersisted(t *testing.T) {
 	}
 }
 
+// The same fail-open, when the server was the ONLY thing set: clearing it empties the
+// block, an empty block is omitted from the render, and the save then kept the whole
+// on-disk block as an unmodelled key, so `config set browser.proxy.server ""` printed
+// "Set" while the browser kept going through the old proxy.
+func TestClearingTheOnlyFieldOfAProxyRemovesIt(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"browser":{"binary":"/opt/chrome","proxy":{"server":"socks5://127.0.0.1:9050"}},"unmodelled":{"keep":true}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	fc := &FileConfig{}
+	fc.Browser.BrowserBinary = "/opt/chrome"
+	if err := SaveFileConfig(fc, path); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "socks5://") {
+		t.Fatalf("the cleared proxy is still in the file, so the browser keeps using it: %s", raw)
+	}
+	if !strings.Contains(string(raw), `"unmodelled"`) || !strings.Contains(string(raw), `"/opt/chrome"`) {
+		t.Errorf("removing the proxy took other keys with it: %s", raw)
+	}
+}
+
 // The render that makes the above possible, and its negative: a block with nothing in
 // it must not grow a server key.
 func TestOnlyANonEmptyProxyRendersAClearedServer(t *testing.T) {
