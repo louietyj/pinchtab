@@ -242,7 +242,7 @@ func (h *Handlers) validateNavigateTargets(w http.ResponseWriter, r *http.Reques
 	}
 
 	trustedResolveCIDRs := parseCIDRs(effectiveCfg.TrustedResolveCIDRs)
-	target, err := validateNavigateTarget(url, h.IDPIGuard.DomainAllowed(url), trustedResolveCIDRs)
+	target, err := validateNavigateTarget(url, h.IDPIGuard.DomainAllowed(url), trustedResolveCIDRs, proxyResolvesNames(effectiveCfg))
 	if err != nil {
 		httpx.Error(w, http.StatusForbidden, err)
 		return navTargets{}, false

@@ -117,7 +117,7 @@ func TestValidateNavigateTarget_AllowsLocalHosts(t *testing.T) {
 		"http://foo.localhost:3000",
 		"about:blank",
 	} {
-		target, err := validateNavigateTarget(rawURL, false, nil)
+		target, err := validateNavigateTarget(rawURL, false, nil, false)
 		if err != nil {
 			t.Fatalf("validateNavigateTarget(%q) error = %v", rawURL, err)
 		}
@@ -127,8 +127,32 @@ func TestValidateNavigateTarget_AllowsLocalHosts(t *testing.T) {
 	}
 }
 
+// Only a socks5 proxy with no bypass list hands every hostname to the proxy unresolved.
+func TestProxyResolvesNames(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		proxy config.BrowserProxyConfig
+		want  bool
+	}{
+		{"no proxy", config.BrowserProxyConfig{}, false},
+		{"socks5", config.BrowserProxyConfig{Server: "socks5://127.0.0.1:9050"}, true},
+		{"SOCKS5 in capitals", config.BrowserProxyConfig{Server: "SOCKS5://127.0.0.1:9050"}, true},
+		{"socks4 resolves locally", config.BrowserProxyConfig{Server: "socks4://127.0.0.1:9050"}, false},
+		{"http proxy", config.BrowserProxyConfig{Server: "http://127.0.0.1:8080"}, false},
+		{"bypass list sends some hosts direct", config.BrowserProxyConfig{Server: "socks5://127.0.0.1:9050", BypassList: []string{"*.internal"}}, false},
+		{"credentials only", config.BrowserProxyConfig{Username: "bob"}, false},
+	} {
+		if got := proxyResolvesNames(&config.RuntimeConfig{Proxy: tc.proxy}); got != tc.want {
+			t.Errorf("%s: proxyResolvesNames = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+	if proxyResolvesNames(nil) {
+		t.Error("a nil config must keep the local check")
+	}
+}
+
 func TestValidateNavigateTarget_RejectsPrivateLiteralIP(t *testing.T) {
-	if _, err := validateNavigateTarget("http://192.168.1.10/app", false, nil); err == nil {
+	if _, err := validateNavigateTarget("http://192.168.1.10/app", false, nil, false); err == nil {
 		t.Fatal("validateNavigateTarget should reject private literal IPs")
 	}
 }
@@ -138,7 +162,7 @@ func TestValidateNavigateTarget_RejectsResolvedPrivateIP(t *testing.T) {
 		return []net.IP{net.ParseIP("192.168.1.10")}, nil
 	})
 
-	if _, err := validateNavigateTarget("https://example.com/app", false, nil); err == nil {
+	if _, err := validateNavigateTarget("https://example.com/app", false, nil, false); err == nil {
 		t.Fatal("validateNavigateTarget should reject hosts resolving to private IPs")
 	}
 }
@@ -151,7 +175,7 @@ func TestValidateNavigateTarget_AllowsDualStackPublicResolution(t *testing.T) {
 		}, nil
 	})
 
-	if _, err := validateNavigateTarget("https://dual.example/app", false, nil); err != nil {
+	if _, err := validateNavigateTarget("https://dual.example/app", false, nil, false); err != nil {
 		t.Fatalf("validateNavigateTarget should allow public dual-stack resolution: %v", err)
 	}
 }
@@ -176,7 +200,7 @@ func TestValidateNavigateTarget_RejectsMixedPublicPrivateDualStackResolution(t *
 				return tt.ips, nil
 			})
 
-			if _, err := validateNavigateTarget("https://mixed.example/app", false, nil); err == nil {
+			if _, err := validateNavigateTarget("https://mixed.example/app", false, nil, false); err == nil {
 				t.Fatal("validateNavigateTarget should reject mixed public/private DNS answers")
 			}
 		})
@@ -188,7 +212,7 @@ func TestValidateNavigateTarget_AllowsResolvedPrivateIPWhenExplicitlyAllowlisted
 		return []net.IP{net.ParseIP("172.18.0.5")}, nil
 	})
 
-	target, err := validateNavigateTarget("http://fixtures:80/app", true, nil)
+	target, err := validateNavigateTarget("http://fixtures:80/app", true, nil, false)
 	if err != nil {
 		t.Fatalf("validateNavigateTarget should allow explicitly allowlisted private targets: %v", err)
 	}
@@ -335,7 +359,7 @@ func TestValidateNavigateTarget_AllowsPrivateIPWithTrustedResolveCIDR(t *testing
 	})
 
 	trusted := parseCIDRs([]string{"10.0.0.0/8"})
-	target, err := validateNavigateTarget("https://internal.example.com", false, trusted)
+	target, err := validateNavigateTarget("https://internal.example.com", false, trusted, false)
 	if err != nil {
 		t.Fatalf("expected trusted CIDR to allow private IP, got %v", err)
 	}
@@ -353,7 +377,7 @@ func TestValidateNavigateTarget_RejectsMixedUntrustedWithTrustedResolveCIDR(t *t
 	})
 
 	trusted := parseCIDRs([]string{"10.0.0.0/8"})
-	if _, err := validateNavigateTarget("https://mixed.example.com", false, trusted); err == nil {
+	if _, err := validateNavigateTarget("https://mixed.example.com", false, trusted, false); err == nil {
 		t.Fatal("expected mixed trusted/untrusted private IPs to be blocked")
 	}
 }
