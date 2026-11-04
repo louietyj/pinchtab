@@ -76,7 +76,7 @@ func (p *provider) Priority() int { return p.priority }
 func (p *provider) SolveTimeout() time.Duration { return p.timeout }
 
 // CanHandle reports whether the page carries a CAPTCHA this provider solves.
-func (p *provider) CanHandle(_ context.Context, page autosolver.Page) (bool, error) {
+func (p *provider) CanHandle(ctx context.Context, page autosolver.Page) (bool, error) {
 	if p.apiKey == "" {
 		return false, nil
 	}
@@ -86,11 +86,14 @@ func (p *provider) CanHandle(_ context.Context, page autosolver.Page) (bool, err
 	}
 	typ := detectCaptchaType(html)
 	if typ == "" {
-		if fp, _, ok := widgetFrame(context.Background(), page, nil); ok {
+		if fp, _, ok := widgetFrame(ctx, page, nil); ok {
 			if fhtml, err := fp.HTML(); err == nil {
 				typ = detectCaptchaType(fhtml)
 			}
 		}
+	}
+	if shown, ok := showingWidget(ctx, page); preferShown(typ, shown, ok) {
+		typ = shown.typ
 	}
 	return p.supports[typ], nil
 }
@@ -122,6 +125,11 @@ func (p *provider) Solve(ctx context.Context, page autosolver.Page, executor aut
 			}
 		}
 	}
+	shown, ok := showingWidget(ctx, top)
+	useShown := preferShown(typ, shown, ok)
+	if useShown {
+		typ = shown.typ
+	}
 	if typ == "" {
 		return fail("no supported CAPTCHA detected", fmt.Errorf("no supported CAPTCHA detected on page"))
 	}
@@ -131,6 +139,9 @@ func (p *provider) Solve(ctx context.Context, page autosolver.Page, executor aut
 	}
 
 	c := readCaptcha(ctx, executor, html, typ, extractSitekey(html, typ), page.URL())
+	if useShown {
+		shown.apply(c)
+	}
 	if typ == "geetest" && c.geetest.version == 3 {
 		// A v3 challenge is single-use and the widget's own get.php has already
 		// spent it; a fresh one comes only from the site's own register endpoint.

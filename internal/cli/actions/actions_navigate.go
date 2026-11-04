@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pinchtab/pinchtab/internal/autosolver"
 	"github.com/pinchtab/pinchtab/internal/cli"
 	"github.com/pinchtab/pinchtab/internal/cli/apiclient"
 	"github.com/pinchtab/pinchtab/internal/cli/output"
@@ -114,6 +115,10 @@ func autoSolveHint(result map[string]any) string {
 		return ""
 	}
 
+	if none, _ := raw["noChallenge"].(bool); none {
+		return ""
+	}
+
 	challenge, _ := raw["challengeType"].(string)
 	if challenge == "" {
 		challenge = "captcha"
@@ -149,6 +154,15 @@ func autoSolveHint(result map[string]any) string {
 		solver, _ := raw["solver"].(string)
 		if solver == "cleared" {
 			return fmt.Sprintf("a %s challenge on this page cleared on its own; the page is ready to use.", challenge)
+		}
+		// Only the site knows if it takes a bought token: Fanatical refused about half of CapSolver's.
+		if _, token := autosolver.KeyGatedSolverNamed(solver); token {
+			return fmt.Sprintf(
+				"%s bought a token for the %s challenge on this page and handed it to the page; whether the site "+
+					"accepts it shows only once the page goes on. Do NOT click the captcha widget: it stays unticked, "+
+					"and clicking it discards the token. If the site rejects it (the challenge shows again, or an error "+
+					"such as \"validation failed\"), dismiss any dialog and run `pinchtab solve` to buy another.",
+				solver, challenge)
 		}
 		by := "for you"
 		if solver != "" {

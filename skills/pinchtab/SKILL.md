@@ -291,7 +291,9 @@ is one, a HINT puts it in one of these states. Do what it says:
   do something else meanwhile.
 - **Solved**: proceed. A token solve doesn't tick the box, so a solved page
   can still show an unchecked "I'm not a robot". Leave it alone; clicking it
-  discards the solve.
+  discards the solve. A bought token is only the solver's word: if the site
+  then rejects it (the challenge shows again, or "validation failed"), dismiss
+  any dialog and run `solve` to buy another.
 - **Given up**: it is yours to try, with `vision` below.
 - **Page changed during the solve** (`page_changed_during_solve`): the site
   moved on once it had the token, often submitting the form itself. The step

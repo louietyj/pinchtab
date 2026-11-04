@@ -34,15 +34,23 @@ func NewPinchtabPage(ctx context.Context, tabID string, b bridge.BridgeAPI) *Pin
 	return &PinchtabPage{ctx: ctx, tabID: tabID, b: b}
 }
 
+// pageReadTimeout bounds URL and Title, which an open JavaScript dialog blocks:
+// a site alerting after rejecting a token held a finished solve open for minutes.
+const pageReadTimeout = 5 * time.Second
+
 func (p *PinchtabPage) URL() string {
+	ctx, cancel := context.WithTimeout(p.ctx, pageReadTimeout)
+	defer cancel()
 	var url string
-	_ = chromedp.Run(p.ctx, chromedp.Location(&url))
+	_ = chromedp.Run(ctx, chromedp.Location(&url))
 	return url
 }
 
 func (p *PinchtabPage) Title() string {
+	ctx, cancel := context.WithTimeout(p.ctx, pageReadTimeout)
+	defer cancel()
 	var title string
-	_ = chromedp.Run(p.ctx, chromedp.Title(&title))
+	_ = chromedp.Run(ctx, chromedp.Title(&title))
 	return title
 }
 

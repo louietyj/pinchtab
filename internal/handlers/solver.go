@@ -162,6 +162,11 @@ func (h *Handlers) explicitSolve(ctx context.Context, tabID, solver string, as *
 	if err != nil {
 		return autoSolveOutcome{"tabId": tabID, "solved": false, "error": fmt.Sprintf("solve: %v", err)}
 	}
+	// The pipeline calls a page with nothing to solve "solved"; an explicit solve says so plainly.
+	if result.Attempts == 0 && result.Intent == coreautosolver.IntentNormal {
+		return autoSolveOutcome{"tabId": tabID, "solved": false, "noChallenge": true,
+			"hint": "no captcha is showing on this page, so nothing was solved or bought"}
+	}
 
 	solverName := result.SolverUsed
 	if solverName == "" && solver != "" {
