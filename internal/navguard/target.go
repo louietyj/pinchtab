@@ -20,6 +20,14 @@ import (
 // the IDPI allowlist (handlers derive it via idpi Guard.DomainAllowed) and it
 // overrides the private-IP block for explicitly allowed domains.
 func (v *Validator) ValidateTarget(ctx context.Context, raw string, allowExplicitInternal bool) (*ValidatedTarget, error) {
+	if v.ProxyResolvesNames {
+		// Only a hostname is the proxy's to resolve. A literal IP needs no lookup and
+		// is still checked here, and so is a local name, which keeps its own path.
+		host := security.ExtractHost(raw)
+		if host != "" && !netguard.IsLocalHost(host) && net.ParseIP(netguard.NormalizeHost(host)) == nil {
+			return &ValidatedTarget{}, nil
+		}
+	}
 	return ValidateTarget(ctx, raw, allowExplicitInternal, v.TrustedResolveCIDRs)
 }
 

@@ -112,7 +112,7 @@ func (h *Handlers) validateAuditTarget(url string, cfg *config.RuntimeConfig) (n
 	if allowFile && navguard.IsFileURL(url) {
 		return navTargets{target: &validatedNavigateTarget{AllowInternal: true}, trustedCIDRs: buildNavigateTrustedProxyCIDRs(cfg), url: url}, nil
 	}
-	target, err := validateNavigateTarget(url, h.IDPIGuard.DomainAllowed(url), parseCIDRs(cfg.TrustedResolveCIDRs))
+	target, err := validateNavigateTarget(url, h.IDPIGuard.DomainAllowed(url), parseCIDRs(cfg.TrustedResolveCIDRs), proxyResolvesNames(cfg))
 	if err != nil {
 		return navTargets{}, err
 	}

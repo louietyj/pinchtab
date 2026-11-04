@@ -89,9 +89,22 @@ func validateNavigateURL(raw string, allowFile bool) error {
 
 // Per-call Validator construction is intentional: trusted CIDRs come from the
 // per-request (target-scoped) effective config, not a static startup value.
-func validateNavigateTarget(raw string, allowExplicitInternal bool, trustedResolveCIDRs []*net.IPNet) (*navguard.ValidatedTarget, error) {
-	v := &navguard.Validator{TrustedResolveCIDRs: trustedResolveCIDRs}
+func validateNavigateTarget(raw string, allowExplicitInternal bool, trustedResolveCIDRs []*net.IPNet, proxyResolvesNames bool) (*navguard.ValidatedTarget, error) {
+	v := &navguard.Validator{TrustedResolveCIDRs: trustedResolveCIDRs, ProxyResolvesNames: proxyResolvesNames}
 	return v.ValidateTarget(context.Background(), raw, allowExplicitInternal)
+}
+
+// proxyResolvesNames reports whether the browser sends every hostname unresolved to
+// its proxy: Chrome does for socks5 (socks4 resolves locally, and http(s) proxies are
+// left on the local check). A bypass list sends some hosts direct, and matching Chrome's
+// bypass rules here would be a second implementation of them, so any list keeps the
+// local check for all.
+func proxyResolvesNames(cfg *config.RuntimeConfig) bool {
+	if cfg == nil || cfg.Proxy.HasNoServer() || len(cfg.Proxy.BypassList) > 0 {
+		return false
+	}
+	scheme, _, _, err := config.ParseProxyServer(cfg.Proxy.Server)
+	return err == nil && scheme == "socks5"
 }
 
 func parseCIDRs(raw []string) []*net.IPNet {

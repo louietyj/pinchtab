@@ -20,6 +20,41 @@ func stubHostResolution(t *testing.T, fn func(context.Context, string, string) (
 	})
 }
 
+// Behind a proxy that resolves names (SOCKS5), a hostname is not looked up locally:
+// that is what lets .onion through and keeps visited names off the local resolver.
+// A literal private IP needs no lookup and stays blocked.
+func TestValidatorLeavesHostnamesToAProxyThatResolvesThem(t *testing.T) {
+	lookups := 0
+	stubHostResolution(t, func(context.Context, string, string) ([]net.IP, error) {
+		lookups++
+		return nil, &net.DNSError{Err: "no such host", IsNotFound: true}
+	})
+	onion := "http://archiveiya74codqgiixo33q62qlrqtkgmcitqx5u2oeqnmn5bpcbiyd.onion/"
+
+	direct := &Validator{}
+	if _, err := direct.ValidateTarget(context.Background(), onion, false); err == nil {
+		t.Fatal("without a resolving proxy, an unresolvable host must still be refused")
+	}
+
+	lookups = 0
+	proxied := &Validator{ProxyResolvesNames: true}
+	if _, err := proxied.ValidateTarget(context.Background(), onion, false); err != nil {
+		t.Fatalf("behind a resolving proxy the .onion target was refused: %v", err)
+	}
+	if lookups != 0 {
+		t.Errorf("the hostname was looked up locally %d time(s); it belongs to the proxy", lookups)
+	}
+
+	for _, raw := range []string{"http://10.0.0.5/", "http://[fd00::1]/", "http://169.254.169.254/latest/meta-data/"} {
+		if _, err := proxied.ValidateTarget(context.Background(), raw, false); err == nil {
+			t.Errorf("%s: a literal private address got through behind a resolving proxy", raw)
+		}
+	}
+	if target, err := proxied.ValidateTarget(context.Background(), "http://localhost:8080/", false); err != nil || !target.AllowInternal {
+		t.Errorf("localhost lost its own path behind a resolving proxy: target=%+v err=%v", target, err)
+	}
+}
+
 func TestValidateURL_RejectsUnsupportedSchemes(t *testing.T) {
 	for _, rawURL := range []string{
 		"javascript:alert(1)",

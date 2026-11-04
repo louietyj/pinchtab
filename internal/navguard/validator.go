@@ -12,6 +12,12 @@ import (
 // fields are not mutated after construction.
 type Validator struct {
 	TrustedResolveCIDRs []*net.IPNet
+	// ProxyResolvesNames is set when every navigation goes through a proxy that
+	// resolves hostnames itself (Chrome sends them unresolved to a SOCKS5 proxy). A
+	// local lookup then checks addresses the browser never connects to, leaks each
+	// visited name outside the proxy, and fails outright for names only the proxy
+	// can resolve, such as .onion.
+	ProxyResolvesNames bool
 }
 
 // ValidatedTarget is the result of ValidateTarget. It signals which runtime
