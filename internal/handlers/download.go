@@ -2,14 +2,10 @@ package handlers
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -20,21 +16,35 @@ import (
 	"github.com/pinchtab/pinchtab/internal/routes"
 )
 
-// HandleDownload fetches a URL using the browser's session (cookies, stealth)
-// and returns the content. This preserves authentication and fingerprint.
+// The wait for a server to start sending the file: an export built on demand
+// can take a while before its first byte.
+const (
+	downloadStartWaitDefault = 30 * time.Second
+	downloadStartWaitMax     = 2 * time.Minute
+)
+
+// HandleDownload has the browser download a URL with its session (cookies,
+// fingerprint) into its download manager, and answers once the download has
+// begun. The file is collected like one a page started: /download/wait?guid=
+// until it finishes, then /download/content?guid= streams it back.
 //
-// GET /download?url=<url>[&tabId=<id>][&output=file&path=/tmp/file][&raw=true]
+// GET /download?url=<url>[&tabId=<id>][&waitMs=<ms>]
 func (h *Handlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 	if !h.Config.AllowDownload {
 		h.writeCapabilityDisabled(w, routes.CapDownload)
 		return
 	}
-	dlURL := r.URL.Query().Get("url")
+	q := r.URL.Query()
+	dlURL := q.Get("url")
 	if dlURL == "" {
 		httpx.Error(w, 400, fmt.Errorf("url parameter required"))
 		return
 	}
-	maxDownloadBytes := h.Config.EffectiveDownloadMaxBytes()
+	if q.Get("output") != "" || q.Get("raw") != "" {
+		httpx.ErrorCode(w, 400, "download_form_removed",
+			"/download no longer returns the file: it answers with the download, whose bytes come from /download/content?guid=<guid> once /download/wait?guid=<guid> says it finished", false, nil)
+		return
+	}
 
 	// Download allowlist: prefer the explicit per-feature list, but fall
 	// back to the unified security.allowedDomains. This way operators only
@@ -45,20 +55,15 @@ func (h *Handlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 	}
 	validator := newDownloadURLGuard(allowed)
 	if err := validator.Validate(dlURL); err != nil {
-		writeDownloadGuardError(w, fmt.Errorf("unsafe URL: %w", err), maxDownloadBytes)
+		writeDownloadGuardError(w, fmt.Errorf("unsafe URL: %w", err))
 		return
 	}
 
-	tabID := strings.TrimSpace(r.URL.Query().Get("tabId"))
-	if tabID != "" {
+	if tabID := strings.TrimSpace(q.Get("tabId")); tabID != "" {
 		if !h.enforceDownloadTabPolicy(w, r, tabID, dlURL) {
 			return
 		}
 	}
-
-	output := r.URL.Query().Get("output")
-	filePath := r.URL.Query().Get("path")
-	raw := r.URL.Query().Get("raw") == "true"
 
 	// Re-check scheme before navigation (validateDownloadURL already enforces this,
 	// but inline check satisfies CodeQL SSRF analysis).
@@ -67,40 +72,24 @@ func (h *Handlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tCtx, tCancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer tCancel()
-	go httpx.CancelOnClientDone(r.Context(), tCancel)
+	wait := queryMillis(q.Get("waitMs"), downloadStartWaitDefault, downloadStartWaitMax)
+	ctx, cancel := context.WithTimeout(r.Context(), wait)
+	defer cancel()
 
 	requestGuard := newDownloadRequestGuard(validator, h.Config.MaxRedirects)
-	browserCtx := h.Bridge.BrowserContext()
-
-	result, err := h.Bridge.DownloadURL(tCtx, dlURL, bridge.DownloadOpts{
-		MaxBytes:     maxDownloadBytes,
-		MaxRedirects: h.Config.MaxRedirects,
+	pd, err := h.Bridge.StartURLDownload(ctx, dlURL, bridge.DownloadOpts{
 		ValidateURL: func(rawURL string, isRedirect bool) error {
 			return requestGuard.Validate(rawURL, isRedirect)
 		},
-		ValidateRemoteIP: func(remoteIP string) error {
-			return validateDownloadRemoteIPAddress(remoteIP)
-		},
-		IsDomainAllowed: func(rawURL string) bool {
-			return validator.isDomainAllowed(rawURL)
-		},
-		ParseContentLength: func(headers map[string]interface{}) (int64, bool) {
-			return parseContentLengthHeaderGeneric(headers)
-		},
+		ValidateRemoteIP: validateDownloadRemoteIPAddress,
+		IsDomainAllowed:  validator.isDomainAllowed,
 	})
 	if err != nil {
-		if isNavigationAborted(err) {
-			h.tryDirectDownloadFallback(w, r, tCtx, browserCtx, dlURL, validator, maxDownloadBytes, output, filePath, raw)
-			return
-		}
-		writeDownloadError(w, err, result, maxDownloadBytes)
+		writeDownloadError(w, err, wait)
 		return
 	}
-
 	h.recordActivity(r, activity.Update{Action: "download", URL: dlURL})
-	h.writeDownloadResponse(w, result.Body, result.MIMEType, dlURL, output, filePath, raw, maxDownloadBytes)
+	httpx.JSON(w, 200, map[string]any{"state": pd.State, "download": pd})
 }
 
 // enforceDownloadTabPolicy applies tab-scoped policy (lease, current-tab domain
@@ -150,121 +139,26 @@ func (h *Handlers) enforceDownloadTabPolicy(w http.ResponseWriter, r *http.Reque
 	return true
 }
 
-// tryDirectDownloadFallback handles a Chrome navigation abort (binary downloads
-// like .gz) by retrying with a direct Go HTTP fetch using the browser's cookies.
-// It always writes a response.
-func (h *Handlers) tryDirectDownloadFallback(w http.ResponseWriter, r *http.Request, tCtx, browserCtx context.Context, dlURL string, validator *downloadURLGuard, maxDownloadBytes int, output, filePath string, raw bool) {
-	slog.Info("download: Chrome navigation aborted, falling back to direct fetch", "url", dlURL)
-	body, mime, status, fetchErr := h.fetchDirectWithCookies(tCtx, browserCtx, dlURL, validator, maxDownloadBytes)
-	if fetchErr != nil {
-		errMsg := fetchErr.Error()
-		if strings.Contains(errMsg, "blocked") || strings.Contains(errMsg, "private") {
-			httpx.Error(w, 400, fmt.Errorf("unsafe browser request: %w", fetchErr))
-			return
-		}
-		httpx.Error(w, 502, fmt.Errorf("download fallback: %w", fetchErr))
-		return
-	}
-	if status >= 400 {
-		httpx.Error(w, 502, fmt.Errorf("remote server returned HTTP %d", status))
-		return
-	}
-	h.recordActivity(r, activity.Update{Action: "download", URL: dlURL})
-	h.writeDownloadResponse(w, body, mime, dlURL, output, filePath, raw, maxDownloadBytes)
-}
-
-// writeDownloadError maps a non-aborted DownloadURL error to an HTTP response.
-func writeDownloadError(w http.ResponseWriter, err error, result *bridge.DownloadResult, maxDownloadBytes int) {
-	if errors.Is(err, bridge.ErrTooManyRedirects) {
+// writeDownloadError maps a StartURLDownload error to an HTTP response.
+func writeDownloadError(w http.ResponseWriter, err error, wait time.Duration) {
+	var status *bridge.HTTPStatusError
+	switch {
+	case errors.Is(err, bridge.ErrTooManyRedirects):
 		httpx.Error(w, 422, fmt.Errorf("download: %w", err))
-		return
-	}
-	if errors.Is(err, bridge.ErrDownloadTooLarge) {
-		httpx.ErrorCode(w, http.StatusRequestEntityTooLarge, "download_too_large", err.Error(), false, map[string]any{
-			"maxBytes": maxDownloadBytes,
-		})
-		return
-	}
-	if errors.Is(err, bridge.ErrDownloadTimeout) {
-		httpx.Error(w, 504, fmt.Errorf("download timed out"))
-		return
-	}
-	// A populated result with a 4xx/5xx status is unambiguously a remote
-	// HTTP-error download here (redirect/size/timeout errors are typed and
-	// already handled above) — key off the structured status, not the message.
-	if result != nil && result.StatusCode >= 400 {
+	case errors.Is(err, bridge.ErrDownloadTimeout):
+		httpx.Error(w, 504, fmt.Errorf("the server had not started sending the file after %s", wait.Round(time.Second)))
+	case errors.Is(err, bridge.ErrPageDownloadsOff):
+		httpx.ErrorCode(w, 409, "downloads_off", err.Error(), false, nil)
+	case errors.As(err, &status):
 		httpx.Error(w, 502, err)
-		return
-	}
-	errMsg := err.Error()
-	if strings.Contains(errMsg, "blocked") || strings.Contains(errMsg, "private") || strings.Contains(errMsg, "unsafe") {
-		httpx.Error(w, 400, fmt.Errorf("unsafe browser request: %w", err))
-		return
-	}
-	httpx.Error(w, 502, fmt.Errorf("navigate to download URL: %w", err))
-}
-
-func (h *Handlers) writeDownloadResponse(w http.ResponseWriter, body []byte, mime, dlURL, output, filePath string, raw bool, maxBytes int) {
-	if len(body) > maxBytes {
-		httpx.ErrorCode(w, http.StatusRequestEntityTooLarge, "download_too_large",
-			downloadTooLargeError(int64(len(body)), maxBytes).Error(), false, map[string]any{
-				"maxBytes": maxBytes,
-			})
-		return
-	}
-
-	if mime == "" {
-		mime = "application/octet-stream"
-	}
-
-	if output == "file" {
-		if filePath == "" {
-			httpx.Error(w, 400, fmt.Errorf("path required when output=file"))
+	default:
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "blocked") || strings.Contains(errMsg, "private") || strings.Contains(errMsg, "unsafe") {
+			httpx.Error(w, 400, fmt.Errorf("unsafe browser request: %w", err))
 			return
 		}
-		safe, pathErr := httpx.SafeCreatePath(h.Config.StateDir, filePath)
-		if pathErr != nil {
-			httpx.Error(w, 400, fmt.Errorf("invalid path: %w", pathErr))
-			return
-		}
-		absBase, _ := filepath.Abs(h.Config.StateDir)
-		absPath, pathErr := filepath.Abs(safe)
-		if pathErr != nil || !strings.HasPrefix(absPath, absBase+string(filepath.Separator)) {
-			httpx.Error(w, 400, fmt.Errorf("invalid output path"))
-			return
-		}
-		filePath = absPath
-		if err := os.MkdirAll(filepath.Dir(filePath), 0750); err != nil {
-			httpx.Error(w, 500, fmt.Errorf("failed to create directory: %w", err))
-			return
-		}
-		if err := os.WriteFile(filePath, body, 0600); err != nil {
-			httpx.Error(w, 500, fmt.Errorf("failed to write file: %w", err))
-			return
-		}
-		httpx.JSON(w, 200, map[string]any{
-			"status":      "saved",
-			"path":        filePath,
-			"size":        len(body),
-			"contentType": mime,
-		})
-		return
+		httpx.Error(w, 502, err)
 	}
-
-	if raw {
-		w.Header().Set("Content-Type", mime)
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
-		w.WriteHeader(200)
-		_, _ = w.Write(body)
-		return
-	}
-
-	httpx.JSON(w, 200, map[string]any{
-		"data":        base64.StdEncoding.EncodeToString(body),
-		"contentType": mime,
-		"size":        len(body),
-		"url":         dlURL,
-	})
 }
 
 // @Endpoint GET /tabs/{id}/download

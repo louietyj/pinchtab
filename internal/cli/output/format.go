@@ -46,4 +46,7 @@ const (
 	ExitNotFound    = 3 // ref/selector didn't resolve
 	ExitTimeout     = 4 // wait/nav exceeded budget
 	ExitIDPIBlocked = 5 // blocked by IDPI
+	// ExitStillRunning: the work goes on without the command, which printed a
+	// handle to collect it with (a download past --timeout-ms).
+	ExitStillRunning = 6
 )

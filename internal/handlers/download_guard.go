@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -18,9 +17,6 @@ import (
 	"github.com/pinchtab/pinchtab/internal/netguard"
 	"github.com/pinchtab/pinchtab/internal/remedy"
 )
-
-// Aliased to the bridge sentinel so errors from either layer classify identically.
-var errDownloadTooLarge = bridge.ErrDownloadTooLarge
 
 const codeDownloadHostBlocked = "download_host_blocked"
 
@@ -191,33 +187,6 @@ func (g *downloadRequestGuard) Validate(rawURL string, redirected bool) error {
 	return nil
 }
 
-func downloadTooLargeError(size int64, maxBytes int) error {
-	return fmt.Errorf("%w: received %d bytes, max %d", errDownloadTooLarge, size, maxBytes)
-}
-
-func parseContentLengthHeader(headers map[string]interface{}) (int64, bool) {
-	for key, raw := range headers {
-		if !strings.EqualFold(strings.TrimSpace(key), "Content-Length") {
-			continue
-		}
-		value := strings.TrimSpace(fmt.Sprint(raw))
-		if value == "" {
-			return 0, false
-		}
-		size, err := strconv.ParseInt(value, 10, 64)
-		if err != nil || size < 0 {
-			return 0, false
-		}
-		return size, true
-	}
-	return 0, false
-}
-
-// parseContentLengthHeaderGeneric is a type-compatible alias for bridge callbacks.
-func parseContentLengthHeaderGeneric(headers map[string]interface{}) (int64, bool) {
-	return parseContentLengthHeader(headers)
-}
-
 func downloadHostBlockedDetails(host string) map[string]any {
 	if host == "" {
 		return nil
@@ -230,7 +199,7 @@ func downloadHostBlockedDetails(host string) map[string]any {
 	return details
 }
 
-func writeDownloadGuardError(w http.ResponseWriter, err error, maxBytes int) bool {
+func writeDownloadGuardError(w http.ResponseWriter, err error) bool {
 	if err == nil {
 		return false
 	}
@@ -241,10 +210,6 @@ func writeDownloadGuardError(w http.ResponseWriter, err error, maxBytes int) boo
 			downloadHostBlockedDetails(blocked.host))
 	case errors.Is(err, bridge.ErrTooManyRedirects):
 		httpx.Error(w, 422, fmt.Errorf("download: %w", err))
-	case errors.Is(err, errDownloadTooLarge):
-		httpx.ErrorCode(w, http.StatusRequestEntityTooLarge, "download_too_large", err.Error(), false, map[string]any{
-			"maxBytes": maxBytes,
-		})
 	default:
 		httpx.Error(w, 400, err)
 	}

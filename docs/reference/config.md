@@ -254,7 +254,6 @@ Current nested file-config shape:
     "allowFileScheme": false,
     "allowedDomains": ["127.0.0.1", "localhost", "::1"],
     "downloadAllowedDomains": [],
-    "downloadMaxBytes": 20971520,
     "memorySnapshotMaxBytes": 536870912,
     "allowUpload": false,
     "allowClipboard": false,
@@ -817,7 +816,7 @@ Use `pinchtab config init` to create the current nested format.
 - non-negative timeout values
 - `server.networkBufferSize` between 1 and 10000
 - `server.retainNetworkBodyMaxBytes` between 0 and 10 MiB
-- `security.downloadMaxBytes`, `memorySnapshotMaxBytes` and the `upload*` limits between 1 and their caps,
+- `security.memorySnapshotMaxBytes` and the `upload*` limits between 1 and their caps,
   with `uploadMaxFileBytes <= uploadMaxTotalBytes`
 - non-negative `security.idpi.scanTimeoutSec`
 - non-negative `observability.activity.sessionIdleSec` and positive `retentionDays`

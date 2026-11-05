@@ -619,14 +619,19 @@ func (m *MockBridge) ResolveSelectorToNodeID(ctx context.Context, selector strin
 	return 0, nil
 }
 
-func (m *MockBridge) DownloadURL(ctx context.Context, dlURL string, opts bridge.DownloadOpts) (*bridge.DownloadResult, error) {
+func (m *MockBridge) StartURLDownload(ctx context.Context, dlURL string, opts bridge.DownloadOpts) (*bridge.PageDownload, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
 func (m *MockBridge) PageDownloadMark() uint64                                           { return 0 }
 func (m *MockBridge) PageDownloadsSince(tabID string, mark uint64) []bridge.PageDownload { return nil }
+func (m *MockBridge) PageDownloads() []bridge.PageDownload                               { return nil }
+func (m *MockBridge) FindPageDownload(guid string) (*bridge.PageDownload, bool)          { return nil, false }
 func (m *MockBridge) WaitPageDownload(ctx context.Context, tabID string) (*bridge.PageDownload, error) {
 	return nil, bridge.ErrNoPageDownload
+}
+func (m *MockBridge) AwaitPageDownload(ctx context.Context, guid string) (*bridge.PageDownload, error) {
+	return nil, bridge.ErrUnknownPageDownload
 }
 func (m *MockBridge) CopyPageDownload(ctx context.Context, pd *bridge.PageDownload, w io.Writer) (int64, error) {
 	return 0, fmt.Errorf("not implemented")

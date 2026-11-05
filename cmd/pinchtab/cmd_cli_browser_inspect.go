@@ -272,12 +272,25 @@ var countCmd = &cobra.Command{
 
 var downloadCmd = &cobra.Command{
 	Use:   "download <url>",
-	Short: "Download a file via browser session",
+	Short: "Download a URL with the browser session (GET), saved locally",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		args[0] = urls.Normalize(args[0])
+		dlURL := urls.Normalize(args[0])
+		timeoutMs, _ := cmd.Flags().GetInt("timeout-ms")
+		background, _ := cmd.Flags().GetBool("background")
 		runCLI(func(rt cliRuntime) {
-			browseractions.Download(rt.client, rt.base, rt.token, args, stringFlag(cmd, "output"), stringFlag(cmd, "tab"))
+			browseractions.Download(rt.client, rt.base, rt.token, dlURL, stringFlag(cmd, "output"), stringFlag(cmd, "tab"), timeoutMs, background)
+		})
+	},
+}
+
+var downloadsCmd = &cobra.Command{
+	Use:   "downloads",
+	Short: "List downloads and their progress, with the handle to collect each",
+	Args:  cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		runCLI(func(rt cliRuntime) {
+			browseractions.Downloads(rt.client, rt.base, rt.token)
 		})
 	},
 }

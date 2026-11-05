@@ -36,7 +36,6 @@ type RuntimeConfig struct {
 	// security.allowedDomains in the file config.
 	AllowedDomains         []string
 	DownloadAllowedDomains []string
-	DownloadMaxBytes       int
 	MemorySnapshotMaxBytes int
 	AllowUpload            bool
 	AllowClipboard         bool
@@ -483,7 +482,6 @@ type SecurityConfig struct {
 	AllowFileScheme        *bool        `json:"allowFileScheme,omitempty"`
 	AllowedDomains         []string     `json:"allowedDomains,omitempty"`
 	DownloadAllowedDomains []string     `json:"downloadAllowedDomains,omitempty"`
-	DownloadMaxBytes       *int         `json:"downloadMaxBytes,omitempty"`
 	MemorySnapshotMaxBytes *int         `json:"memorySnapshotMaxBytes,omitempty"`
 	AllowUpload            *bool        `json:"allowUpload,omitempty"`
 	AllowClipboard         *bool        `json:"allowClipboard,omitempty"`

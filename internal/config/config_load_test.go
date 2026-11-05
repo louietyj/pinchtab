@@ -119,9 +119,6 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if len(cfg.DownloadAllowedDomains) != 0 {
 		t.Errorf("default DownloadAllowedDomains = %v, want empty list", cfg.DownloadAllowedDomains)
 	}
-	if cfg.DownloadMaxBytes != DefaultDownloadMaxBytes {
-		t.Errorf("default DownloadMaxBytes = %d, want %d", cfg.DownloadMaxBytes, DefaultDownloadMaxBytes)
-	}
 	if cfg.UploadMaxRequestBytes != DefaultUploadMaxRequestBytes {
 		t.Errorf("default UploadMaxRequestBytes = %d, want %d", cfg.UploadMaxRequestBytes, DefaultUploadMaxRequestBytes)
 	}
@@ -501,9 +498,6 @@ func TestApplyFileConfigToRuntimeResetsSecurityFlagsToSafeDefaults(t *testing.T)
 	if len(cfg.DownloadAllowedDomains) != 0 {
 		t.Errorf("ApplyFileConfigToRuntime DownloadAllowedDomains = %v, want empty list", cfg.DownloadAllowedDomains)
 	}
-	if cfg.DownloadMaxBytes != DefaultDownloadMaxBytes {
-		t.Errorf("ApplyFileConfigToRuntime DownloadMaxBytes = %d, want %d", cfg.DownloadMaxBytes, DefaultDownloadMaxBytes)
-	}
 	if cfg.UploadMaxRequestBytes != DefaultUploadMaxRequestBytes {
 		t.Errorf("ApplyFileConfigToRuntime UploadMaxRequestBytes = %d, want %d", cfg.UploadMaxRequestBytes, DefaultUploadMaxRequestBytes)
 	}
@@ -661,8 +655,8 @@ func TestApplyFileConfigToRuntime_CopiesAttachConfig(t *testing.T) {
 
 func TestRuntimeConfig_EffectiveTransferLimitsFallbackAndClamp(t *testing.T) {
 	cfg := &RuntimeConfig{}
-	if cfg.EffectiveDownloadMaxBytes() != DefaultDownloadMaxBytes {
-		t.Fatalf("EffectiveDownloadMaxBytes() = %d, want %d", cfg.EffectiveDownloadMaxBytes(), DefaultDownloadMaxBytes)
+	if cfg.EffectiveDownloadFileMaxBytes() != 0 {
+		t.Fatalf("EffectiveDownloadFileMaxBytes() = %d, want 0 (no limit)", cfg.EffectiveDownloadFileMaxBytes())
 	}
 	if cfg.EffectiveUploadMaxRequestBytes() != DefaultUploadMaxRequestBytes {
 		t.Fatalf("EffectiveUploadMaxRequestBytes() = %d, want %d", cfg.EffectiveUploadMaxRequestBytes(), DefaultUploadMaxRequestBytes)
@@ -677,15 +671,11 @@ func TestRuntimeConfig_EffectiveTransferLimitsFallbackAndClamp(t *testing.T) {
 		t.Fatalf("EffectiveUploadMaxTotalBytes() = %d, want %d", cfg.EffectiveUploadMaxTotalBytes(), DefaultUploadMaxTotalBytes)
 	}
 
-	cfg.DownloadMaxBytes = MaxDownloadMaxBytes + 1
 	cfg.UploadMaxRequestBytes = MaxUploadMaxRequestBytes + 1
 	cfg.UploadMaxFiles = MaxUploadMaxFiles + 1
 	cfg.UploadMaxFileBytes = MaxUploadMaxFileBytes + 1
 	cfg.UploadMaxTotalBytes = MaxUploadMaxTotalBytes + 1
 
-	if cfg.EffectiveDownloadMaxBytes() != MaxDownloadMaxBytes {
-		t.Fatalf("EffectiveDownloadMaxBytes clamp = %d, want %d", cfg.EffectiveDownloadMaxBytes(), MaxDownloadMaxBytes)
-	}
 	if cfg.EffectiveUploadMaxRequestBytes() != MaxUploadMaxRequestBytes {
 		t.Fatalf("EffectiveUploadMaxRequestBytes clamp = %d, want %d", cfg.EffectiveUploadMaxRequestBytes(), MaxUploadMaxRequestBytes)
 	}
@@ -702,14 +692,12 @@ func TestRuntimeConfig_EffectiveTransferLimitsFallbackAndClamp(t *testing.T) {
 
 func TestApplyFileConfigToRuntime_ClampsTransferLimits(t *testing.T) {
 	cfg := &RuntimeConfig{}
-	downloadTooLarge := MaxDownloadMaxBytes + 1
 	requestTooLarge := MaxUploadMaxRequestBytes + 1
 	filesTooLarge := MaxUploadMaxFiles + 1
 	fileTooLarge := MaxUploadMaxFileBytes + 1
 	totalTooLarge := MaxUploadMaxTotalBytes + 1
 	fc := &FileConfig{
 		Security: SecurityConfig{
-			DownloadMaxBytes:      &downloadTooLarge,
 			UploadMaxRequestBytes: &requestTooLarge,
 			UploadMaxFiles:        &filesTooLarge,
 			UploadMaxFileBytes:    &fileTooLarge,
@@ -719,9 +707,6 @@ func TestApplyFileConfigToRuntime_ClampsTransferLimits(t *testing.T) {
 
 	ApplyFileConfigToRuntime(cfg, fc)
 
-	if cfg.DownloadMaxBytes != MaxDownloadMaxBytes {
-		t.Fatalf("DownloadMaxBytes = %d, want %d", cfg.DownloadMaxBytes, MaxDownloadMaxBytes)
-	}
 	if cfg.UploadMaxRequestBytes != MaxUploadMaxRequestBytes {
 		t.Fatalf("UploadMaxRequestBytes = %d, want %d", cfg.UploadMaxRequestBytes, MaxUploadMaxRequestBytes)
 	}

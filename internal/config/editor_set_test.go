@@ -167,9 +167,6 @@ func TestSetConfigValue_SecurityFields(t *testing.T) {
 				fc.Security.DownloadAllowedDomains[0] == "pinchtab.com" &&
 				fc.Security.DownloadAllowedDomains[1] == "*.pinchtab.com"
 		}, false},
-		{"security.downloadMaxBytes", "33554432", func(fc *FileConfig) bool {
-			return fc.Security.DownloadMaxBytes != nil && *fc.Security.DownloadMaxBytes == 33554432
-		}, false},
 		{"security.allowUpload", "off", func(fc *FileConfig) bool { return *fc.Security.AllowUpload == false }, false},
 		{"security.uploadMaxRequestBytes", "12582912", func(fc *FileConfig) bool {
 			return fc.Security.UploadMaxRequestBytes != nil && *fc.Security.UploadMaxRequestBytes == 12582912

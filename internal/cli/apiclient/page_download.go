@@ -14,10 +14,36 @@ import (
 // pageDownloadPollChunk keeps each long poll under the client's 60 s timeout.
 const pageDownloadPollChunk = 45 * time.Second
 
-// WaitForPageDownload polls /download/wait until the tab's next download has
-// finished or deadline passes. It returns the last answer: state "none" when
-// no download began, "inProgress" when one is still going.
-func WaitForPageDownload(client *http.Client, base, token, tab string, deadline time.Time) (map[string]any, error) {
+// StartURLDownload has the browser start downloading dlURL, waiting up to wait
+// for the server to start sending it, and returns the answer holding the
+// download to collect.
+func StartURLDownload(client *http.Client, base, token, tab, dlURL string, wait time.Duration) (map[string]any, error) {
+	path := "/download"
+	if tab != "" {
+		path = "/tabs/" + url.PathEscape(tab) + "/download"
+	}
+	q := url.Values{"url": {dlURL}, "waitMs": {strconv.FormatInt(wait.Milliseconds(), 10)}}
+	c := *client
+	c.Timeout = wait + 30*time.Second
+	status, body, err := sendOnce(&c, token, newRequest(http.MethodGet, base, path, WithQuery(q)))
+	if err != nil {
+		return nil, err
+	}
+	if status >= http.StatusBadRequest {
+		return nil, fmt.Errorf("%s", apiErrorText(status, body))
+	}
+	var m map[string]any
+	if err := json.Unmarshal(body, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// WaitForPageDownload polls /download/wait until a download has finished or
+// deadline passes: the one named by guid, else the tab's next one. It returns
+// the last answer: state "none" when no download began, "inProgress" when one
+// is still going.
+func WaitForPageDownload(client *http.Client, base, token, tab, guid string, deadline time.Time) (map[string]any, error) {
 	var last map[string]any
 	for {
 		wait := time.Until(deadline)
@@ -31,7 +57,9 @@ func WaitForPageDownload(client *http.Client, base, token, tab string, deadline 
 			wait = 0
 		}
 		q := url.Values{"waitMs": {strconv.FormatInt(wait.Milliseconds(), 10)}}
-		if tab != "" {
+		if guid != "" {
+			q.Set("guid", guid)
+		} else if tab != "" {
 			q.Set("tabId", tab)
 		}
 		status, body, err := sendOnce(client, token, newRequest(http.MethodGet, base, "/download/wait", WithQuery(q)))
@@ -52,8 +80,28 @@ func WaitForPageDownload(client *http.Client, base, token, tab string, deadline 
 	}
 }
 
+// ListDownloads returns every download the server has followed.
+func ListDownloads(client *http.Client, base, token string) ([]map[string]any, error) {
+	status, body, err := sendOnce(client, token, newRequest(http.MethodGet, base, "/downloads"))
+	if err != nil {
+		return nil, err
+	}
+	if status >= http.StatusBadRequest {
+		return nil, fmt.Errorf("%s", apiErrorText(status, body))
+	}
+	var m struct {
+		Downloads []map[string]any `json:"downloads"`
+	}
+	if err := json.Unmarshal(body, &m); err != nil {
+		return nil, err
+	}
+	return m.Downloads, nil
+}
+
 // SavePageDownload streams a finished download's bytes to dst. The body can be
 // far larger and slower than any API answer, so it runs with no client timeout.
+// A tab is needed only to read off a remote browser; with none the server uses
+// the current tab or a blank one.
 func SavePageDownload(client *http.Client, base, token, tab, guid, dst string) (int64, error) {
 	q := url.Values{"guid": {guid}}
 	if tab != "" {

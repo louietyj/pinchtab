@@ -97,10 +97,6 @@ type NetworkConditions struct {
 }
 
 type DownloadOpts struct {
-	// MaxBytes is the maximum response size in bytes. 0 means no limit.
-	MaxBytes int
-	// MaxRedirects limits browser-side redirects. -1 means unlimited.
-	MaxRedirects int
 	// ValidateURL is called for every request/redirect URL seen by the browser.
 	// If it returns an error, the request is blocked.
 	ValidateURL func(rawURL string, isRedirect bool) error
@@ -110,14 +106,6 @@ type DownloadOpts struct {
 	// IsDomainAllowed reports whether a URL's domain is on the operator allowlist
 	// (bypassing private-IP checks).
 	IsDomainAllowed func(rawURL string) bool
-	// ParseContentLength extracts Content-Length from response headers, if present.
-	ParseContentLength func(headers map[string]interface{}) (int64, bool)
-}
-
-type DownloadResult struct {
-	Body       []byte
-	MIMEType   string
-	StatusCode int
 }
 
 type PDFParams struct {

@@ -70,7 +70,7 @@
     "stealthLevel": "max",
     "tabEvictionPolicy": "reject",
     "dialogAutoAccept": true,
-    "downloadFileMaxBytes": 1073741824
+    "downloadFileMaxBytes": 0
   },
   "security": {
     "allowEvaluate": true,
@@ -85,7 +85,6 @@
     "downloadAllowedDomains": [
       "dl.example"
     ],
-    "downloadMaxBytes": 123456,
     "memorySnapshotMaxBytes": 654321,
     "allowUpload": true,
     "allowClipboard": true,

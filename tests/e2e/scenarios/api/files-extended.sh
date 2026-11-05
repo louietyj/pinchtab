@@ -209,11 +209,13 @@ assert_contains "$RESULT" "unsafe browser request\|blocked\|private" "redirect S
 end_test
 
 # ─────────────────────────────────────────────────────────────────
-start_test "download fallback: gzip download path still succeeds"
+start_test "download: a .gz URL is downloaded as it came and collected by its guid"
 
 pt_get "/download?url=${FIXTURES_URL}/sitemap.xml.gz"
-assert_ok "gzip fallback download"
-assert_json_eq "$RESULT" '.contentType' 'application/xml' "gzip fallback reports decompressed XML content type"
-assert_json_jq "$RESULT" '.size > 0' "gzip fallback returns non-empty body" "gzip fallback body was empty"
+assert_ok "gzip download started"
+GZ_GUID=$(echo "$RESULT" | jq -r '.download.guid')
+pt_get "/download/wait?guid=${GZ_GUID}&waitMs=20000"
+assert_json_eq "$RESULT" '.state' 'completed' "gzip download finished"
+assert_json_jq "$RESULT" '.download.receivedBytes > 0' "gzip download is non-empty" "gzip download was empty"
 
 end_test

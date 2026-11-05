@@ -200,7 +200,6 @@ func LoadConfig() (*RuntimeConfig, []LoadDiagnostic, error) {
 		RetainNetworkBodyMaxBytes: 256 * 1024,
 		AllowedDomains:            nil,
 		DownloadAllowedDomains:    nil,
-		DownloadMaxBytes:          DefaultDownloadMaxBytes,
 		MemorySnapshotMaxBytes:    DefaultMemorySnapshotMaxBytes,
 		AllowUpload:               false,
 		AllowClipboard:            false,
@@ -467,9 +466,6 @@ func applySecurityConfig(cfg *RuntimeConfig, s SecurityConfig) {
 		cfg.AllowFileScheme = *s.AllowFileScheme
 	}
 	cfg.DownloadAllowedDomains = append([]string(nil), s.DownloadAllowedDomains...)
-	if s.DownloadMaxBytes != nil {
-		cfg.DownloadMaxBytes = clampPositiveLimit(*s.DownloadMaxBytes, DefaultDownloadMaxBytes, MaxDownloadMaxBytes)
-	}
 	if s.MemorySnapshotMaxBytes != nil {
 		cfg.MemorySnapshotMaxBytes = clampPositiveLimit(*s.MemorySnapshotMaxBytes, DefaultMemorySnapshotMaxBytes, MaxMemorySnapshotMaxBytes)
 	}

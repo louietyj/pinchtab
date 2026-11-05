@@ -315,26 +315,25 @@ Wraps `Page.printToPDF`. Prints background graphics by default.
 
 Downloads can contain private content from the active browser session. Require the user to name the source and destination, and save only to an approved workspace or temporary path.
 
+Every download goes through Chrome's download manager, which the bridge points at `instanceDefaults.downloadDir` and follows: one you start from a URL, and one the page starts itself (a form POST answered with an attachment, a blob, a `data:` link). The file lands on the browser's disk, and is collected by its `guid`. There is no size cap unless `instanceDefaults.downloadFileMaxBytes` sets one; a `.gz` is saved as it came, not decompressed.
+
 ```bash
-# Returns base64 JSON by default (uses the active browser session)
+# Start a GET download with the browser session. Answers once the server starts sending
+# (waitMs, default 30 s, at most 2 min) with {"state", "download": {"guid", "filename", ...}}.
+# A response the browser would show (PDF, JSON, a page) is downloaded too.
 curl "/download?url=https://site.com/report.pdf"
 
-# Raw bytes (pipe to file)
-curl "/download?url=https://site.com/image.jpg&raw=true" -o image.jpg
-
-# Save directly to disk in a safe temp location
-curl "/download?url=https://site.com/export.csv&output=file&path=exports/export.csv"
-```
-
-`/download` fetches a URL with GET. A download the page starts itself (a form POST answered with an attachment, a blob, a `data:` link) goes to Chrome's download manager instead, which the bridge points at `instanceDefaults.downloadDir` and follows:
-
-```bash
-# Long-polls (waitMs, at most 50 s) for the tab's oldest uncollected download to finish.
-# state is "none", "inProgress", "completed" or "canceled"; a finished one is collected.
+# Long-polls (waitMs, at most 50 s) for that download to finish; state is "inProgress",
+# "completed" or "canceled". Without guid: the tab's oldest uncollected page download
+# ("none" if none began), which this collects.
+curl "/download/wait?guid=<guid>&waitMs=45000"
 curl "/download/wait?tabId=<id>&waitMs=45000"
 
 # The finished file's bytes, read off the browser's disk wherever it runs.
-curl "/download/content?tabId=<id>&guid=<guid>" -o filing.zip
+curl "/download/content?guid=<guid>" -o report.pdf
+
+# Every download followed, with progress.
+curl "/downloads"
 ```
 
 An action that started a download within it reports `result.downloads`.

@@ -1,75 +1,96 @@
 package actions
 
 import (
-	"encoding/base64"
-	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestDownloadTruncatesPrintedBase64(t *testing.T) {
-	payload := strings.Repeat("A", 400)
+// downloadServer answers a URL download as begun, then finished (or still
+// under way), then its bytes.
+func downloadServer(state string) *mockServer {
 	m := newMockServer()
-	m.response = `{"data":"` + payload + `","contentType":"image/png","size":123}`
-	defer m.close()
+	dl := `{"guid":"g1","filename":"f.bin","state":"` + state + `","receivedBytes":10,"totalBytes":30}`
+	m.setResponse("GET", "/download", 200, `{"state":"inProgress","download":`+dl+`}`)
+	m.setResponse("GET", "/tabs/tab1/download", 200, `{"state":"inProgress","download":`+dl+`}`)
+	m.setResponse("GET", "/download/wait", 200, `{"state":"`+state+`","download":`+dl+`}`)
+	m.setResponse("GET", "/download/content", 200, "0123456789")
+	return m
+}
 
-	output := captureStdout(t, func() {
-		Download(m.server.Client(), m.base(), "", []string{"https://example.com/image.png"}, "", "")
+func TestDownloadCollectsTheFileByItsHandle(t *testing.T) {
+	m := downloadServer("completed")
+	defer m.close()
+	out := filepath.Join(t.TempDir(), "d.bin")
+
+	got := captureStdout(t, func() {
+		Download(m.server.Client(), m.base(), "", "https://example.com/f.bin", out, "", 0, false)
 	})
 
-	if !strings.Contains(output, `"dataTruncated": true`) {
-		t.Fatalf("expected output to mark truncated data, got %q", output)
+	if b, err := os.ReadFile(out); err != nil || string(b) != "0123456789" {
+		t.Fatalf("saved %q, %v", b, err)
 	}
-	if !strings.Contains(output, `"dataLength": 400`) {
-		t.Fatalf("expected output to include original data length, got %q", output)
+	if strings.TrimSpace(got) != "Saved "+out+" (10 bytes)" {
+		t.Errorf("printed %q", got)
 	}
-	if strings.Contains(output, `"`+payload+`"`) {
-		t.Fatalf("expected output to avoid printing the full payload")
+	var paths []string
+	for _, r := range m.requests {
+		paths = append(paths, r.Path+"?"+r.Query)
 	}
-	if !strings.Contains(output, "... (truncated)") {
-		t.Fatalf("expected output to include truncation suffix, got %q", output)
+	joined := strings.Join(paths, " ")
+	for _, want := range []string{"/download?url=", "/download/wait?guid=g1", "/download/content?guid=g1"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("requests %v lack %s", paths, want)
+		}
 	}
 }
 
-func TestDownloadWithOutputConfirmsTheFileAndPrintsNoEnvelope(t *testing.T) {
-	data := []byte(strings.Repeat("image-bytes-", 40))
-	encoded := base64.StdEncoding.EncodeToString(data)
-
-	m := newMockServer()
-	m.response = `{"data":"` + encoded + `","contentType":"image/png","size":480}`
+func TestDownloadInBackgroundPrintsTheHandleAndWaitsForNothing(t *testing.T) {
+	m := downloadServer("completed")
 	defer m.close()
 
-	outFile := filepath.Join(t.TempDir(), "image.bin")
-	output := captureStdout(t, func() {
-		Download(m.server.Client(), m.base(), "", []string{"https://example.com/image.png"}, outFile, "")
+	got := captureStdout(t, func() {
+		Download(m.server.Client(), m.base(), "", "https://example.com/f.bin", "/tmp/x y.bin", "", 0, true)
 	})
 
-	written, err := os.ReadFile(outFile)
-	if err != nil {
-		t.Fatalf("expected output file to be written: %v", err)
+	if want := "pinchtab wait --download g1 -o '/tmp/x y.bin'"; !strings.Contains(got, want) {
+		t.Errorf("printed %q, want the collect command %q", got, want)
 	}
-	if string(written) != string(data) {
-		t.Fatal("the saved file is not byte-exact against the payload")
+	if len(m.requests) != 1 {
+		t.Errorf("made %d requests, want only the one that starts the download", len(m.requests))
 	}
+}
 
-	if !strings.Contains(output, "Saved "+outFile) {
-		t.Errorf("output %q does not name the file it saved", output)
+// Past the timeout the command leaves the download running, prints its handle
+// and exits 6. os.Exit ends the process, so this runs in a child.
+func TestADownloadPastItsTimeoutExitsSixWithItsHandle(t *testing.T) {
+	if os.Getenv("PT_DOWNLOAD_CHILD") == "1" {
+		m := downloadServer("inProgress")
+		defer m.close()
+		Download(m.server.Client(), m.base(), "", "https://example.com/f.bin", "", "", 1, false)
+		return
 	}
-	if !strings.Contains(output, fmt.Sprintf("(%d bytes)", len(data))) {
-		t.Errorf("output %q does not carry the byte count", output)
+	cmd := exec.Command(os.Args[0], "-test.run=^TestADownloadPastItsTimeoutExitsSixWithItsHandle$")
+	cmd.Env = append(os.Environ(), "PT_DOWNLOAD_CHILD=1", "PINCHTAB_NAME=pinchtab-cloud")
+	out, err := cmd.Output()
+	exit, _ := err.(*exec.ExitError)
+	if exit == nil || exit.ExitCode() != 6 {
+		t.Fatalf("exit %v, want 6; output %q", err, out)
 	}
-	for _, banned := range []string{`"data"`, `"dataTruncated"`, `"dataLength"`, `"contentType"`, "(truncated)"} {
-		if strings.Contains(output, banned) {
-			t.Errorf("output %q still carries the envelope field %s", output, banned)
+	for _, want := range []string{"f.bin still downloading", "10 bytes of 30 bytes", "pinchtab-cloud wait --download g1"} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("output %q lacks %q", out, want)
 		}
 	}
-	if strings.Contains(output, encoded[:downloadDataPreviewLimit]) {
-		t.Errorf("output %q still carries base64 from the payload", output)
-	}
-	if lines := strings.Count(strings.TrimSpace(output), "\n"); lines != 0 {
-		t.Errorf("output is %d lines, want the single confirmation:\n%s", lines+1, output)
+}
+
+func TestDownloadTimeoutDefaultsTo30sAndStopsAt2m(t *testing.T) {
+	for ms, want := range map[int]string{0: "30s", 5000: "5s", 600000: "2m0s"} {
+		if got := downloadTimeout(ms).String(); got != want {
+			t.Errorf("downloadTimeout(%d) = %s, want %s", ms, got, want)
+		}
 	}
 }
 
@@ -77,12 +98,10 @@ func TestTheSaveConfirmationIsTheSameSentenceEverywhere(t *testing.T) {
 	dir := t.TempDir()
 
 	download := func() string {
-		payload := []byte("0123456789")
-		m := newMockServer()
+		m := downloadServer("completed")
 		defer m.close()
-		m.response = `{"data":"` + base64.StdEncoding.EncodeToString(payload) + `"}`
 		return captureStdout(t, func() {
-			Download(m.server.Client(), m.base(), "", []string{"https://example.com/f.bin"}, filepath.Join(dir, "d.bin"), "")
+			Download(m.server.Client(), m.base(), "", "https://example.com/f.bin", filepath.Join(dir, "d.bin"), "", 0, false)
 		})
 	}
 	screenshot := func() string {
@@ -159,15 +178,14 @@ func TestTheSaveConfirmationHasOneOwner(t *testing.T) {
 }
 
 func TestDownloadTabScopedPath(t *testing.T) {
-	m := newMockServer()
-	m.response = `{"data":"","contentType":"text/plain","size":0}`
+	m := downloadServer("completed")
 	defer m.close()
 
 	captureStdout(t, func() {
-		Download(m.server.Client(), m.base(), "", []string{"https://example.com/f.txt"}, "", "tab1")
+		Download(m.server.Client(), m.base(), "", "https://example.com/f.txt", filepath.Join(t.TempDir(), "f"), "tab1", 0, false)
 	})
 
-	if m.lastPath != "/tabs/tab1/download" {
-		t.Fatalf("expected /tabs/tab1/download, got %s", m.lastPath)
+	if len(m.requests) == 0 || m.requests[0].Path != "/tabs/tab1/download" {
+		t.Fatalf("expected /tabs/tab1/download first, got %+v", m.requests)
 	}
 }

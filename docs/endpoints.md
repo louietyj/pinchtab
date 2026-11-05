@@ -650,6 +650,9 @@ report shapes.
 ```text
 GET  /download
 GET  /tabs/{id}/download
+GET  /download/wait
+GET  /download/content
+GET  /downloads
 POST /upload
 POST /tabs/{id}/upload
 GET  /cookies
@@ -670,7 +673,7 @@ Notes:
 
 - download and upload endpoints are gated by `security.allowDownload` and `security.allowUpload`
 - cookie endpoints (`GET/POST/DELETE /cookies`, plus tab-scoped variants) are gated by `security.allowCookies`
-- download automatically decompresses `.gz` files and returns the decompressed content
+- `/download?url=` starts the download in the browser's download manager and answers with it (`guid`, `filename`, `state`); `/download/wait?guid=` waits for it and `/download/content?guid=` streams its bytes. A `.gz` is saved as it came
 - `security.downloadAllowedDomains` can whitelist specific domains (bypasses SSRF checks for matching domains). Setting `["*"]` matches every host and disables private-IP protection for this endpoint, including loopback. Naming a loopback host (`127.0.0.1`, `localhost`) or using `"*"` lets the download endpoint reach services on the server's own machine, including PinchTab's own local endpoints. A host that is neither matched nor public is refused with code `download_host_blocked`, and the response carries the `config set` line that names it.
 - clipboard endpoints are gated by `security.allowClipboard`
 - upload uses a JSON body with `selector` (default `input[type=file]`), `files` (base64) and/or `paths` (files already inside `<stateDir>/uploads`), and optional `fileNames`

@@ -187,7 +187,6 @@ type securityConfigValues struct {
 	AllowCookies           bool
 	AllowNetworkIntercept  bool
 	AllowMemory            bool
-	DownloadMaxBytes       int
 	MemorySnapshotMaxBytes int
 	AllowUpload            bool
 	UploadMaxRequestBytes  int
@@ -230,9 +229,6 @@ func securityDefaultsSnapshot(fc *config.FileConfig) securityDefaultsState {
 	}
 	if fc.Security.AllowMemory != nil {
 		s.Security.AllowMemory = *fc.Security.AllowMemory
-	}
-	if fc.Security.DownloadMaxBytes != nil {
-		s.Security.DownloadMaxBytes = *fc.Security.DownloadMaxBytes
 	}
 	if fc.Security.MemorySnapshotMaxBytes != nil {
 		s.Security.MemorySnapshotMaxBytes = *fc.Security.MemorySnapshotMaxBytes

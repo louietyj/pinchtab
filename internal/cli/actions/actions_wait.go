@@ -87,7 +87,11 @@ func waitFor(client *http.Client, base, token string, args []string, cmd *cobra.
 	}
 	if download, _ := cmd.Flags().GetBool("download"); download {
 		dst, _ := cmd.Flags().GetString("output")
-		waitDownload(client, base, token, tabID, timeoutMs, dst)
+		guid := ""
+		if len(args) > 0 {
+			guid = args[0]
+		}
+		waitDownload(client, base, token, tabID, guid, timeoutMs, dst)
 		return
 	}
 

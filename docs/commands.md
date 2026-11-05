@@ -383,8 +383,12 @@ pinchtab pdf --paper-height <in>        # Paper height in inches
 pinchtab pdf --page-ranges <r>          # Page ranges such as 1-3
 pinchtab pdf --prefer-css-page-size     # Use CSS page size
 pinchtab pdf --display-header-footer    # Show header/footer
-pinchtab download <url>                 # Download through the browser session
+pinchtab download <url>                 # Download through the browser session to ~/pinchtab-downloads/
 pinchtab download <url> -o <path>       # Save downloaded file to a path
+pinchtab download <url> --timeout-ms <ms> # Wait up to ms (default 30000, max 120000); past it, exit 6 with a handle
+pinchtab download <url> --background    # Print the handle at once; collect with `wait --download <handle>`
+pinchtab wait --download <handle>       # Collect a download by its handle
+pinchtab downloads                      # List downloads, their progress and handles
 pinchtab upload <file>                  # Upload to the default file input
 pinchtab upload <file> -s <css>         # Upload to a specific file input
 pinchtab record start <file>            # Start recording (.webm, .mp4, .gif)

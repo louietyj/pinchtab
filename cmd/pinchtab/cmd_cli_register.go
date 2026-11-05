@@ -24,7 +24,7 @@ func browserRootCommands() []*cobra.Command {
 		dblclickCmd, dragCmd, typeCmd, screenshotCmd, annotateCmd, captureCmd, tabsCmd, pressCmd, fillCmd,
 		hoverCmd, mouseCmd, focusCmd, scrollCmd, evalCmd, pdfCmd, textCmd, titleCmd, urlCmd,
 		htmlCmd, stylesCmd, valueCmd, attrCmd, countCmd, boxCmd, visibleCmd, enabledCmd, checkedCmd,
-		downloadCmd, uploadCmd, findCmd, extractCmd, selectCmd, checkCmd, uncheckCmd, networkCmd, waitCmd, expectCmd,
+		downloadCmd, downloadsCmd, uploadCmd, findCmd, extractCmd, selectCmd, checkCmd, uncheckCmd, networkCmd, waitCmd, expectCmd,
 		keyboardCmd, keydownCmd, keyupCmd, scrollintoviewCmd, dialogCmd, consoleCmd, errorsCmd,
 		clipboardCmd, cacheCmd, cookiesCmd, setCmd, storageCmd, stateCmd, closeCmd, handoffCmd,
 		resumeCmd, handoffStatusCmd, recordCmd, auditCmd, compareCmd, scrapeCmd, a11yCmd, memoryCmd,
@@ -72,7 +72,9 @@ func registerManagementCommands() {
 func configureBrowserFlags() {
 	uploadCmd.Flags().StringP("selector", "s", "", "File input to fill (default: the one whose file picker the last click opened, else the first file input)")
 	uploadCmd.Flags().Bool("drop", false, "Drop the files on -s, a drop zone, instead of filling a file input")
-	downloadCmd.Flags().StringP("output", "o", "", "Save downloaded file to path")
+	downloadCmd.Flags().StringP("output", "o", "", "Save to this path (default ~/pinchtab-downloads/<file name>)")
+	downloadCmd.Flags().Int("timeout-ms", 0, "Wait this long for the file (default 30000, max 120000); past it the download carries on in the browser and its handle is printed, exit 6")
+	downloadCmd.Flags().Bool("background", false, "Start the download and print its handle at once, for `wait --download <handle>` later")
 
 	addPointerActionFlags(clickCmd, "click")
 	clickCmd.Flags().Bool("wait-nav", false, "Wait for navigation after click")
@@ -415,7 +417,7 @@ func configureBrowserFlags() {
 	waitCmd.Flags().String("fn", "", "Wait for JS expression to be truthy")
 	waitCmd.Flags().String("state", "", "Element state: visible (default) or hidden")
 	waitCmd.Flags().Bool("captcha", false, "Wait for the captcha solve under way on the tab (default timeout 3m, no max)")
-	waitCmd.Flags().Bool("download", false, "Wait for the download the page started (a click, a form POST, a blob) to finish and save it (default timeout 2m, no max)")
+	waitCmd.Flags().Bool("download", false, "Wait for a download to finish and save it: `wait --download <handle>`, or with no handle the next one the page started (a click, a form POST, a blob). Default timeout 30s, max 2m; past it the download carries on and its handle is printed, exit 6")
 	waitCmd.Flags().StringP("output", "o", "", "With --download: save to this path (default ~/pinchtab-downloads/<file name>)")
 	waitCmd.Flags().Int("timeout-ms", 0, "Timeout in milliseconds (default 10000, max 30000)")
 	// --timeout on wait is milliseconds, but the same bare flag is SECONDS on

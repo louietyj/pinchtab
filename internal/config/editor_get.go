@@ -373,8 +373,6 @@ func getSecurityField(s *SecurityConfig, field string) (string, error) {
 		return strings.Join(s.AllowedDomains, ","), nil
 	case "downloadAllowedDomains":
 		return strings.Join(s.DownloadAllowedDomains, ","), nil
-	case "downloadMaxBytes":
-		return formatIntPtr(s.DownloadMaxBytes), nil
 	case "memorySnapshotMaxBytes":
 		return formatIntPtr(s.MemorySnapshotMaxBytes), nil
 	case "allowUpload":

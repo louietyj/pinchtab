@@ -125,7 +125,6 @@ func DefaultFileConfig() FileConfig {
 	allowCookies := false
 	allowNetworkIntercept := false
 	allowMemory := false
-	downloadMaxBytes := DefaultDownloadMaxBytes
 	memorySnapshotMaxBytes := DefaultMemorySnapshotMaxBytes
 	allowUpload := false
 	allowClipboard := false
@@ -190,7 +189,6 @@ func DefaultFileConfig() FileConfig {
 			AllowNetworkIntercept:  &allowNetworkIntercept,
 			AllowMemory:            &allowMemory,
 			DownloadAllowedDomains: []string{},
-			DownloadMaxBytes:       &downloadMaxBytes,
 			MemorySnapshotMaxBytes: &memorySnapshotMaxBytes,
 			AllowUpload:            &allowUpload,
 			AllowClipboard:         &allowClipboard,

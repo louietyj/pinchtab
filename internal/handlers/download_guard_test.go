@@ -35,17 +35,13 @@ func TestTheDownloadAllowlistControlsTheDomainAndPrivateIPChecksTogether(t *test
 				t.Fatalf("allowsHost(%v) = %v, want %v", tc.allowed, allowInternal, tc.want)
 			}
 
-			// The predicate matters only through the dialler that consumes it: a
-			// refused host must stop at the private-IP check, not at a connection.
-			_, err := resolveDownloadDialIPs(context.Background(), privateHost, allowInternal)
-			if tc.want {
-				if err != nil {
-					t.Errorf("the dialler refused a host the operator named: %v", err)
-				}
-				return
+			// The browser applies the remote-IP check only to a response whose
+			// domain the list does not name, so the two must agree.
+			if got := guard.isDomainAllowed("http://" + privateHost + "/f"); got != tc.want {
+				t.Errorf("isDomainAllowed = %v, want %v: the remote-IP check would disagree with allowsHost", got, tc.want)
 			}
-			if err == nil || !strings.Contains(err.Error(), "blocked remote IP") {
-				t.Errorf("the dialler answered %v, want the private-IP refusal", err)
+			if err := validateDownloadRemoteIPAddress(privateHost); err == nil || !strings.Contains(err.Error(), "blocked remote IP") {
+				t.Errorf("the remote-IP check answered %v, want the private-IP refusal", err)
 			}
 		})
 	}
@@ -63,7 +59,7 @@ func TestABareWildcardStillLiftsTheDownloadDomainRestriction(t *testing.T) {
 	}
 }
 
-func TestAnAllowlistedLoopbackHostGetsTheSameVerdictFromValidateAndTheDialler(t *testing.T) {
+func TestAnAllowlistedLoopbackHostGetsTheSameVerdictFromValidateAndTheRemoteIPCheck(t *testing.T) {
 	stubDownloadHostResolution(t, func(ctx context.Context, network, host string) ([]net.IP, error) {
 		if host == "localhost" {
 			return []net.IP{net.ParseIP("127.0.0.1")}, nil
@@ -96,9 +92,11 @@ func TestAnAllowlistedLoopbackHostGetsTheSameVerdictFromValidateAndTheDialler(t 
 			if errors.Is(err, errDownloadHostBlocked) != tc.wantBlocked {
 				t.Fatalf("Validate answered %v, want the blocked-host refusal=%v", err, tc.wantBlocked)
 			}
-			_, dialErr := resolveDownloadDialIPs(context.Background(), tc.host, guard.allowsHost(tc.host))
-			if (dialErr == nil) != tc.wantAllowed {
-				t.Fatalf("the dialler answered %v while Validate answered %v; the two layers must agree", dialErr, err)
+			// A response from this host passes when its domain is listed, or
+			// else when its address is public, which none of these are.
+			passes := guard.isDomainAllowed("http://"+tc.host+":18791/dl.html") || validateDownloadRemoteIPAddress(tc.host) == nil
+			if passes != tc.wantAllowed {
+				t.Fatalf("the remote-IP check passes=%v while Validate answered %v; the two layers must agree", passes, err)
 			}
 		})
 	}

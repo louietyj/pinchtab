@@ -209,9 +209,10 @@ var coreEndpoints = []Endpoint{
 
 	{"POST", "/evaluate", "Run JavaScript in page", CapEvaluate, true},
 	{"POST", "/macro", "Macro action pipeline", CapMacro, false},
-	{"GET", "/download", "Download URL via browser session", CapDownload, true},
-	{"GET", "/download/wait", "Wait for a download the page started", CapDownload, true},
-	{"GET", "/download/content", "Bytes of a finished page download", CapDownload, true},
+	{"GET", "/download", "Start downloading a URL with the browser session", CapDownload, true},
+	{"GET", "/download/wait", "Wait for a download to finish", CapDownload, true},
+	{"GET", "/download/content", "Bytes of a finished download", CapDownload, true},
+	{"GET", "/downloads", "List downloads and their progress", CapDownload, false},
 	{"POST", "/upload", "Upload file to file input", CapUpload, true},
 	{"GET", "/screencast", "Live tab frame stream", CapScreencast, false},
 	{"GET", "/screencast/tabs", "List tabs available for screencast", CapScreencast, false},

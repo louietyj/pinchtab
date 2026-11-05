@@ -13,10 +13,6 @@ const (
 	DownloadOff = "off"
 )
 
-// DefaultDownloadFileMaxBytes caps one page download. It is far above the
-// in-memory cap on `download <url>`, since the file goes to disk.
-const DefaultDownloadFileMaxBytes = 1 << 30
-
 // EffectiveDownloadBehavior resolves an unset behavior: a browser pinchtab
 // launched is its own, while an attached one may be the user's.
 func (cfg *RuntimeConfig) EffectiveDownloadBehavior(attached bool) string {
@@ -29,9 +25,11 @@ func (cfg *RuntimeConfig) EffectiveDownloadBehavior(attached bool) string {
 	return DownloadManaged
 }
 
+// EffectiveDownloadFileMaxBytes is the cap on one download; 0, the default,
+// means none: the file goes to disk and is streamed back, never held whole.
 func (cfg *RuntimeConfig) EffectiveDownloadFileMaxBytes() int {
-	if cfg == nil || cfg.DownloadFileMaxBytes <= 0 {
-		return DefaultDownloadFileMaxBytes
+	if cfg == nil || cfg.DownloadFileMaxBytes < 0 {
+		return 0
 	}
 	return cfg.DownloadFileMaxBytes
 }

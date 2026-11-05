@@ -38,11 +38,10 @@ const (
 )
 
 var cappedReads = map[string]string{
-	"internal/mcp/client.go::doWithHeaders":                       refusesOverTheCap,
-	"internal/handlers/download_fetch.go::fetchDirectWithCookies": refusesOverTheCap,
-	"internal/orchestrator/tab_extract.go::peekBodyStringField":   refusesOverTheCap,
-	"internal/bridge/runtime/cdp_url.go::readCDPVersionBody":      refusesOverTheCap,
-	"internal/activity/context.go::EnrichRouteActivity":           peeksWithoutTaking,
+	"internal/mcp/client.go::doWithHeaders":                     refusesOverTheCap,
+	"internal/orchestrator/tab_extract.go::peekBodyStringField": refusesOverTheCap,
+	"internal/bridge/runtime/cdp_url.go::readCDPVersionBody":    refusesOverTheCap,
+	"internal/activity/context.go::EnrichRouteActivity":         peeksWithoutTaking,
 	// Permanent: isSmallJSON gates the read on Content-Length >= 0 && <= 64 KB
 	// against the same 64 KB cap, so the limit is unreachable. That is a property
 	// of the input, not a promise about future behaviour.

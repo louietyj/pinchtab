@@ -548,13 +548,6 @@ func setSecurityField(s *SecurityConfig, field, value string) error {
 		return nil
 	}
 	switch field {
-	case "downloadMaxBytes":
-		n, err := strconv.Atoi(value)
-		if err != nil {
-			return fmt.Errorf("security.downloadMaxBytes must be a number: %w", err)
-		}
-		s.DownloadMaxBytes = &n
-		return nil
 	case "memorySnapshotMaxBytes":
 		n, err := strconv.Atoi(value)
 		if err != nil {

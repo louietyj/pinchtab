@@ -29,7 +29,7 @@ const populatedFileConfigJSON = `{
                        "tabPolicy": {"allowedDomains": ["a.example"], "blockedDomains": ["b.example"]}},
   "security": {"allowEvaluate": true, "allowMacro": true, "allowScreencast": true, "allowDownload": true,
                "allowCookies": true, "allowNetworkIntercept": true, "allowMemory": true, "allowFileScheme": true,
-               "allowedDomains": [], "downloadAllowedDomains": ["dl.example"], "downloadMaxBytes": 123456, "memorySnapshotMaxBytes": 654321,
+               "allowedDomains": [], "downloadAllowedDomains": ["dl.example"], "memorySnapshotMaxBytes": 654321,
                "allowUpload": true, "allowClipboard": true, "allowStateExport": true,
                "uploadMaxRequestBytes": 1000, "uploadMaxFiles": 4, "uploadMaxFileBytes": 500, "uploadMaxTotalBytes": 900,
                "maxRedirects": 9, "trustedProxyCIDRs": ["10.0.0.0/8"], "trustedResolveCIDRs": ["192.168.0.0/16"],

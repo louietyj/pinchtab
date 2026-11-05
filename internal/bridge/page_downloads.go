@@ -55,6 +55,9 @@ type PageDownload struct {
 	frameID string
 	seq     uint64
 	claimed bool
+	// fromURL marks a `download <url>`: collected only by its guid, never moved
+	// into ~/Downloads, and deleted once copied back.
+	fromURL bool
 }
 
 type pageDownloads struct {
@@ -64,6 +67,8 @@ type pageDownloads struct {
 	seq      uint64
 	changed  chan struct{}
 	maxBytes int64
+	// urlFrames are the tabs StartURLDownload opened, by top frame id.
+	urlFrames map[string]bool
 	// stageDir and moveTo are set for a personal browser: a download saved in
 	// stageDir while pinchtab was quieting the save prompt is moved to moveTo
 	// under its own name, renamed rather than overwriting.
@@ -72,7 +77,19 @@ type pageDownloads struct {
 }
 
 func newPageDownloads() *pageDownloads {
-	return &pageDownloads{byGUID: map[string]*PageDownload{}, changed: make(chan struct{})}
+	return &pageDownloads{byGUID: map[string]*PageDownload{}, changed: make(chan struct{}), urlFrames: map[string]bool{}}
+}
+
+func (d *pageDownloads) expect(frameID string) {
+	d.mu.Lock()
+	d.urlFrames[frameID] = true
+	d.mu.Unlock()
+}
+
+func (d *pageDownloads) unexpect(frameID string) {
+	d.mu.Lock()
+	delete(d.urlFrames, frameID)
+	d.mu.Unlock()
 }
 
 // notifyLocked wakes every waiter. Callers hold mu.
@@ -96,7 +113,9 @@ func (d *pageDownloads) begin(ev *browser.EventDownloadWillBegin) {
 		Started:  time.Now(),
 		frameID:  string(ev.FrameID),
 		seq:      d.seq,
+		fromURL:  d.urlFrames[string(ev.FrameID)],
 	}
+	pd.claimed = pd.fromURL
 	d.byGUID[ev.GUID] = pd
 	d.order = append(d.order, pd)
 	if len(d.order) > pageDownloadsKeep {
@@ -122,7 +141,7 @@ func (d *pageDownloads) progress(ev *browser.EventDownloadProgress) (overCap boo
 	case browser.DownloadProgressStateCompleted:
 		pd.State = PageDownloadCompleted
 		pd.FilePath = ev.FilePath
-		if d.moveTo != "" && d.stageDir != "" && filepath.Dir(ev.FilePath) == filepath.Clean(d.stageDir) {
+		if !pd.fromURL && d.moveTo != "" && d.stageDir != "" && filepath.Dir(ev.FilePath) == filepath.Clean(d.stageDir) {
 			if moved, err := moveUnique(ev.FilePath, d.moveTo, pd.Filename); err == nil {
 				pd.FilePath = moved
 			} else {
@@ -227,6 +246,57 @@ func (d *pageDownloads) waitFinished(ctx context.Context, mark uint64, name stri
 		}
 	}
 }
+
+// waitBegun waits for the download the tab with top frame frameID began.
+func (d *pageDownloads) waitBegun(ctx context.Context, frameID string) (*PageDownload, error) {
+	for {
+		d.mu.Lock()
+		changed := d.changed
+		for _, pd := range d.order {
+			if pd.frameID == frameID {
+				out := *pd
+				d.mu.Unlock()
+				return &out, nil
+			}
+		}
+		d.mu.Unlock()
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+}
+
+// waitDone waits for the download guid to finish, and returns it as it stands
+// when it does or when ctx ends.
+func (d *pageDownloads) waitDone(ctx context.Context, guid string) (*PageDownload, error) {
+	for {
+		d.mu.Lock()
+		pd := d.byGUID[guid]
+		changed := d.changed
+		var out PageDownload
+		if pd != nil {
+			out = *pd
+		}
+		d.mu.Unlock()
+		if pd == nil {
+			return nil, ErrUnknownPageDownload
+		}
+		if out.State != PageDownloadInProgress || out.Error != "" {
+			return &out, nil
+		}
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return &out, nil
+		}
+	}
+}
+
+// ErrUnknownPageDownload is a guid no download has: never seen, or dropped
+// from the history.
+var ErrUnknownPageDownload = errors.New("no such download")
 
 // enablePageDownloads runs on every browser start or attach; the setting can
 // be changed on a live connection.
@@ -395,7 +465,7 @@ func (b *Bridge) PageDownloadsSince(tabID string, mark uint64) []PageDownload {
 func (b *Bridge) WaitPageDownload(ctx context.Context, tabID string) (*PageDownload, error) {
 	d := b.downloadsTracker()
 	if d == nil {
-		return nil, errors.New("page downloads are off (instanceDefaults.downloadBehavior)")
+		return nil, ErrPageDownloadsOff
 	}
 	for {
 		all, changed := d.snapshot()
@@ -422,6 +492,26 @@ func (b *Bridge) WaitPageDownload(ctx context.Context, tabID string) (*PageDownl
 			return nil, ErrNoPageDownload
 		}
 	}
+}
+
+// PageDownloads lists every download still in the history, oldest first.
+func (b *Bridge) PageDownloads() []PageDownload {
+	d := b.downloadsTracker()
+	if d == nil {
+		return nil
+	}
+	all, _ := d.snapshot()
+	return all
+}
+
+// AwaitPageDownload waits for the download guid to finish; one still under way
+// when ctx ends comes back in progress, not as an error.
+func (b *Bridge) AwaitPageDownload(ctx context.Context, guid string) (*PageDownload, error) {
+	d := b.downloadsTracker()
+	if d == nil {
+		return nil, ErrPageDownloadsOff
+	}
+	return d.waitDone(ctx, guid)
 }
 
 // downloadOnTab reports whether pd began in tabID: in its top frame, whose id
@@ -471,7 +561,9 @@ func frameTreeHas(t *page.FrameTree, id cdp.FrameID) bool {
 const pageDownloadChunk = 8 << 20
 
 // CopyPageDownload writes the finished download pd to w. tabCtx is a live tab
-// of the same browser, needed only when the file is not on this machine.
+// of the same browser, needed only when the file is not on this machine; nil
+// opens a blank tab for the copy. A `download <url>` file on this machine is
+// deleted once copied: nobody else asked for it.
 func (b *Bridge) CopyPageDownload(tabCtx context.Context, pd *PageDownload, w io.Writer) (int64, error) {
 	if pd.State != PageDownloadCompleted || pd.FilePath == "" {
 		return 0, fmt.Errorf("download %s is %s, not completed", pd.Filename, pd.State)
@@ -479,12 +571,42 @@ func (b *Bridge) CopyPageDownload(tabCtx context.Context, pd *PageDownload, w io
 	// The bridge shares a disk with the browser it launched, and with Louie's
 	// Chrome on his laptop; never with a cloud browser.
 	if f, err := os.Open(pd.FilePath); err == nil {
-		defer f.Close()
-		if st, err := f.Stat(); err == nil && st.Size() == pd.ReceivedBytes {
-			return io.Copy(w, f)
+		st, statErr := f.Stat()
+		if statErr == nil && st.Size() == pd.ReceivedBytes {
+			n, err := io.Copy(w, f)
+			_ = f.Close()
+			if err == nil && pd.fromURL {
+				_ = os.Remove(pd.FilePath)
+			}
+			return n, err
 		}
+		_ = f.Close()
+	}
+	if tabCtx == nil {
+		blank, cancel := chromedp.NewContext(b.BrowserContext())
+		defer cancel()
+		if err := chromedp.Run(blank, chromedp.Navigate("about:blank")); err != nil {
+			return 0, fmt.Errorf("open a tab to copy the download: %w", err)
+		}
+		tabCtx = blank
 	}
 	return copyBrowserFile(tabCtx, pd.FilePath, pd.ReceivedBytes, w)
+}
+
+// FindPageDownload returns the download guid, on any tab.
+func (b *Bridge) FindPageDownload(guid string) (*PageDownload, bool) {
+	d := b.downloadsTracker()
+	if d == nil {
+		return nil, false
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	pd := d.byGUID[guid]
+	if pd == nil {
+		return nil, false
+	}
+	out := *pd
+	return &out, true
 }
 
 // copyBrowserFile reads a file on the browser's machine through a file input

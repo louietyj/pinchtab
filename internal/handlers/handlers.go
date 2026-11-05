@@ -439,6 +439,7 @@ func (h *Handlers) bridgeBindings() []routeBinding {
 		// No domain policy: the file came from a page the policy already let load.
 		// Dialog-blocked, since reading it back runs script in the tab.
 		{pattern: "GET /download/content", root: h.HandlePageDownloadContent, tab: h.HandleTabPageDownloadContent, guards: guardDialogBlocked},
+		{pattern: "GET /downloads", root: h.HandlePageDownloads, guards: guardNone}, // reads the download manager's record; touches no page
 		{pattern: "POST /upload", root: h.HandleUpload, tab: h.HandleTabUpload, guards: guardDialogBlocked | guardDomainPolicy | guardHandoffPause},
 		{pattern: "GET /screencast", root: h.HandleScreencast, guards: guardDomainPolicy},
 		{pattern: "GET /screencast/tabs", root: h.HandleScreencastAll, guards: guardNone},

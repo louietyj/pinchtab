@@ -63,9 +63,6 @@ func TestDefaultFileConfig(t *testing.T) {
 	if len(fc.Security.DownloadAllowedDomains) != 0 {
 		t.Errorf("DefaultFileConfig.Security.DownloadAllowedDomains = %v, want empty list", fc.Security.DownloadAllowedDomains)
 	}
-	if fc.Security.DownloadMaxBytes == nil || *fc.Security.DownloadMaxBytes != DefaultDownloadMaxBytes {
-		t.Errorf("DefaultFileConfig.Security.DownloadMaxBytes = %v, want %d", formatIntPtr(fc.Security.DownloadMaxBytes), DefaultDownloadMaxBytes)
-	}
 	if fc.Security.AllowUpload == nil || *fc.Security.AllowUpload {
 		t.Errorf("DefaultFileConfig.Security.AllowUpload = %v, want explicit false", formatBoolPtr(fc.Security.AllowUpload))
 	}
@@ -456,9 +453,6 @@ func TestDefaultFileConfigJSON(t *testing.T) {
 	if len(parsed.Security.DownloadAllowedDomains) != 0 {
 		t.Errorf("round-trip Security.DownloadAllowedDomains = %v, want empty list", parsed.Security.DownloadAllowedDomains)
 	}
-	if parsed.Security.DownloadMaxBytes == nil || *parsed.Security.DownloadMaxBytes != DefaultDownloadMaxBytes {
-		t.Errorf("round-trip Security.DownloadMaxBytes = %v, want %d", formatIntPtr(parsed.Security.DownloadMaxBytes), DefaultDownloadMaxBytes)
-	}
 	if parsed.Security.AllowUpload == nil || *parsed.Security.AllowUpload {
 		t.Errorf("round-trip Security.AllowUpload = %v, want explicit false", formatBoolPtr(parsed.Security.AllowUpload))
 	}
@@ -575,8 +569,8 @@ func TestFileConfigJSONPreservesExplicitZeroValues(t *testing.T) {
 	} else if items, ok := downloadAllowedDomains.([]any); !ok || len(items) != 0 {
 		t.Fatalf("security.downloadAllowedDomains = %#v, want explicit empty list", downloadAllowedDomains)
 	}
-	if raw, ok := security["downloadMaxBytes"]; !ok || int(raw.(float64)) != DefaultDownloadMaxBytes {
-		t.Fatalf("security.downloadMaxBytes = %#v, want %d", raw, DefaultDownloadMaxBytes)
+	if raw, ok := security["downloadMaxBytes"]; ok {
+		t.Fatalf("security.downloadMaxBytes = %#v, want it retired from the written config", raw)
 	}
 	if raw, ok := security["uploadMaxRequestBytes"]; !ok || int(raw.(float64)) != DefaultUploadMaxRequestBytes {
 		t.Fatalf("security.uploadMaxRequestBytes = %#v, want %d", raw, DefaultUploadMaxRequestBytes)

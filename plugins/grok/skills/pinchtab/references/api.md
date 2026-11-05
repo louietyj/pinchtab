@@ -315,15 +315,15 @@ Wraps `Page.printToPDF`. Prints background graphics by default.
 
 Downloads can contain private content from the active browser session. Require the user to name the source and destination, and save only to an approved workspace or temporary path.
 
+The browser downloads the file into its download manager, and it is collected by its `guid`:
+
 ```bash
-# Returns base64 JSON by default (uses the active browser session)
+# Start a GET download with the browser session; answers with {"state", "download": {"guid", ...}}
 curl "/download?url=https://site.com/report.pdf"
 
-# Raw bytes (pipe to file)
-curl "/download?url=https://site.com/image.jpg&raw=true" -o image.jpg
-
-# Save directly to disk in a safe temp location
-curl "/download?url=https://site.com/export.csv&output=file&path=exports/export.csv"
+# Wait for it to finish (waitMs, at most 50 s per call), then read its bytes
+curl "/download/wait?guid=<guid>&waitMs=45000"
+curl "/download/content?guid=<guid>" -o report.pdf
 ```
 
 ## Upload files

@@ -1,104 +1,58 @@
 package actions
 
 import (
-	"encoding/base64"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
-	"os"
+	"time"
 
-	"github.com/pinchtab/pinchtab/internal/cli"
 	"github.com/pinchtab/pinchtab/internal/cli/apiclient"
+	"github.com/pinchtab/pinchtab/internal/cli/output"
 )
 
-const downloadDataPreviewLimit = 256
-
-func Download(client *http.Client, base, token string, args []string, output, tabID string) {
-	if len(args) < 1 {
-		cli.Fatal("Usage: pinchtab download <url> [-o <file>] [--tab <id>]")
-	}
-
-	targetURL := args[0]
-
-	params := url.Values{}
-	params.Set("url", targetURL)
-
-	path := "/download"
-	if tabID != "" {
-		path = "/tabs/" + url.PathEscape(tabID) + "/download"
-	}
-
-	body := apiclient.DoGetRaw(client, base, token, path, params)
-	if body == nil {
+// Download has the browser download dlURL, then collects it like `wait
+// --download`: saved to dst once finished, or, past the timeout or with
+// background, left running with its handle printed.
+func Download(client *http.Client, base, token, dlURL, dst, tabID string, timeoutMs int, background bool) {
+	timeout := downloadTimeout(timeoutMs)
+	deadline := time.Now().Add(timeout)
+	resp, err := apiclient.StartURLDownload(client, base, token, tabID, dlURL, timeout)
+	if err != nil {
+		output.Error("download", err.Error(), output.ExitRuntime)
 		return
 	}
-
-	var result map[string]any
-	if err := json.Unmarshal(body, &result); err != nil {
-		fmt.Println(string(body))
+	dl, _ := resp["download"].(map[string]any)
+	guid, _ := dl["guid"].(string)
+	if background {
+		name, _ := dl["filename"].(string)
+		output.Value(fmt.Sprintf("download started: %s. Collect it: %s", name, collectCommand(guid, dst)))
 		return
 	}
+	collectDownload(client, base, token, tabID, guid, deadline, timeout, dst, "download")
+}
 
-	if output == "" {
-		printDownloadResult(result)
+// Downloads prints every download the server has followed, newest last.
+func Downloads(client *http.Client, base, token string) {
+	all, err := apiclient.ListDownloads(client, base, token)
+	if err != nil {
+		output.Error("downloads", err.Error(), output.ExitRuntime)
 		return
 	}
-
-	savedBytes, err := saveDownloadData(result, output)
-	if err != nil {
-		switch {
-		case errors.Is(err, errMissingDownloadData):
-			cli.Fatal("No base64 data in response")
-		case errors.Is(err, errDecodeDownloadData):
-			cli.Fatal("Failed to decode base64: %v", err)
-		default:
-			cli.Fatal("Write failed: %v", err)
-		}
+	if len(all) == 0 {
+		output.Value("no downloads")
+		return
 	}
-	printSaved(output, savedBytes)
+	for _, dl := range all {
+		output.Value(formatDownloadLine(dl))
+	}
 }
 
-func printDownloadResult(result map[string]any) {
-	fmt.Println(formatDownloadResult(result))
-}
-
-func formatDownloadResult(result map[string]any) string {
-	view := make(map[string]any, len(result)+2)
-	for k, v := range result {
-		view[k] = v
+func formatDownloadLine(dl map[string]any) string {
+	guid, _ := dl["guid"].(string)
+	name, _ := dl["filename"].(string)
+	state, _ := dl["state"].(string)
+	line := fmt.Sprintf("%s  %-10s  %s  %s", guid, state, progress(dl), name)
+	if reason, _ := dl["error"].(string); reason != "" {
+		line += "  (" + reason + ")"
 	}
-
-	if b64, ok := view["data"].(string); ok && len(b64) > downloadDataPreviewLimit {
-		view["data"] = b64[:downloadDataPreviewLimit] + "... (truncated)"
-		view["dataLength"] = len(b64)
-		view["dataTruncated"] = true
-	}
-
-	formatted, err := json.MarshalIndent(view, "", "  ")
-	if err != nil {
-		return "{}"
-	}
-	return string(formatted)
-}
-
-var (
-	errMissingDownloadData = errors.New("missing download data")
-	errDecodeDownloadData  = errors.New("decode download data")
-)
-
-func saveDownloadData(result map[string]any, output string) (int, error) {
-	b64, _ := result["data"].(string)
-	if b64 == "" {
-		return 0, errMissingDownloadData
-	}
-	data, err := base64.StdEncoding.DecodeString(b64)
-	if err != nil {
-		return 0, fmt.Errorf("%w: %v", errDecodeDownloadData, err)
-	}
-	if err := os.WriteFile(output, data, 0600); err != nil {
-		return 0, err
-	}
-	return len(data), nil
+	return line
 }

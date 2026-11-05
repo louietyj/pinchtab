@@ -419,9 +419,9 @@
         },
         "downloadFileMaxBytes": {
           "type": "integer",
-          "minimum": 1,
-          "default": 1073741824,
-          "description": "Largest page download allowed; a bigger one is canceled and reported."
+          "minimum": 0,
+          "default": 0,
+          "description": "Largest download allowed, from a page or `download <url>`; a bigger one is canceled and reported. 0 means no limit."
         }
       }
     },
@@ -502,19 +502,6 @@
         },
         "downloadAllowedDomains": {
           "$ref": "#/definitions/domainPatternArray"
-        },
-        "downloadMaxBytes": {
-          "anyOf": [
-            {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 104857600
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": 20971520
         },
         "memorySnapshotMaxBytes": {
           "anyOf": [

@@ -613,6 +613,7 @@ var dialogGuardAllowList = map[string]string{
 	"GET /config/autosolver":                    "browser-side",
 	"GET /autosolve":                            "server-side",
 	"GET /download/wait":                        "browser-side",
+	"GET /downloads":                            "browser-side",
 	"GET /screencast/tabs":                      "browser-side",
 	"GET /record/status":                        "browser-side",
 	"GET /state/list":                           "browser-side",

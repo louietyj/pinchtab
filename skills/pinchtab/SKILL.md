@@ -248,9 +248,14 @@ shared with others, `tab` marks each tab `yours`, `another agent's` or
 - A button or link that downloads a file (a form that answers with a zip, a
   link with no real URL, a file the page builds itself): click it, then
   `wait --download`. The click prints `download started: <name>` when it
-  started one in time; `wait --download` waits for it to finish (2 minutes;
-  `--timeout-ms` for more) and saves it to `~/pinchtab-downloads/` or `-o`,
-  wherever the browser runs. Each download is collected once, oldest first.
+  started one in time; `wait --download` waits for it to finish and saves it
+  to `~/pinchtab-downloads/` or `-o`, wherever the browser runs. Each download
+  is collected once, oldest first.
+- `download` and `wait --download` wait 30 s (`--timeout-ms`, at most 2 min).
+  A download still going then carries on in the browser: the command prints
+  `wait --download <handle>` to collect it and exits 6. For a file you know is
+  big, `download <url> --background` prints the handle at once; `downloads`
+  lists every download with its progress.
 
   ```bash
   pinchtab execute-batch <<'EOF'

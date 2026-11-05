@@ -1,8 +1,6 @@
 package config
 
 const (
-	DefaultDownloadMaxBytes       = 20 << 20
-	MaxDownloadMaxBytes           = 100 << 20
 	MaxRetainNetworkBodyMaxBytes  = 10 << 20
 	DefaultUploadMaxRequestBytes  = 10 << 20
 	MaxUploadMaxRequestBytes      = 100 << 20
@@ -24,13 +22,6 @@ func clampPositiveLimit(value, fallback, max int) int {
 		return max
 	}
 	return value
-}
-
-func (cfg *RuntimeConfig) EffectiveDownloadMaxBytes() int {
-	if cfg == nil {
-		return DefaultDownloadMaxBytes
-	}
-	return clampPositiveLimit(cfg.DownloadMaxBytes, DefaultDownloadMaxBytes, MaxDownloadMaxBytes)
 }
 
 func (cfg *RuntimeConfig) EffectiveUploadMaxRequestBytes() int {

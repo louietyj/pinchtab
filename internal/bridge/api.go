@@ -127,12 +127,15 @@ type BridgeAPI interface {
 	SetFileInputFiles(ctx context.Context, nodeID int64, paths []string) error
 	ResolveSelectorToNodeID(ctx context.Context, selector string, refCache *RefCache, frameID string) (int64, error)
 
-	DownloadURL(ctx context.Context, dlURL string, opts DownloadOpts) (*DownloadResult, error)
-
-	// Downloads the page starts itself (page_downloads.go).
+	// Downloads, from a page or a URL, all through the browser's download
+	// manager (download.go, page_downloads.go).
+	StartURLDownload(ctx context.Context, dlURL string, opts DownloadOpts) (*PageDownload, error)
 	PageDownloadMark() uint64
 	PageDownloadsSince(tabID string, mark uint64) []PageDownload
+	PageDownloads() []PageDownload
+	FindPageDownload(guid string) (*PageDownload, bool)
 	WaitPageDownload(ctx context.Context, tabID string) (*PageDownload, error)
+	AwaitPageDownload(ctx context.Context, guid string) (*PageDownload, error)
 	CopyPageDownload(tabCtx context.Context, pd *PageDownload, w io.Writer) (int64, error)
 	QuietDownloads()
 
@@ -183,7 +186,6 @@ type (
 	ViewportParams    = runtimetypes.ViewportParams
 	NetworkConditions = runtimetypes.NetworkConditions
 	DownloadOpts      = runtimetypes.DownloadOpts
-	DownloadResult    = runtimetypes.DownloadResult
 	PDFParams         = runtimetypes.PDFParams
 )
 

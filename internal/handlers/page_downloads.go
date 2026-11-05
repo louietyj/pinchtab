@@ -28,13 +28,25 @@ func (h *Handlers) HandlePageDownloadWait(w http.ResponseWriter, r *http.Request
 		return
 	}
 	q := r.URL.Query()
+	ctx, cancel := context.WithTimeout(r.Context(), queryMillis(q.Get("waitMs"), pageDownloadWaitMax, pageDownloadWaitMax))
+	defer cancel()
+	if guid := q.Get("guid"); guid != "" {
+		pd, err := h.Bridge.AwaitPageDownload(ctx, guid)
+		switch {
+		case errors.Is(err, bridge.ErrUnknownPageDownload):
+			httpx.ErrorCode(w, 404, "download_not_found", fmt.Sprintf("no download %q", guid), false, nil)
+		case err != nil:
+			httpx.Error(w, 500, err)
+		default:
+			httpx.JSON(w, 200, map[string]any{"state": pd.State, "download": pd})
+		}
+		return
+	}
 	_, tabID, err := h.tabContext(r, q.Get("tabId"))
 	if err != nil {
 		WriteTabContextError(w, err, 404)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), queryMillis(q.Get("waitMs"), pageDownloadWaitMax, pageDownloadWaitMax))
-	defer cancel()
 	// A wait that outlasts the quiet tail must not let the save prompt back.
 	stopQuiet := make(chan struct{})
 	defer close(stopQuiet)
@@ -74,20 +86,22 @@ func (h *Handlers) HandlePageDownloadContent(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	q := r.URL.Query()
-	tabCtx, tabID, ok := h.guardedTabContext(w, r, q.Get("tabId"), guardDialogBlocked)
-	if !ok {
-		return
+	// A tab is needed only to read a file off a remote browser's disk: the one
+	// named, else the current one, else the bridge opens a blank tab, since a
+	// `download <url>` may have been the session's first call.
+	var tabCtx context.Context
+	tabID := q.Get("tabId")
+	if _, _, err := h.tabContext(r, tabID); tabID != "" || err == nil {
+		ctx, _, ok := h.guardedTabContext(w, r, tabID, guardDialogBlocked)
+		if !ok {
+			return
+		}
+		tabCtx = ctx
 	}
 	guid := q.Get("guid")
-	var pd *bridge.PageDownload
-	for _, d := range h.Bridge.PageDownloadsSince(tabID, 0) {
-		if d.GUID == guid {
-			pd = &d
-			break
-		}
-	}
-	if pd == nil {
-		httpx.ErrorCode(w, 404, "download_not_found", fmt.Sprintf("no download %q on this tab", guid), false, nil)
+	pd, found := h.Bridge.FindPageDownload(guid)
+	if !found {
+		httpx.ErrorCode(w, 404, "download_not_found", fmt.Sprintf("no download %q", guid), false, nil)
 		return
 	}
 	if pd.State != bridge.PageDownloadCompleted {
@@ -99,6 +113,22 @@ func (h *Handlers) HandlePageDownloadContent(w http.ResponseWriter, r *http.Requ
 	// A failure after the first byte can only cut the body short; the CLI
 	// compares what it got with Content-Length.
 	_, _ = h.Bridge.CopyPageDownload(tabCtx, pd, w)
+}
+
+// HandlePageDownloads lists every download pinchtab has followed, with its
+// progress: what `pinchtab downloads` prints, and what a monitor polls.
+//
+// @Endpoint GET /downloads
+func (h *Handlers) HandlePageDownloads(w http.ResponseWriter, r *http.Request) {
+	if !h.Config.AllowDownload {
+		h.writeCapabilityDisabled(w, routes.CapDownload)
+		return
+	}
+	all := h.Bridge.PageDownloads()
+	if all == nil {
+		all = []bridge.PageDownload{}
+	}
+	httpx.JSON(w, 200, map[string]any{"downloads": all})
 }
 
 // actionDownloadGrace is how long an unacknowledged action waits for a

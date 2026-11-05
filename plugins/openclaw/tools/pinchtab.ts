@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import type { PluginConfig, PluginRuntimeContext } from "../types.js";
 import { pinchtabFetch, textResult, imageResult, resourceResult, normalizeActionParams, looksLikeStaleRef } from "../client.js";
 import { checkNavigationPolicy, checkEvaluatePolicy, checkDownloadPolicy, checkUploadPolicy, checkNetworkInterceptPolicy, enforcePolicyOrReturn } from "../policy.js";
@@ -386,17 +387,41 @@ async function handleDownload(cfg: PluginConfig, normalized: any, context?: Plug
   const query = new URLSearchParams();
   if (normalized.downloadUrl) query.set("url", normalized.downloadUrl);
   if (normalized.tabId) query.set("tabId", normalized.tabId);
-  if (normalized.savePath) {
-    query.set("output", "file");
-    query.set("path", normalized.savePath);
-    return textResult(await pinchtabFetch(cfg, `/download?${query.toString()}`, {}, context));
+  const started = await pinchtabFetch(cfg, `/download?${query.toString()}`, {}, context);
+  const guid = started?.download?.guid;
+  if (!guid) return textResult(started);
+
+  // The browser downloads the file to its disk. Wait up to two minutes for it,
+  // then hand back its bytes, or its handle when it is still going.
+  const handle = encodeURIComponent(guid);
+  let waited = started;
+  for (let i = 0; i < 3 && waited?.state === "inProgress"; i++) {
+    waited = await pinchtabFetch(cfg, `/download/wait?guid=${handle}&waitMs=40000`, {}, context);
   }
-  query.set("raw", "true");
+  if (waited?.state !== "completed") {
+    return textResult(waited?.state === "inProgress"
+      ? { ...waited, note: `still downloading; collect it with GET /download/wait?guid=${handle}, then /download/content?guid=${handle}` }
+      : waited);
+  }
+
+  const contentPath = `/download/content?guid=${handle}`;
+  if (normalized.savePath) {
+    try {
+      const res = await pinchtabFetch(cfg, contentPath, { rawResponse: true }, context);
+      if (!(res instanceof Response)) return textResult(res);
+      if (!res.ok) return textResult({ error: `download failed: ${res.status} ${await res.text()}` });
+      const buf = Buffer.from(await res.arrayBuffer());
+      await writeFile(normalized.savePath, buf);
+      return textResult({ status: "saved", path: normalized.savePath, size: buf.length });
+    } catch (err: any) {
+      return textResult({ error: `download failed: ${err?.message}` });
+    }
+  }
   return fetchBinaryResult(
     cfg,
-    `/download?${query.toString()}`,
+    contentPath,
     "download",
-    (b64, res) => resourceResult("download://file", res.headers.get("content-type") || "application/octet-stream", b64),
+    (b64) => resourceResult("download://file", "application/octet-stream", b64),
     context,
   );
 }

@@ -838,19 +838,11 @@ func TestValidateFileConfig_TransferLimits(t *testing.T) {
 		{
 			name: "valid limits",
 			apply: func(s *SecurityConfig) {
-				s.DownloadMaxBytes = intPtr(DefaultDownloadMaxBytes)
 				s.UploadMaxRequestBytes = intPtr(DefaultUploadMaxRequestBytes)
 				s.UploadMaxFiles = intPtr(DefaultUploadMaxFiles)
 				s.UploadMaxFileBytes = intPtr(DefaultUploadMaxFileBytes)
 				s.UploadMaxTotalBytes = intPtr(DefaultUploadMaxTotalBytes)
 			},
-		},
-		{
-			name: "download max bytes too large",
-			apply: func(s *SecurityConfig) {
-				s.DownloadMaxBytes = intPtr(MaxDownloadMaxBytes + 1)
-			},
-			wantErr: "security.downloadMaxBytes",
 		},
 		{
 			name: "upload max files invalid",

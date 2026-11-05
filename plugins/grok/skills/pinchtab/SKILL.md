@@ -223,7 +223,7 @@ Rules:
 - Use low-level `mouse` only for drag handles, canvas widgets, or exact pointer sequences.
 - JS dialogs: `--dialog-action accept|dismiss`, `--dialog-text` for `prompt()` responses.
 - HTTP scroll action: `"scrollX"`/`"scrollY"` for pixel deltas, `"selector"` to scroll into view — `x`/`y` are viewport coords, not deltas.
-- HTTP `GET /download?url=...` returns JSON `{contentType, data (base64), size, url}`; only http/https; private/internal hosts blocked unless in `security.downloadAllowedDomains`.
+- HTTP `GET /download?url=...` starts the download and returns JSON `{state, download: {guid, filename, ...}}`; `/download/wait?guid=` waits for it and `/download/content?guid=` returns its bytes. Only http/https; private/internal hosts blocked unless in `security.downloadAllowedDomains`.
 
 ### Waiting
 

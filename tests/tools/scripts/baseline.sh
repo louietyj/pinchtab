@@ -244,8 +244,9 @@ ACT '{"kind":"scroll","selector":"#footer"}' > /dev/null
 S=$(SNAP "" 1500); VERIFY_MARKER 17 2 "$S" "SCROLL_REACHED_FOOTER"
 
 # Group 18
-R=$(curl -sf "$BASE/tabs/$T/download?url=http://fixtures/download-sample.txt" -H "$AUTH")
-echo "$R" | jq -r '.data' | base64 -d > /tmp/bl_dl.txt 2>/dev/null
+G=$(curl -sf "$BASE/tabs/$T/download?url=http://fixtures/download-sample.txt" -H "$AUTH" | jq -r '.download.guid')
+curl -sf "$BASE/download/wait?guid=$G&waitMs=20000" -H "$AUTH" > /dev/null
+curl -sf "$BASE/download/content?guid=$G" -H "$AUTH" -o /tmp/bl_dl.txt 2>/dev/null
 grep -q "DOWNLOAD_FILE_CONTENT_VERIFIED" /tmp/bl_dl.txt && REC 18 1 pass "d" || REC 18 1 fail "miss"
 
 # Group 19 — native frame-scoped interaction (replaces prior eval workaround)

@@ -269,6 +269,7 @@ func sessionMediaGrantAllows(method, path string) bool {
 			path == "/download",
 			path == "/download/wait",
 			path == "/download/content",
+			path == "/downloads",
 			path == "/screencast",
 			path == "/screencast/tabs",
 			path == "/record/status":

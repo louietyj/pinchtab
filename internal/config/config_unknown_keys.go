@@ -162,6 +162,9 @@ func acceptedUndeclaredFileConfigPaths() map[string]bool {
 	// Retired in PIN-315. Existing config files must continue to load, but the
 	// key is deliberately absent from FileConfig, the editor, and the schema.
 	exempt["security.enableActionGuards"] = true
+	// Retired when `download <url>` moved to the download manager: nothing is
+	// held in memory any more, so there is no cap to set.
+	exempt["security.downloadMaxBytes"] = true
 	return exempt
 }
 

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -57,8 +58,8 @@ func (m *downloadPolicyBridge) GetCookies(ctx context.Context, urls []string) ([
 	return nil, nil
 }
 
-func (m *downloadPolicyBridge) DownloadURL(ctx context.Context, dlURL string, opts bridge.DownloadOpts) (*bridge.DownloadResult, error) {
-	return &bridge.DownloadResult{Body: []byte("test"), MIMEType: "text/plain", StatusCode: 200}, nil
+func (m *downloadPolicyBridge) StartURLDownload(ctx context.Context, dlURL string, opts bridge.DownloadOpts) (*bridge.PageDownload, error) {
+	return &bridge.PageDownload{GUID: "g1", URL: dlURL, Filename: "file.txt", State: bridge.PageDownloadInProgress}, nil
 }
 
 func stubDownloadHostResolution(t *testing.T, fn func(context.Context, string, string) ([]net.IP, error)) {
@@ -74,12 +75,12 @@ type httpErrorDownloadBridge struct {
 	downloadPolicyBridge
 }
 
-func (m *httpErrorDownloadBridge) DownloadURL(ctx context.Context, dlURL string, opts bridge.DownloadOpts) (*bridge.DownloadResult, error) {
-	return &bridge.DownloadResult{StatusCode: 404, MIMEType: "text/html"}, fmt.Errorf("remote server returned HTTP 404")
+func (m *httpErrorDownloadBridge) StartURLDownload(ctx context.Context, dlURL string, opts bridge.DownloadOpts) (*bridge.PageDownload, error) {
+	return nil, fmt.Errorf("start: %w", &bridge.HTTPStatusError{StatusCode: 404})
 }
 
 // A remote HTTP-error status (4xx/5xx) on the download must map to 502, detected
-// from the structured StatusCode rather than sniffing the error string.
+// from the structured status rather than sniffing the error string.
 func TestHandleDownload_RemoteHTTPErrorIs502(t *testing.T) {
 	stubDownloadHostResolution(t, func(ctx context.Context, network, host string) ([]net.IP, error) {
 		if host == "example.com" {
@@ -309,16 +310,6 @@ func TestValidateTabScopedDownloadURL(t *testing.T) {
 	}
 }
 
-func TestParseContentLengthHeader(t *testing.T) {
-	headers := map[string]interface{}{
-		"Content-Length": "12345",
-	}
-	size, ok := parseContentLengthHeader(headers)
-	if !ok || size != 12345 {
-		t.Fatalf("parseContentLengthHeader() = (%d, %v), want (12345, true)", size, ok)
-	}
-}
-
 func TestHandleDownload_TabLocked(t *testing.T) {
 	stubDownloadHostResolution(t, func(ctx context.Context, network, host string) ([]net.IP, error) {
 		switch host {
@@ -457,20 +448,53 @@ func TestHandleDownload_RejectsURLOutsideAllowedDomains(t *testing.T) {
 // M12 regression: status mapping is driven by errors.Is on the bridge
 // sentinels, surviving arbitrary extra wrapping — not by message substrings.
 func TestDownloadErrorSentinelsClassifyThroughWrapping(t *testing.T) {
-	tooLarge := fmt.Errorf("navigate to download URL: %w",
-		fmt.Errorf("%w: received 10 bytes, max 5", bridge.ErrDownloadTooLarge))
-	if !errors.Is(tooLarge, bridge.ErrDownloadTooLarge) {
-		t.Fatal("wrapped too-large error should match the sentinel")
+	for _, tc := range []struct {
+		err  error
+		want int
+	}{
+		{fmt.Errorf("ctx: %w", bridge.ErrDownloadTimeout), http.StatusGatewayTimeout},
+		{fmt.Errorf("ctx: %w", bridge.ErrPageDownloadsOff), http.StatusConflict},
+		{fmt.Errorf("ctx: %w", bridge.ErrTooManyRedirects), http.StatusUnprocessableEntity},
+	} {
+		rec := httptest.NewRecorder()
+		writeDownloadError(rec, tc.err, 30*time.Second)
+		if rec.Code != tc.want {
+			t.Errorf("%v: status = %d, want %d", tc.err, rec.Code, tc.want)
+		}
 	}
-	rec := httptest.NewRecorder()
-	if !writeDownloadGuardError(rec, tooLarge, 5) {
-		t.Fatal("guard writer should classify the sentinel error")
-	}
-	if rec.Code != http.StatusRequestEntityTooLarge {
-		t.Fatalf("status = %d, want 413", rec.Code)
-	}
+}
 
-	if !errors.Is(fmt.Errorf("ctx: %w", bridge.ErrDownloadTimeout), bridge.ErrDownloadTimeout) {
-		t.Fatal("wrapped timeout error should match the sentinel")
+// The download is answered with its handle, not its bytes.
+func TestHandleDownloadAnswersWithTheDownloadToCollect(t *testing.T) {
+	stubDownloadHostResolution(t, func(ctx context.Context, network, host string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("93.184.216.34")}, nil
+	})
+	h := New(&downloadPolicyBridge{}, &config.RuntimeConfig{AllowDownload: true}, nil, nil, nil)
+	w := httptest.NewRecorder()
+	h.HandleDownload(w, httptest.NewRequest("GET", "/download?url=https://example.com/file.txt", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		State    string `json:"state"`
+		Download struct {
+			GUID string `json:"guid"`
+		} `json:"download"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || body.Download.GUID != "g1" || body.State != bridge.PageDownloadInProgress {
+		t.Fatalf("body %s (%v), want the download g1 in progress", w.Body.String(), err)
+	}
+}
+
+// The forms that returned the bytes inline are gone; a caller still using one
+// is told where the bytes come from now.
+func TestHandleDownloadRefusesTheRemovedInlineForms(t *testing.T) {
+	h := New(&downloadPolicyBridge{}, &config.RuntimeConfig{AllowDownload: true}, nil, nil, nil)
+	for _, q := range []string{"&raw=true", "&output=file&path=x"} {
+		w := httptest.NewRecorder()
+		h.HandleDownload(w, httptest.NewRequest("GET", "/download?url=https://example.com/f"+q, nil))
+		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "/download/content") {
+			t.Errorf("%s: status %d %s, want 400 naming /download/content", q, w.Code, w.Body.String())
+		}
 	}
 }
