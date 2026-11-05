@@ -78,7 +78,8 @@ func collectDownload(client *http.Client, base, token, tabID, guid string, deadl
 	printSaved(dst, int(n))
 	// A personal browser also keeps a page's download under its own name; a
 	// file named for its guid is pinchtab's working copy.
-	if saved, _ := dl["filePath"].(string); saved != "" && !strings.HasPrefix(filepath.Base(saved), guid) {
+	fromURL, _ := dl["fromUrl"].(bool)
+	if saved, _ := dl["filePath"].(string); saved != "" && !fromURL && !strings.HasPrefix(filepath.Base(saved), guid) {
 		output.Value("The browser also saved it as " + saved)
 	}
 }

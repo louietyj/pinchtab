@@ -51,13 +51,13 @@ type PageDownload struct {
 	FilePath      string    `json:"filePath,omitempty"`
 	Error         string    `json:"error,omitempty"`
 	Started       time.Time `json:"started"`
+	// FromURL marks a `download <url>`: collected only by its guid, never moved
+	// into ~/Downloads, and deleted once copied back.
+	FromURL bool `json:"fromUrl,omitempty"`
 
 	frameID string
 	seq     uint64
 	claimed bool
-	// fromURL marks a `download <url>`: collected only by its guid, never moved
-	// into ~/Downloads, and deleted once copied back.
-	fromURL bool
 }
 
 type pageDownloads struct {
@@ -113,9 +113,9 @@ func (d *pageDownloads) begin(ev *browser.EventDownloadWillBegin) {
 		Started:  time.Now(),
 		frameID:  string(ev.FrameID),
 		seq:      d.seq,
-		fromURL:  d.urlFrames[string(ev.FrameID)],
+		FromURL:  d.urlFrames[string(ev.FrameID)],
 	}
-	pd.claimed = pd.fromURL
+	pd.claimed = pd.FromURL
 	d.byGUID[ev.GUID] = pd
 	d.order = append(d.order, pd)
 	if len(d.order) > pageDownloadsKeep {
@@ -141,7 +141,7 @@ func (d *pageDownloads) progress(ev *browser.EventDownloadProgress) (overCap boo
 	case browser.DownloadProgressStateCompleted:
 		pd.State = PageDownloadCompleted
 		pd.FilePath = ev.FilePath
-		if !pd.fromURL && d.moveTo != "" && d.stageDir != "" && filepath.Dir(ev.FilePath) == filepath.Clean(d.stageDir) {
+		if !pd.FromURL && d.moveTo != "" && d.stageDir != "" && filepath.Dir(ev.FilePath) == filepath.Clean(d.stageDir) {
 			if moved, err := moveUnique(ev.FilePath, d.moveTo, pd.Filename); err == nil {
 				pd.FilePath = moved
 			} else {
@@ -575,7 +575,7 @@ func (b *Bridge) CopyPageDownload(tabCtx context.Context, pd *PageDownload, w io
 		if statErr == nil && st.Size() == pd.ReceivedBytes {
 			n, err := io.Copy(w, f)
 			_ = f.Close()
-			if err == nil && pd.fromURL {
+			if err == nil && pd.FromURL {
 				_ = os.Remove(pd.FilePath)
 			}
 			return n, err
