@@ -563,6 +563,16 @@ func (b *Bridge) RemoveRouteRule(tabID, pattern string) (int, error) {
 	return b.routeMgr.Remove(tabHandle, resolvedID, pattern)
 }
 
+// SetResourceBlocking binds to the tab's own context, as route rules do: its
+// listener must outlive the request that set it.
+func (b *Bridge) SetResourceBlocking(tabID string, rb ResourceBlocking) error {
+	tabHandle, resolvedID, err := b.TabContext(tabID)
+	if err != nil {
+		return err
+	}
+	return b.routeMgr.SetResourceBlocking(tabHandle, resolvedID, rb)
+}
+
 func (b *Bridge) ListRouteRules(tabID string) ([]RouteRule, error) {
 	if b.routeMgr == nil {
 		return nil, fmt.Errorf("route manager not initialized")

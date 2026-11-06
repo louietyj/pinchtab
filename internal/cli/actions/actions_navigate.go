@@ -352,6 +352,9 @@ func buildNavigateRequest(url string, cmd *cobra.Command) navigateRequest {
 	if v, _ := cmd.Flags().GetBool("block-images"); v {
 		body["blockImages"] = true
 	}
+	if v, _ := cmd.Flags().GetBool("block-media"); v {
+		body["blockMedia"] = true
+	}
 	if v, _ := cmd.Flags().GetBool("block-ads"); v {
 		body["blockAds"] = true
 	}

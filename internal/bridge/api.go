@@ -74,6 +74,7 @@ type BridgeAPI interface {
 	AddRouteRule(tabID string, rule RouteRule) error
 	RemoveRouteRule(tabID, pattern string) (int, error)
 	ListRouteRules(tabID string) ([]RouteRule, error)
+	SetResourceBlocking(tabID string, rb ResourceBlocking) error
 
 	GetDialogManager() *DialogManager
 

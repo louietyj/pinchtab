@@ -149,9 +149,11 @@ func (rm *RouteManager) dispatch(listenCtx context.Context, tabID string, e *fet
 	}
 }
 
-// match looks for the first rule matching url + resourceType + method. The
-// third return value (hasRules) is true iff the tab has any rules at all —
-// callers use it to skip dispatch entirely during teardown windows.
+// match looks for the first rule matching url + resourceType + method; a
+// blocked resource type (SetResourceBlocking) matches as an abort ahead of
+// every rule. The third return value (hasRules) is true iff the tab has any
+// rules or blocked types — callers use it to skip dispatch entirely during
+// teardown windows.
 //
 // Method semantics:
 //
@@ -168,8 +170,11 @@ func (rm *RouteManager) match(tabID, url, resourceType, method string) (rule Rou
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 	state := rm.perTab[tabID]
-	if state == nil || len(state.rules) == 0 {
+	if state == nil || (len(state.rules) == 0 && len(state.blockTypes) == 0) {
 		return RouteRule{}, false, false
+	}
+	if state.blocksType(resourceType) {
+		return RouteRule{Action: RouteActionAbort}, true, true
 	}
 	const optionsMethod = "OPTIONS"
 	for _, r := range state.rules {

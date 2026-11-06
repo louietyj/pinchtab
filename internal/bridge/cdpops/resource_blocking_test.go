@@ -20,13 +20,3 @@ func TestAbsoluteURLPatterns(t *testing.T) {
 		}
 	}
 }
-
-func TestEveryBlockListGlobBecomesAbsolute(t *testing.T) {
-	for _, glob := range MediaBlockPatterns {
-		for _, p := range absoluteURLPatterns(glob) {
-			if len(p) < 6 || p[:6] != "*://*:" {
-				t.Errorf("%q -> %q is not an absolute pattern", glob, p)
-			}
-		}
-	}
-}

@@ -12,8 +12,6 @@ import (
 const TargetTypePage = bridgecdpops.TargetTypePage
 
 var (
-	ImageBlockPatterns  = bridgecdpops.ImageBlockPatterns
-	MediaBlockPatterns  = bridgecdpops.MediaBlockPatterns
 	ErrTooManyRedirects = bridgecdpops.ErrTooManyRedirects
 	ErrElementOccluded  = bridgecdpops.ErrElementOccluded
 	ErrElementHidden    = bridgecdpops.ErrElementHidden
@@ -45,10 +43,6 @@ type DownloadNavigationError = bridgecdpops.DownloadNavigationError
 
 func DocumentContentType(ctx context.Context) (string, error) {
 	return bridgecdpops.DocumentContentType(ctx)
-}
-
-func SetResourceBlocking(ctx context.Context, patterns []string) error {
-	return bridgecdpops.SetResourceBlocking(ctx, patterns)
 }
 
 // ScrollIntoViewAndGetBox scrolls the element into view and reports the box it

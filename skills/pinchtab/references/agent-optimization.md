@@ -66,6 +66,8 @@ e12:textbox val="updated" [~]    # changed
 ## Faster Page Loads
 
 Use `--block-images` on navigation for read-heavy tasks where images are not needed.
+`--block-media` also blocks audio and video; a page with a streaming player can
+otherwise pull tens of MB in its first few seconds.
 
 ```bash
 pinchtab nav <url> --block-images --snap

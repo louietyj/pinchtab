@@ -45,6 +45,10 @@ func (b *pausedTabBridge) Navigate(ctx context.Context, url string, params bridg
 	return b.handoffRecordingBridge.Navigate(ctx, url, params)
 }
 
+func (b *pausedTabBridge) SetResourceBlocking(string, bridge.ResourceBlocking) error {
+	return nil
+}
+
 func (b *pausedTabBridge) Reload(context.Context) error {
 	b.reloads++
 	b.pageURL = "https://pinchtab.com/reloaded"

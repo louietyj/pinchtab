@@ -80,6 +80,7 @@ pinchtab nav <url> --tab <id>           # Reuse a specific tab
 pinchtab nav <url> --new-tab            # Explicitly force a new tab
 pinchtab nav <url> --timeout 90          # Allow up to 90s (maximum 120s)
 pinchtab nav <url> --block-images       # Block images for this navigation
+pinchtab nav <url> --block-media        # Block images, audio and video, streamed video too
 pinchtab nav <url> --block-ads          # Block ads for this navigation
 pinchtab nav <url> --snap               # Navigate and output interactive snapshot
 pinchtab nav <url> --text               # Navigate and output page text

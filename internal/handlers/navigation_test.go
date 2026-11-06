@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http/httptest"
 	"net/netip"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -328,6 +329,33 @@ func TestHandleNavigate_RejectsUnsupportedSchemeForExistingTab(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "invalid URL scheme") {
 		t.Fatalf("expected invalid URL scheme error, got %s", w.Body.String())
+	}
+}
+
+func TestHandleNavigateAppliesResourceBlocking(t *testing.T) {
+	for _, tc := range []struct {
+		body string
+		want bridge.ResourceBlocking
+	}{
+		{`"blockMedia":true`, bridge.ResourceBlocking{Images: true, Media: true}},
+		{`"blockImages":true`, bridge.ResourceBlocking{Images: true}},
+		// An existing tab is reset, so the last navigate's blocking doesn't linger.
+		{`"blockImages":false`, bridge.ResourceBlocking{}},
+	} {
+		m := &mockBridge{navigateResult: &bridge.NavigateResult{URL: "https://pinchtab.com"}}
+		h := New(m, &config.RuntimeConfig{}, nil, nil, nil)
+		req := httptest.NewRequest("POST", "/navigate", bytes.NewReader([]byte(
+			`{"tabId":"tab1","url":"https://pinchtab.com",`+tc.body+`}`,
+		)))
+		w := httptest.NewRecorder()
+		h.HandleNavigate(w, req)
+
+		if w.Code != 200 {
+			t.Fatalf("%s: status = %d: %s", tc.body, w.Code, w.Body.String())
+		}
+		if len(m.blocking) != 1 || !reflect.DeepEqual(m.blocking[0], tc.want) {
+			t.Errorf("%s: blocking = %+v, want %+v", tc.body, m.blocking, tc.want)
+		}
 	}
 }
 

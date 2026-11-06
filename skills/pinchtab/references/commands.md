@@ -61,6 +61,7 @@ pinchtab nav https://pinchtab.com --tab <tabId>
 | `--snap` | Navigate and print an interactive compact snapshot |
 | `--timeout <seconds>` | Override the navigation timeout (maximum 120 seconds) |
 | `--block-images` | Block image loading (faster, fewer tokens) |
+| `--block-media` | Block images, audio and video, including streamed video (least traffic) |
 | `--block-ads` | Block ads for this navigation |
 | `--print-tab-id` | Print only the tab ID |
 

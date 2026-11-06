@@ -503,6 +503,10 @@ func (m *MockBridge) RemoveRouteRule(tabID, pattern string) (int, error) { retur
 
 func (m *MockBridge) ListRouteRules(tabID string) ([]bridge.RouteRule, error) { return nil, nil }
 
+func (m *MockBridge) SetResourceBlocking(string, bridge.ResourceBlocking) error {
+	return nil
+}
+
 func (m *MockBridge) GetDialogManager() *bridge.DialogManager {
 	return bridge.NewDialogManager()
 }

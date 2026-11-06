@@ -293,9 +293,7 @@ func (tm *TabManager) createTab(url, browserContextID string) (string, context.C
 		}
 	}
 
-	if blockPatterns := tm.tabBlockPatterns(); len(blockPatterns) > 0 {
-		_ = SetResourceBlocking(ctx, blockPatterns)
-	}
+	tm.applyConfigBlocking(ctx, tabID)
 
 	// Capture must be enabled before navigation: a page can throw from its first
 	// synchronous script, before Navigate returns and before any later listener

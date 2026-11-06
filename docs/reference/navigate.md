@@ -28,6 +28,7 @@ Hidden aliases: `goto`, `navigate`, `open`.
 | `--tab` | Reuse existing tab |
 | `--new-tab` | Force new tab |
 | `--block-images` | Block image loading |
+| `--block-media` | Block images, audio and video, including streamed video |
 | `--block-ads` | Block ads |
 | `--dismiss-banners` | After landing, click a visible cookie/consent dismissal button or remove obvious overlays |
 | `--timeout` | Navigation timeout in seconds (max 120); overrides the 30s new-tab ceiling |
@@ -46,6 +47,7 @@ TAB=$(pinchtab nav https://example.com)       # Capture tab ID for reuse
 pinchtab nav https://other.com --tab "$TAB"   # Reuse tab
 pinchtab nav https://example.com --new-tab    # Force another tab
 pinchtab nav https://example.com --block-images  # Skip images
+pinchtab nav https://example.com --block-media   # Skip images, audio and video
 ```
 
 ## API Body Fields
@@ -56,7 +58,7 @@ pinchtab nav https://example.com --block-images  # Skip images
 | `tabId` | Reuse existing tab |
 | `newTab` | Force new tab |
 | `blockImages` | Block image loading |
-| `blockMedia` | Block media loading |
+| `blockMedia` | Block images, audio and video, including streamed video |
 | `blockAds` | Block ads |
 | `dismissBanners` | Dismiss cookie/consent banners after landing |
 | `timeout` | Navigation timeout in seconds (capped at 120) |
@@ -67,6 +69,15 @@ pinchtab nav https://example.com --block-images  # Skip images
 | `browser` | Browser to route the request to |
 
 `GET /navigate?url=...` accepts the same fields as query parameters, except `blockImages`, `blockMedia` and `blockAds`.
+
+## Resource blocking
+
+Blocking lasts until the tab's next navigate, which sets it afresh.
+
+- `blockImages` fails every request Chrome classifies as an image, whatever its URL: `<img>`, `srcset`, CSS backgrounds, video posters.
+- `blockMedia` also fails what `<video>` and `<audio>` load themselves, and removes `MediaSource` from the page. Streaming players (HLS, DASH, YouTube) fetch video as ordinary XHR and feed it to a `MediaSource`, so nothing about those requests marks them as video; without `MediaSource` they cannot stream. A page can see that `MediaSource` is missing, and its player shows an error instead of the video.
+- `blockAds` blocks known ad and tracker hosts by URL.
+- Cross-site iframes run in their own process and are not covered: an embedded player or ad frame still loads its own images and video.
 
 ## Behavior
 

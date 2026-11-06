@@ -242,6 +242,7 @@ func configureBrowserFlags() {
 	navCmd.Flags().Bool("new-tab", false, "Open in new tab")
 	navCmd.Flags().Float64("timeout", 0, "Navigation timeout in seconds (max 120); overrides the 30s new-tab ceiling")
 	navCmd.Flags().Bool("block-images", false, "Block image loading")
+	navCmd.Flags().Bool("block-media", false, "Block images, audio and video, including streamed video")
 	navCmd.Flags().Bool("block-ads", false, "Block ads")
 	addPostActionFlags(navCmd, "navigation", true)
 	navCmd.Flags().Bool("dismiss-banners", false, "After landing, click any visible cookie/consent dismissal button or remove obvious overlay containers")

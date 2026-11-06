@@ -40,6 +40,7 @@ type mockBridge struct {
 	navigateResult    *bridge.NavigateResult
 	navigateErr       error
 	navigateFn        func(context.Context, string, bridge.NavigateParams) (*bridge.NavigateResult, error)
+	blocking          []bridge.ResourceBlocking
 	closedTabs        []string
 	runningBrowser    string
 	createTabFn       func(string) (string, context.Context, context.CancelFunc, error)
@@ -148,6 +149,11 @@ func (m *mockBridge) RestartBrowser(cfg *config.RuntimeConfig) error {
 func (m *mockBridge) GetRefCache(tabID string) *bridge.RefCache        { return nil }
 func (m *mockBridge) SetRefCache(tabID string, cache *bridge.RefCache) {}
 func (m *mockBridge) DeleteRefCache(tabID string)                      {}
+
+func (m *mockBridge) SetResourceBlocking(_ string, rb bridge.ResourceBlocking) error {
+	m.blocking = append(m.blocking, rb)
+	return nil
+}
 
 func (m *mockBridge) Navigate(ctx context.Context, url string, params bridge.NavigateParams) (*bridge.NavigateResult, error) {
 	m.navigateParams = append(m.navigateParams, params)

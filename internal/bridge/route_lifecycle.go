@@ -8,6 +8,8 @@ import (
 	"sync"
 
 	"github.com/chromedp/cdproto/fetch"
+	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 )
 
@@ -36,6 +38,15 @@ type tabRouteState struct {
 	listenCtx    context.Context
 	listenCancel context.CancelFunc
 	fetchEnabled bool
+
+	// blockTypes are resource types failed ahead of any rule (see
+	// SetResourceBlocking). They are not routes: List and Remove leave them be.
+	blockTypes []network.ResourceType
+	// narrowFetch is set while Fetch intercepts only blockTypes, so the first
+	// rule must widen it to every request.
+	narrowFetch bool
+	// mseScriptID hides Media Source Extensions while media is blocked.
+	mseScriptID page.ScriptIdentifier
 }
 
 // NewRouteManager constructs a RouteManager. allowedDomainsFn, when non-nil, is
@@ -151,6 +162,7 @@ func (rm *RouteManager) AddRule(ctx context.Context, tabID string, rule RouteRul
 	priorListenCtx := state.listenCtx
 	priorListenCancel := state.listenCancel
 	priorFetchEnabled := state.fetchEnabled
+	priorNarrowFetch := state.narrowFetch
 
 	replaced := false
 	for i, r := range state.rules {
@@ -172,7 +184,7 @@ func (rm *RouteManager) AddRule(ctx context.Context, tabID string, rule RouteRul
 	}
 
 	needRegister := state.listenCancel == nil
-	needEnable := !state.fetchEnabled
+	needEnable := !state.fetchEnabled || state.narrowFetch
 	// Snapshot the (set-once) proxy-auth gate under the lock; invoked after unlock
 	// so the callback never runs while holding rm.mu.
 	authFn := rm.proxyAuthActive
@@ -184,6 +196,7 @@ func (rm *RouteManager) AddRule(ctx context.Context, tabID string, rule RouteRul
 		// fetchEnabled=true and won't redundantly re-enable Fetch. Rolled back
 		// below (via rollbackAddRule) if fetch.Enable fails.
 		state.fetchEnabled = true
+		state.narrowFetch = false
 	}
 	listenCtx := state.listenCtx
 	rm.mu.Unlock()
@@ -204,7 +217,7 @@ func (rm *RouteManager) AddRule(ctx context.Context, tabID string, rule RouteRul
 				Do(c)
 		})); err != nil {
 			rm.suppressPause(tabID, false)
-			rm.rollbackAddRule(tabID, isNewState, needRegister, priorRules, priorListenCtx, priorListenCancel, priorFetchEnabled)
+			rm.rollbackAddRule(tabID, isNewState, needRegister, priorRules, priorListenCtx, priorListenCancel, priorFetchEnabled, priorNarrowFetch)
 			return fmt.Errorf("fetch.enable: %w", err)
 		}
 	}
@@ -214,7 +227,7 @@ func (rm *RouteManager) AddRule(ctx context.Context, tabID string, rule RouteRul
 // rollbackAddRule restores the per-tab state captured before a failed AddRule.
 // If we registered a fresh listener for this call, its context is cancelled so
 // the no-op listener handle is released.
-func (rm *RouteManager) rollbackAddRule(tabID string, isNewState, registeredListener bool, priorRules []RouteRule, priorListenCtx context.Context, priorListenCancel context.CancelFunc, priorFetchEnabled bool) {
+func (rm *RouteManager) rollbackAddRule(tabID string, isNewState, registeredListener bool, priorRules []RouteRule, priorListenCtx context.Context, priorListenCancel context.CancelFunc, priorFetchEnabled, priorNarrowFetch bool) {
 	rm.mu.Lock()
 	s := rm.perTab[tabID]
 	if s == nil {
@@ -229,6 +242,7 @@ func (rm *RouteManager) rollbackAddRule(tabID string, isNewState, registeredList
 	}
 	s.rules = priorRules
 	s.fetchEnabled = priorFetchEnabled
+	s.narrowFetch = priorNarrowFetch
 	if isNewState && len(s.rules) == 0 {
 		delete(rm.perTab, tabID)
 	}
@@ -246,6 +260,7 @@ func (rm *RouteManager) Remove(ctx context.Context, tabID string, pattern string
 	if rm == nil {
 		return 0, fmt.Errorf("route manager not initialized")
 	}
+	proxyAuth := rm.proxyAuthOn()
 
 	rm.mu.Lock()
 	state := rm.perTab[tabID]
@@ -270,7 +285,14 @@ func (rm *RouteManager) Remove(ctx context.Context, tabID string, pattern string
 		state.rules = kept
 	}
 
-	teardown := len(state.rules) == 0
+	noRules := len(state.rules) == 0
+	teardown := noRules && len(state.blockTypes) == 0
+	// Blocked types outlive the rules: narrow Fetch back to them.
+	var narrow []*fetch.RequestPattern
+	if noRules && !teardown && state.fetchEnabled && !state.narrowFetch && !proxyAuth {
+		narrow = blockedTypePatterns(state.blockTypes, false)
+		state.narrowFetch = true
+	}
 	wasEnabled := state.fetchEnabled
 	cancel := state.listenCancel
 	if teardown {
@@ -281,34 +303,47 @@ func (rm *RouteManager) Remove(ctx context.Context, tabID string, pattern string
 	}
 	rm.mu.Unlock()
 
-	if teardown {
-		if wasEnabled {
-			if rm.proxyAuthOn() {
-				// Hand the Fetch domain back to proxy auth instead of
-				// disabling it (which would kill auth handling too).
-				// Unsuppress first so no paused request goes unanswered.
-				rm.suppressPause(tabID, false)
-				if err := chromedp.Run(ctx, chromedp.ActionFunc(func(c context.Context) error {
-					return fetch.Enable().WithHandleAuthRequests(true).Do(c)
-				})); err != nil {
-					slog.Debug("fetch re-enable for proxy auth failed during route teardown", "tabId", tabID, "err", err)
-				}
-			} else {
-				if err := chromedp.Run(ctx, chromedp.ActionFunc(func(c context.Context) error {
-					return fetch.Disable().Do(c)
-				})); err != nil {
-					slog.Debug("fetch.disable failed during route teardown", "tabId", tabID, "err", err)
-				}
-				rm.suppressPause(tabID, false)
-			}
-		} else {
-			rm.suppressPause(tabID, false)
-		}
-		if cancel != nil {
-			cancel()
+	if narrow != nil {
+		if err := chromedp.Run(ctx, chromedp.ActionFunc(func(c context.Context) error {
+			return fetch.Enable().WithPatterns(narrow).Do(c)
+		})); err != nil {
+			slog.Debug("fetch narrow to blocked types failed during route removal", "tabId", tabID, "err", err)
 		}
 	}
+	if teardown {
+		rm.releaseFetch(ctx, tabID, wasEnabled, cancel)
+	}
 	return removed, nil
+}
+
+// releaseFetch gives up the tab's Fetch domain once nothing here needs it:
+// back to proxy auth when that is configured, otherwise disabled.
+func (rm *RouteManager) releaseFetch(ctx context.Context, tabID string, wasEnabled bool, cancel context.CancelFunc) {
+	if wasEnabled {
+		if rm.proxyAuthOn() {
+			// Hand the Fetch domain back to proxy auth instead of
+			// disabling it (which would kill auth handling too).
+			// Unsuppress first so no paused request goes unanswered.
+			rm.suppressPause(tabID, false)
+			if err := chromedp.Run(ctx, chromedp.ActionFunc(func(c context.Context) error {
+				return fetch.Enable().WithHandleAuthRequests(true).Do(c)
+			})); err != nil {
+				slog.Debug("fetch re-enable for proxy auth failed during route teardown", "tabId", tabID, "err", err)
+			}
+		} else {
+			if err := chromedp.Run(ctx, chromedp.ActionFunc(func(c context.Context) error {
+				return fetch.Disable().Do(c)
+			})); err != nil {
+				slog.Debug("fetch.disable failed during route teardown", "tabId", tabID, "err", err)
+			}
+			rm.suppressPause(tabID, false)
+		}
+	} else {
+		rm.suppressPause(tabID, false)
+	}
+	if cancel != nil {
+		cancel()
+	}
 }
 
 // RemoveTab drops all rule state for a tab without issuing CDP calls. It is

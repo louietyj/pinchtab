@@ -20,20 +20,18 @@ func (tm *TabManager) browserGuardsActive() bool {
 	return tm.guardActive
 }
 
-func (tm *TabManager) tabBlockPatterns() []string {
+// applyConfigBlocking gives a new tab the configured resource blocking.
+func (tm *TabManager) applyConfigBlocking(ctx context.Context, tabID string) {
 	if tm == nil || tm.config == nil {
-		return nil
+		return
 	}
-	var blockPatterns []string
-	if tm.config.BlockAds {
-		blockPatterns = CombineBlockPatterns(blockPatterns, AdBlockPatterns)
+	rb := ResourceBlockingFor(tm.config.BlockAds, tm.config.BlockImages, tm.config.BlockMedia)
+	if rb.IsZero() {
+		return
 	}
-	if tm.config.BlockMedia {
-		blockPatterns = CombineBlockPatterns(blockPatterns, MediaBlockPatterns)
-	} else if tm.config.BlockImages {
-		blockPatterns = CombineBlockPatterns(blockPatterns, ImageBlockPatterns)
+	if err := tm.routeMgr.SetResourceBlocking(ctx, tabID, rb); err != nil {
+		slog.Warn("resource blocking setup failed", "tabId", tabID, "err", err)
 	}
-	return blockPatterns
 }
 
 func (tm *TabManager) setupManagedTarget(ctx context.Context, tabID, rawCDPID string) (bool, error) {
@@ -51,11 +49,7 @@ func (tm *TabManager) setupManagedTarget(ctx context.Context, tabID, rawCDPID st
 			return false, err
 		}
 	}
-	if blockPatterns := tm.tabBlockPatterns(); len(blockPatterns) > 0 {
-		if err := SetResourceBlocking(ctx, blockPatterns); err != nil {
-			slog.Warn("resource blocking setup failed", "tabId", tabID, "err", err)
-		}
-	}
+	tm.applyConfigBlocking(ctx, tabID)
 	if tm.netMonitor != nil {
 		if err := tm.netMonitor.StartCapture(ctx, tabID); err != nil {
 			slog.Warn("eager network capture failed", "tab", tabID, "err", err)

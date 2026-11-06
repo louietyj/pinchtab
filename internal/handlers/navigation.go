@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -345,9 +346,9 @@ func (h *Handlers) tryStaticFirstNavigate(w http.ResponseWriter, r *http.Request
 	return outcome
 }
 
-// navigateBlockPatterns resolves the resource-blocking patterns for a navigate,
-// applying any per-request block overrides over the effective-config defaults.
-func navigateBlockPatterns(req navigateRequest, effectiveCfg *config.RuntimeConfig) []string {
+// navigateBlocking resolves the resource blocking for a navigate, applying any
+// per-request block overrides over the effective-config defaults.
+func navigateBlocking(req navigateRequest, effectiveCfg *config.RuntimeConfig) bridge.ResourceBlocking {
 	blockAds := effectiveCfg.BlockAds
 	if req.BlockAds != nil {
 		blockAds = *req.BlockAds
@@ -360,17 +361,7 @@ func navigateBlockPatterns(req navigateRequest, effectiveCfg *config.RuntimeConf
 	if req.BlockImages != nil {
 		blockImages = *req.BlockImages
 	}
-
-	var blockPatterns []string
-	if blockAds {
-		blockPatterns = bridge.CombineBlockPatterns(blockPatterns, bridge.AdBlockPatterns)
-	}
-	if blockMedia {
-		blockPatterns = bridge.CombineBlockPatterns(blockPatterns, bridge.MediaBlockPatterns)
-	} else if blockImages {
-		blockPatterns = bridge.CombineBlockPatterns(blockPatterns, bridge.ImageBlockPatterns)
-	}
-	return blockPatterns
+	return bridge.ResourceBlockingFor(blockAds, blockImages, blockMedia)
 }
 
 // executeNavigate computes the per-request timeouts and resource-block patterns,
@@ -393,7 +384,7 @@ func (h *Handlers) executeNavigate(w http.ResponseWriter, r *http.Request, req n
 		navTimeout = time.Duration(req.Timeout * float64(time.Second))
 	}
 
-	blockPatterns := navigateBlockPatterns(req, effectiveCfg)
+	blocking := navigateBlocking(req, effectiveCfg)
 
 	newTabOpts := func() navigateBrowserOptions {
 		// A brand-new tab that can't load within the ceiling is far more often a
@@ -412,7 +403,7 @@ func (h *Handlers) executeNavigate(w http.ResponseWriter, r *http.Request, req n
 			TitleWait:      titleWait,
 			Target:         targets.target,
 			TrustedCIDRs:   targets.trustedCIDRs,
-			BlockPatterns:  blockPatterns,
+			Blocking:       blocking,
 			DismissBanners: req.DismissBanners,
 			Route:          navRoute,
 			MaxRedirects:   effectiveCfg.MaxRedirects,
@@ -464,7 +455,7 @@ func (h *Handlers) executeNavigate(w http.ResponseWriter, r *http.Request, req n
 		dispatchOnly:   req.DispatchOnly,
 		target:         targets.target,
 		trustedCIDRs:   targets.trustedCIDRs,
-		blockPatterns:  blockPatterns,
+		blocking:       blocking,
 		solvedBefore:   solvedBefore,
 	})
 }
@@ -488,7 +479,7 @@ type navExec struct {
 	dispatchOnly   bool
 	target         *validatedNavigateTarget
 	trustedCIDRs   []*net.IPNet
-	blockPatterns  []string
+	blocking       bridge.ResourceBlocking
 	isNewTab       bool
 	// solvedBefore is a solve that finished on the tab before this nav.
 	solvedBefore autoSolveOutcome
@@ -505,10 +496,10 @@ func (h *Handlers) runNavigate(w http.ResponseWriter, r *http.Request, ex navExe
 		httpx.Error(w, 500, fmt.Errorf("navigation guard: %w", err))
 		return
 	}
-	if len(ex.blockPatterns) > 0 {
-		_ = bridge.SetResourceBlocking(ex.ctx, ex.blockPatterns)
-	} else if !ex.isNewTab {
-		_ = bridge.SetResourceBlocking(ex.ctx, nil)
+	if !ex.blocking.IsZero() || !ex.isNewTab {
+		if err := h.Bridge.SetResourceBlocking(ex.tabID, ex.blocking); err != nil {
+			slog.Warn("resource blocking failed", "tabId", ex.tabID, "err", err)
+		}
 	}
 
 	navResult, navErr := h.Bridge.Navigate(ex.ctx, ex.url, bridge.NavigateParams{
@@ -661,7 +652,7 @@ type navigateBrowserOptions struct {
 	TitleWait      time.Duration
 	Target         *validatedNavigateTarget
 	TrustedCIDRs   []*net.IPNet
-	BlockPatterns  []string
+	Blocking       bridge.ResourceBlocking
 	DismissBanners bool
 	Route          *browserops.RouteMetadata
 	MaxRedirects   int
@@ -708,7 +699,7 @@ func (h *Handlers) navigateNewTabBrowser(w http.ResponseWriter, r *http.Request,
 		dismissBanners: opts.DismissBanners,
 		target:         opts.Target,
 		trustedCIDRs:   opts.TrustedCIDRs,
-		blockPatterns:  opts.BlockPatterns,
+		blocking:       opts.Blocking,
 		isNewTab:       true,
 	})
 }

@@ -94,6 +94,9 @@ func (b *scopedCurrentTabBridge) AvailableActions() []string             { retur
 func (b *scopedCurrentTabBridge) TabLockInfo(string) *bridge.LockInfo    { return nil }
 func (b *scopedCurrentTabBridge) DeleteRefCache(string)                  {}
 func (b *scopedCurrentTabBridge) NetworkMonitor() *bridge.NetworkMonitor { return nil }
+func (b *scopedCurrentTabBridge) SetResourceBlocking(string, bridge.ResourceBlocking) error {
+	return nil
+}
 
 func (b *scopedCurrentTabBridge) CallFunctionOnNode(ctx context.Context, backendNodeID int64, functionDecl string, args []map[string]any, result any) error {
 	return fmt.Errorf("not implemented")
