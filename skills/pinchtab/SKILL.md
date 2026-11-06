@@ -18,12 +18,12 @@ reference is a line you can put in one.
 
 ```bash
 pinchtab execute-batch <<'EOF'
-nav https://example.com --block-images
+nav https://example.com
 EOF
 ```
 
 ```
-1 OK nav https://example.com --block-images
+1 OK nav https://example.com
 shot 0001 in /root/pinchtab-shots/, also latest-small.jpg
 ```
 
