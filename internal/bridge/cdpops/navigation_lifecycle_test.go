@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chromedp/cdproto/browser"
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
@@ -51,30 +52,47 @@ func TestNavigationLifecycleWaiterAcceptsSameDocumentNavigation(t *testing.T) {
 }
 
 func TestNavigationLifecycleWaiterReportsDownload(t *testing.T) {
+	defer func(g time.Duration) { downloadEventGrace = g }(downloadEventGrace)
+	downloadEventGrace = 10 * time.Millisecond
+
 	for _, tc := range []struct {
-		name     string
-		mime     string
-		headers  network.Headers
-		commit   bool
-		download bool
+		name        string
+		mime        string
+		status      int64
+		headers     network.Headers
+		commit      bool
+		willBegin   bool
+		errorCommit bool
+		download    bool
 	}{
-		{"attachment", "text/plain", network.Headers{"content-disposition": "attachment; filename=x.txt"}, false, true},
-		{"unrenderable type", "application/zip", nil, false, true},
-		{"superseded html", "text/html", nil, false, false},
-		{"failed after commit", "application/zip", nil, true, false},
+		{"attachment", "text/plain", 200, network.Headers{"content-disposition": "attachment; filename=x.txt"}, false, false, false, true},
+		{"unrenderable type", "application/zip", 200, nil, false, false, false, true},
+		{"chrome says download", "text/plain", 200, nil, false, true, false, true},
+		{"superseded html", "text/html", 200, nil, false, false, false, false},
+		{"failed after commit", "application/zip", 200, nil, true, false, false, false},
+		{"empty 403 body", "text/plain", 403, nil, false, false, false, false},
+		{"dropped, then error page commits", "text/plain", 200, nil, false, false, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := &navigationLifecycleWaiter{mainFrame: "main", ready: make(chan struct{})}
+			defer w.close()
 			w.onEvent(&network.EventResponseReceived{
 				RequestID: "doc", FrameID: "main", Type: network.ResourceTypeDocument,
-				Response: &network.Response{MimeType: tc.mime, Headers: tc.headers},
+				Response: &network.Response{MimeType: tc.mime, Status: tc.status, Headers: tc.headers},
 			})
 			if tc.commit {
 				w.onEvent(&page.EventFrameNavigated{Frame: &cdp.Frame{ID: "main"}})
 			}
+			if tc.willBegin {
+				w.onEvent(&browser.EventDownloadWillBegin{FrameID: "main", GUID: "g"})
+			}
 			w.onEvent(&network.EventLoadingFailed{RequestID: "doc", ErrorText: "net::ERR_ABORTED", Canceled: true})
+			if tc.errorCommit {
+				w.onEvent(&page.EventFrameNavigated{Frame: &cdp.Frame{ID: "main"}})
+				w.onEvent(&page.EventLifecycleEvent{FrameID: "main", Name: "DOMContentLoaded"})
+			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 			defer cancel()
 			err := w.wait(ctx)
 			var dlErr *DownloadNavigationError

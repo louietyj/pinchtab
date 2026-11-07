@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/chromedp/cdproto/browser"
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/fetch"
@@ -198,7 +199,9 @@ type navigationLifecycleWaiter struct {
 	lastEvent      string
 	docRequest     network.RequestID
 	docMIME        string
+	docStatus      int64
 	docAttachment  bool
+	docDropped     *time.Timer
 	downloadErr    error
 	ready          chan struct{}
 	readyOnce      sync.Once
@@ -229,6 +232,7 @@ func newNavigationLifecycleWaiter(ctx context.Context) (*navigationLifecycleWait
 	listenCtx, cancel := context.WithCancel(ctx)
 	w.cancel = cancel
 	chromedp.ListenTarget(listenCtx, w.onEvent)
+	chromedp.ListenBrowser(listenCtx, w.onEvent)
 	if err := chromedp.Run(ctx, chromedp.ActionFunc(func(execCtx context.Context) error {
 		return page.SetLifecycleEventsEnabled(true).Do(execCtx)
 	})); err != nil {
@@ -249,19 +253,27 @@ func (w *navigationLifecycleWaiter) onEvent(event any) {
 		}
 		w.docRequest = e.RequestID
 		w.docMIME = e.Response.MimeType
+		w.docStatus = e.Response.Status
 		w.docAttachment = isAttachment(e.Response.Headers)
+	case *browser.EventDownloadWillBegin:
+		if e.FrameID != w.mainFrame || w.navigationSeen {
+			return
+		}
+		w.downloadErr = &DownloadNavigationError{MIMEType: w.docMIME}
+		w.markReady()
 	case *network.EventLoadingFailed:
-		// A response dropped without ever committing went to Chrome's download
-		// manager, and no lifecycle event will follow. A dropped HTML response
-		// was superseded by another navigation instead.
-		if e.RequestID != w.docRequest || w.navigationSeen {
+		// Chrome also drops an empty 4xx body, then commits its error page. Guess
+		// a download only if neither that nor downloadWillBegin follows.
+		if e.RequestID != w.docRequest || w.navigationSeen || w.docDropped != nil {
 			return
 		}
 		if !w.docAttachment && (w.docMIME == "text/html" || w.docMIME == "application/xhtml+xml") {
 			return
 		}
-		w.downloadErr = &DownloadNavigationError{MIMEType: w.docMIME}
-		w.markReady()
+		if w.docStatus >= 400 {
+			return
+		}
+		w.docDropped = time.AfterFunc(downloadEventGrace, w.guessDownload)
 	case *page.EventFrameNavigated:
 		if e.Frame == nil || e.Frame.ParentID != "" {
 			return
@@ -297,6 +309,20 @@ func isAttachment(headers network.Headers) bool {
 	return false
 }
 
+// downloadEventGrace is how long a dropped document waits for Chrome's
+// downloadWillBegin or a commit before the waiter guesses.
+var downloadEventGrace = 2 * time.Second
+
+func (w *navigationLifecycleWaiter) guessDownload() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.navigationSeen || w.downloadErr != nil {
+		return
+	}
+	w.downloadErr = &DownloadNavigationError{MIMEType: w.docMIME}
+	w.markReady()
+}
+
 func (w *navigationLifecycleWaiter) markReady() {
 	w.readyOnce.Do(func() { close(w.ready) })
 }
@@ -321,6 +347,11 @@ func (w *navigationLifecycleWaiter) close() {
 	if w.cancel != nil {
 		w.cancel()
 	}
+	w.mu.Lock()
+	if w.docDropped != nil {
+		w.docDropped.Stop()
+	}
+	w.mu.Unlock()
 }
 
 func WaitForTitle(ctx context.Context, timeout time.Duration) (string, error) {
