@@ -278,22 +278,26 @@ const fireDataCallbacksJS = `function fire(sel,token){
 const hcaptchaInjectJS = `function(token,respKey){
   document.querySelectorAll('textarea[name="h-captcha-response"], textarea[name="g-recaptcha-response"]').forEach(function(el){el.value=token;});
   try{ if(window.hcaptcha){ hcaptcha.getResponse=function(){return token;}; hcaptcha.getRespKey=function(){return respKey;}; } }catch(e){}
+  // recaptchacompat: a site rendering through the grecaptcha hook reads it back the same way.
+  try{ if(window.grecaptcha&&!window.___grecaptcha_cfg){ grecaptcha.getResponse=function(){return token;}; } }catch(e){}
   var cbs=[];
   function add(cb){
     if(typeof cb==='string'){ cb=window[cb]; }
     if(typeof cb==='function'&&cbs.indexOf(cb)<0){ cbs.push(cb); }
   }
   (window.__ptHcaptcha||[]).forEach(add);
-  document.querySelectorAll('.h-captcha[data-callback]').forEach(function(el){ add(el.getAttribute('data-callback')); });
+  document.querySelectorAll('.h-captcha[data-callback], .g-recaptcha[data-callback]').forEach(function(el){ add(el.getAttribute('data-callback')); });
   cbs.forEach(function(cb){ try{ cb(token); }catch(e){} });
   return true;
 }`
 
 const turnstileInjectJS = `function(token){
   ` + fireDataCallbacksJS + `
-  document.querySelectorAll('input[name="cf-turnstile-response"], textarea[name="cf-turnstile-response"]').forEach(function(el){el.value=token;});
+  document.querySelectorAll('input[name="cf-turnstile-response"], textarea[name="cf-turnstile-response"], .g-recaptcha [name="g-recaptcha-response"]').forEach(function(el){el.value=token;});
   try{ if(window.turnstile){ turnstile.getResponse=function(){return token;}; } }catch(e){}
-  fire('.cf-turnstile',token);
+  // compat=recaptcha: the site reads the grecaptcha shim and names its callback on .g-recaptcha.
+  try{ if(window.grecaptcha&&!window.___grecaptcha_cfg){ grecaptcha.getResponse=function(){return token;}; } }catch(e){}
+  fire('.cf-turnstile, .g-recaptcha',token);
   return true;
 }`
 

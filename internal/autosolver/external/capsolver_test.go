@@ -391,6 +391,26 @@ func TestDetectPairsTypeAndKeyFromSameElement(t *testing.T) {
 	}
 }
 
+// Other vendors' reCAPTCHA compatibility modes mount in a g-recaptcha div; a
+// reCAPTCHA task carrying their key is refused by both solvers.
+func TestDetectRecaptchaCompatModesByKey(t *testing.T) {
+	cases := []struct{ name, script, key, want string }{
+		// SF Superior Court's captcha page.
+		{"turnstile compat=recaptcha", "https://challenges.cloudflare.com/turnstile/v0/api.js?compat=recaptcha", "0x4AAAAAAAhseTmUbrk0U5ab", "turnstile"},
+		{"hcaptcha recaptchacompat", "https://js.hcaptcha.com/1/api.js", "a5f74b19-9e45-40e0-b45d-47ff91b7a6c2", "hcaptcha"},
+		{"real recaptcha", "https://www.google.com/recaptcha/api.js", "6LeQbtsSAAAAAHevV56qhVr_0JhQI7N-zTPoOoWJ", "recaptcha"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			html := `<html><head><script async src="` + tc.script + `"></script></head><body>
+				<div class="g-recaptcha" data-callback="cb" data-sitekey="` + tc.key + `"></div></body></html>`
+			if w := findCaptchaWidget(html); w.typ != tc.want || w.key != tc.key {
+				t.Errorf("findCaptchaWidget() = {%q, %q}, want {%q, %q}", w.typ, w.key, tc.want, tc.key)
+			}
+		})
+	}
+}
+
 // Cloudflare's legacy challenge page renders reCAPTCHA explicitly: the mount
 // point is <div id="g-recaptcha"> with no class and no data-sitekey, and the
 // only copy of the key is the k= parameter on the rendered anchor frame.

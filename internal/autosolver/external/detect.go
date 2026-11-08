@@ -178,6 +178,9 @@ func findCaptchaWidget(html string) captchaWidget {
 		// Explicit-render widgets are often marked by id rather than class —
 		// Cloudflare's challenge page uses <div id="g-recaptcha">.
 		vendor := vendorFromMarkers(attrValue(tag, classAttrRe) + " " + attrValue(tag, idAttrRe))
+		if vendor == "recaptcha" {
+			vendor = recaptchaImpostor(key)
+		}
 
 		switch {
 		case vendor != "" && key != "":
@@ -277,6 +280,20 @@ func isRecaptchaEnterprise(html string) bool {
 func isRecaptchaInvisible(html string) bool {
 	return strings.EqualFold(widgetAttr(html, "g-recaptcha", dataSizeAttrRe), "invisible") ||
 		invisibleAnchorRe.MatchString(html)
+}
+
+// recaptchaImpostor names the vendor behind a g-recaptcha element by its key:
+// Turnstile's compat=recaptcha renders into that class, and hCaptcha's default
+// recaptchacompat hook serves grecaptcha.render. Solvers refuse a reCAPTCHA
+// task carrying either key.
+func recaptchaImpostor(key string) string {
+	switch {
+	case strings.HasPrefix(key, "0x"):
+		return "turnstile"
+	case hcaptchaKeyRe.MatchString(key):
+		return "hcaptcha"
+	}
+	return "recaptcha"
 }
 
 // vendorFromMarkers names the vendor from one element's class and id tokens.
@@ -406,6 +423,8 @@ var (
 	// A Turnstile frame path carries its sitekey as a segment. Live keys start
 	// 0x; Cloudflare's 1x/2x/3x test keys are refused by every solver.
 	turnstileFrameKeyRe = regexp.MustCompile(`/turnstile/[^?]*/(0x[0-9A-Za-z_-]{10,})/`)
+	// hCaptcha keys are UUIDs; reCAPTCHA's are 40 characters starting 6L.
+	hcaptchaKeyRe = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 	// Vendor resource hosts. These identify the scripts and frames a page loads,
 	// which is evidence of an embedded widget in a way a bare word is not.
