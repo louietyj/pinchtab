@@ -297,6 +297,29 @@ func TestDetectChallengeIntent_HCaptcha(t *testing.T) {
 	}
 }
 
+// NYSCEF's hCaptcha page: the <noscript> fallback's class="g-recaptcha-response"
+// is not a reCAPTCHA widget.
+func TestDetectChallengeIntent_HCaptchaWithRecaptchaNoscriptFallback(t *testing.T) {
+	intent := DetectChallengeIntent(
+		"Captcha",
+		"https://iapps.courts.state.ny.us/nyscef/CaseSearch?TAB=name",
+		`<script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+		 <form id="captcha_form" method="post">
+		 <div class="h-captcha" data-sitekey="0f0ec7a6-d804-427d-8cfb-3cd7fad01f00" data-callback="onCaptchaSolved">
+		 <iframe src="https://newassets.hcaptcha.com/captcha/v1/x/static/hcaptcha.html#frame=checkbox&amp;id=0nb"></iframe>
+		 <textarea id="g-recaptcha-response-0nb" name="g-recaptcha-response" style="display: none;"></textarea>
+		 <textarea id="h-captcha-response-0nb" name="h-captcha-response" style="display: none;"></textarea></div>
+		 <noscript>
+		   <iframe src="https://www.google.com/recaptcha/api/fallback?k=0f0ec7a6-d804-427d-8cfb-3cd7fad01f00"></iframe>
+		   <textarea id="g-recaptcha-response" name="g-recaptcha-response" class="g-recaptcha-response"></textarea>
+		 </noscript>
+		 </form>`,
+	)
+	if intent == nil || intent.ChallengeType != "hcaptcha" {
+		t.Fatalf("expected hcaptcha, got %+v", intent)
+	}
+}
+
 func TestDetectChallengeIntent_FunCaptcha(t *testing.T) {
 	for _, html := range []string{
 		`<div id="arkose" data-pkey="0152B4EB-D2DC-460A-89A1-629838B529C9"></div>`,

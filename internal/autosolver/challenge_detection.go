@@ -309,9 +309,11 @@ func isHCaptchaChallenge(url, html string) bool {
 // shows the same words escaped (class=&quot;g-recaptcha&quot;) or as text.
 // The vendor's api.js is not a widget: Epic Games Store loads hCaptcha's on every
 // page and renders nothing.
+// The class must be a whole token: hCaptcha pages carry Google's <noscript>
+// fallback, whose textarea is class="g-recaptcha-response".
 var (
-	recaptchaWidgetRe = regexp.MustCompile(`class=["'][^"']*\bg-recaptcha\b|src=["'][^"']*(?:google\.com|recaptcha\.net)/recaptcha/(?:api2/anchor|enterprise/anchor)`)
-	hcaptchaWidgetRe  = regexp.MustCompile(`class=["'][^"']*\bh-captcha\b|src=["'][^"']*hcaptcha\.com/captcha/`)
+	recaptchaWidgetRe = regexp.MustCompile(`class=["'](?:[^"']*\s)?g-recaptcha["'\s]|src=["'][^"']*(?:google\.com|recaptcha\.net)/recaptcha/(?:api2/anchor|enterprise/anchor)`)
+	hcaptchaWidgetRe  = regexp.MustCompile(`class=["'](?:[^"']*\s)?h-captcha["'\s]|src=["'][^"']*hcaptcha\.com/captcha/`)
 )
 
 // isFunCaptchaChallenge keys on Arkose's resource paths and widget attribute,
