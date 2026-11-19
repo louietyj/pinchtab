@@ -62,12 +62,35 @@ const vendorCaptureScript = `(function(){
       o.render = wrapped;
     }catch(e){}
   }
+  function trapHcaptcha(){
+    try{
+      hc = window.hcaptcha;
+      wrapRender(hc);
+      Object.defineProperty(window, 'hcaptcha', {
+        configurable: true, enumerable: true,
+        get: function(){ wrapRender(hc); return hc; },
+        set: function(v){ hc = v; wrapRender(hc); }
+      });
+    }catch(e){}
+  }
+  // Trap window.hcaptcha only once an hCaptcha script is added (still before it
+  // runs): on a page without hCaptcha, Cloudflare's JS detection flags the
+  // property as a solver and its WAF then blocks the browser's POSTs.
   try{
-    Object.defineProperty(window, 'hcaptcha', {
-      configurable: true, enumerable: true,
-      get: function(){ wrapRender(hc); return hc; },
-      set: function(v){ hc = v; wrapRender(hc); }
+    var mo = new MutationObserver(function(records){
+      for (var i = 0; i < records.length; i++){
+        var added = records[i].addedNodes;
+        for (var j = 0; j < added.length; j++){
+          var n = added[j];
+          if (n.tagName === 'SCRIPT' && /hcaptcha/i.test(n.src || '')){
+            mo.disconnect();
+            trapHcaptcha();
+            return;
+          }
+        }
+      }
     });
+    mo.observe(document, {childList: true, subtree: true});
   }catch(e){}
 })();`
 
